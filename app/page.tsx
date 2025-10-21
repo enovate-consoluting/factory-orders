@@ -15,15 +15,7 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
-    // Test credentials
-    const testUsers = [
-      { email: 'admin@test.com', password: 'password123', name: 'Admin User', role: 'super_admin' },
-      { email: 'manufacturer@test.com', password: 'password123', name: 'Manufacturer User', role: 'manufacturer' },
-      { email: 'user@test.com', password: 'password123', name: 'Order Creator', role: 'order_creator' },
-      { email: 'approver@test.com', password: 'password123', name: 'Order Approver', role: 'order_approver' }
-    ];
-
-    // Simulate login delay
+     // Simulate login delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const user = testUsers.find(u => u.email === email && u.password === password);
