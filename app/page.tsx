@@ -3,6 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+// Test users for authentication - DO NOT DELETE THIS
+const testUsers = [
+  { email: 'admin@test.com', password: 'password123', name: 'Admin User', role: 'super_admin' },
+  { email: 'approver@test.com', password: 'password123', name: 'Approver User', role: 'order_approver' },
+  { email: 'user@test.com', password: 'password123', name: 'Regular User', role: 'order_creator' },
+  { email: 'manufacturer@test.com', password: 'password123', name: 'Manufacturer User', role: 'manufacturer' }
+];
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -15,7 +23,7 @@ export default function LoginPage() {
     setError('');
     setIsLoading(true);
 
-     // Simulate login delay
+    // Simulate login delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const user = testUsers.find(u => u.email === email && u.password === password);
@@ -31,11 +39,11 @@ export default function LoginPage() {
 
       // Save to localStorage
       localStorage.setItem('user', JSON.stringify(userData));
-      
+
       // Log for debugging
       console.log('User logged in:', userData);
       console.log('localStorage set:', localStorage.getItem('user'));
-      
+
       // Redirect to dashboard
       window.location.href = '/dashboard';
     } else {
@@ -97,16 +105,6 @@ export default function LoginPage() {
             {isLoading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-
-        <div className="mt-6 p-3 sm:p-4 bg-blue-50 rounded-lg">
-          <p className="text-xs font-medium text-gray-700 mb-2">Test Credentials:</p>
-          <div className="space-y-1 text-xs text-gray-600">
-            <div>📧 admin@test.com / password123 (Super Admin)</div>
-            <div>📧 approver@test.com / password123 (Order Approver)</div>
-            <div>📧 user@test.com / password123 (Order Creator)</div>
-            <div>📧 manufacturer@test.com / password123 (Manufacturer)</div>
-          </div>
-        </div>
       </div>
     </div>
   );
