@@ -29,8 +29,8 @@ import EmailModal from '@/components/email/EmailModal'
 interface OrderDetail {
   id: string
   order_number: string
-  order_name?: string
-  name?: string
+  order_name?: string  // Adding order_name field
+  name?: string        // Alternative field name
   status: string
   created_at: string
   updated_at: string
@@ -103,9 +103,22 @@ export default function OrderDetailPage() {
     fetchOrderDetails()
   }, [params.id])
 
+  // Helper function to generate client prefix
+  const getClientPrefix = (clientName: string) => {
+    // Take first 3 characters of each word in client name
+    const words = clientName.trim().split(' ')
+    if (words.length === 1) {
+      // Single word: take first 3 characters
+      return clientName.substring(0, 3).toUpperCase()
+    } else {
+      // Multiple words: take first character of each word (up to 3 words)
+      return words.slice(0, 3).map(w => w[0]).join('').toUpperCase()
+    }
+  }
+
   const fetchOrderDetails = async () => {
     try {
-      // Fetch the order with all fields
+      // Fetch the order with all fields including potential order_name or name field
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -124,13 +137,14 @@ export default function OrderDetailPage() {
 
       if (error) throw error
       
-      console.log('Order data:', data)
+      console.log('Full order data:', data) // DEBUG - check all fields
+      console.log('Order fields:', Object.keys(data)) // DEBUG - see what fields exist
       
-      // Fetch variants for each product if needed
+      // Fetch variants for each product
       if (data && data.products) {
         const productsWithVariants = await Promise.all(
           data.products.map(async (orderProduct: any) => {
-            // Try to fetch from product_variants table
+            // Method 1: Try to fetch from product_variants table
             const { data: variantData, error: variantError } = await supabase
               .from('product_variants')
               .select(`
@@ -149,21 +163,25 @@ export default function OrderDetailPage() {
               `)
               .eq('product_id', orderProduct.product.id)
 
+            console.log('Variant data for product', orderProduct.product.title, ':', variantData)
+            
             let variants: { type: string; value: string }[] = []
             
             if (!variantError && variantData && variantData.length > 0) {
+              // Extract variants from database
               variants = variantData.map((pv: any) => ({
                 type: pv.variant_options?.variant_types?.name || 'Unknown',
                 value: pv.variant_options?.value || 'Unknown'
               })).filter(v => v.type !== 'Unknown' && v.value !== 'Unknown')
             }
             
-            // Fallback: extract from order items if no DB variants
+            // Method 2: If no variants from DB, extract from order items
             if (variants.length === 0 && orderProduct.items && orderProduct.items.length > 0) {
               const uniqueVariants = new Map<string, Set<string>>()
               
               orderProduct.items.forEach((item: any) => {
                 if (item.variant_combo) {
+                  // Parse "Size: M, Color: Red, Fabric: Cotton"
                   const parts = item.variant_combo.split(',').map((p: string) => p.trim())
                   parts.forEach((part: string) => {
                     if (part.includes(':')) {
@@ -179,12 +197,15 @@ export default function OrderDetailPage() {
                 }
               })
               
+              // Convert to array
               uniqueVariants.forEach((values, type) => {
                 values.forEach(value => {
                   variants.push({ type, value })
                 })
               })
             }
+            
+            console.log('Final variants for product:', variants)
             
             return {
               ...orderProduct,
@@ -271,12 +292,14 @@ export default function OrderDetailPage() {
       const fileName = `sample-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
       const filePath = `${order?.id}/${orderProductId}/${fileName}`
 
+      // Upload to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('order-media')
         .upload(filePath, file)
 
       if (uploadError) throw uploadError
 
+      // Save to database
       const { error: dbError } = await supabase
         .from('order_media')
         .insert({
@@ -370,6 +393,10 @@ export default function OrderDetailPage() {
     )
   }
 
+  // Generate the custom order ID with client prefix
+  const clientPrefix = getClientPrefix(order.client.name)
+  const customOrderId = `${clientPrefix}-${order.order_number.replace('ORD-', '')}`
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       {/* Header */}
@@ -383,7 +410,7 @@ export default function OrderDetailPage() {
         </button>
 
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          {/* Order Information Display - Using order number directly from DB */}
+          {/* PROMINENT ORDER INFORMATION DISPLAY */}
           <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
             {/* Order Name if it exists */}
             {(order.order_name || order.name) && (
@@ -398,14 +425,17 @@ export default function OrderDetailPage() {
               </div>
             )}
             
-            {/* Order ID - Display directly from database */}
+            {/* Custom Order ID with Client Prefix */}
             <div className={`${(order.order_name || order.name) ? 'border-t border-blue-200 pt-4' : ''}`}>
               <div className="flex items-center justify-center mb-2">
                 <Hash className="w-5 h-5 text-blue-600 mr-2" />
                 <p className="text-lg font-medium text-gray-700">Order ID</p>
               </div>
               <p className="text-2xl font-bold text-gray-900 text-center">
-                {order.order_number}
+                {customOrderId}
+              </p>
+              <p className="text-sm text-gray-500 text-center mt-1">
+                (System ID: {order.order_number})
               </p>
             </div>
           </div>
@@ -465,6 +495,7 @@ export default function OrderDetailPage() {
               </div>
               <div className="text-gray-900 font-semibold">{order.client.name}</div>
               <div className="text-sm text-gray-600">{order.client.email}</div>
+              <div className="text-xs text-gray-500 mt-1">Prefix: {clientPrefix}</div>
             </div>
 
             <div className="bg-gray-50 p-4 rounded-lg">

@@ -2,13 +2,23 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-
-// Trash icon component
-const TrashIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-)
+import { 
+  Plus, 
+  X, 
+  Package, 
+  Edit2, 
+  Trash2, 
+  Search,
+  Filter,
+  Tag,
+  Check,
+  AlertCircle,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  Grid3x3,
+  List
+} from 'lucide-react'
 
 type Product = {
   id: string
@@ -40,7 +50,11 @@ export default function ProductsPage() {
   const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([])
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [user, setUser] = useState<any>(null)
   
+  // Modal states
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newProductTitle, setNewProductTitle] = useState('')
   const [newProductDescription, setNewProductDescription] = useState('')
@@ -49,10 +63,22 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [selectedVariants, setSelectedVariants] = useState<string[]>([])
 
+  // Delete confirmation
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
   // Notification state
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
+  // Expanded products for variant display
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
+
   useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      setUser(JSON.parse(userData))
+    }
     loadData()
   }, [])
 
@@ -101,32 +127,35 @@ export default function ProductsPage() {
     }
     
     try {
-      const { data: newProduct, error } = await supabase
+      // Create the product
+      const { data: product, error: productError } = await supabase
         .from('products')
-        .insert([{ 
-          title: newProductTitle.trim(),
-          description: newProductDescription.trim()
-        }])
+        .insert({
+          title: newProductTitle,
+          description: newProductDescription
+        })
         .select()
         .single()
       
-      if (error) throw error
+      if (productError) throw productError
       
-      if (newProduct && newProductVariants.length > 0) {
-        const inserts = newProductVariants.map(variantId => ({
-          product_id: newProduct.id,
+      // Create product variants
+      if (newProductVariants.length > 0) {
+        const variantsToInsert = newProductVariants.map(variantId => ({
+          product_id: product.id,
           variant_option_id: variantId
         }))
         
-        const { error: variantError } = await supabase.from('product_variants').insert(inserts)
+        const { error: variantError } = await supabase
+          .from('product_variants')
+          .insert(variantsToInsert)
+        
         if (variantError) throw variantError
       }
       
-      setNewProductTitle('')
-      setNewProductDescription('')
-      setNewProductVariants([])
-      setShowCreateForm(false)
       setNotification({ message: 'Product created successfully!', type: 'success' })
+      setShowCreateForm(false)
+      resetForm()
       loadData()
     } catch (error) {
       console.error('Error creating product:', error)
@@ -134,46 +163,24 @@ export default function ProductsPage() {
     }
   }
 
-  const deleteProduct = async (id: string) => {
-    if (!confirm('Delete this product? This action cannot be undone.')) return
-    
-    try {
-      // First delete all product_variants
-      const { error: variantError } = await supabase
-        .from('product_variants')
-        .delete()
-        .eq('product_id', id)
-      
-      if (variantError) throw variantError
-      
-      // Then delete the product
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id)
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Product deleted successfully', type: 'success' })
-      loadData()
-    } catch (error) {
-      console.error('Error deleting product:', error)
-      setNotification({ message: 'Error deleting product', type: 'error' })
+  const updateProduct = async () => {
+    if (!editingProduct || !editingProduct.title.trim()) {
+      setNotification({ message: 'Please enter a product title', type: 'error' })
+      return
     }
-  }
-
-  const openEditVariants = (product: Product) => {
-    setEditingProduct(product)
-    const currentVariants = productVariants
-      .filter(pv => pv.product_id === product.id)
-      .map(pv => pv.variant_option_id)
-    setSelectedVariants(currentVariants)
-  }
-
-  const saveProductVariants = async () => {
-    if (!editingProduct) return
     
     try {
+      // Update the product
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({
+          title: editingProduct.title,
+          description: editingProduct.description
+        })
+        .eq('id', editingProduct.id)
+      
+      if (updateError) throw updateError
+      
       // Delete existing variants
       const { error: deleteError } = await supabase
         .from('product_variants')
@@ -184,306 +191,574 @@ export default function ProductsPage() {
       
       // Insert new variants
       if (selectedVariants.length > 0) {
-        const inserts = selectedVariants.map(variantId => ({
+        const variantsToInsert = selectedVariants.map(variantId => ({
           product_id: editingProduct.id,
           variant_option_id: variantId
         }))
         
-        const { error: insertError } = await supabase
+        const { error: variantError } = await supabase
           .from('product_variants')
-          .insert(inserts)
+          .insert(variantsToInsert)
         
-        if (insertError) throw insertError
+        if (variantError) throw variantError
       }
       
+      setNotification({ message: 'Product updated successfully!', type: 'success' })
       setEditingProduct(null)
       setSelectedVariants([])
-      setNotification({ message: 'Variants updated successfully!', type: 'success' })
       loadData()
     } catch (error) {
-      console.error('Error saving variants:', error)
-      setNotification({ message: 'Error saving variants', type: 'error' })
+      console.error('Error updating product:', error)
+      setNotification({ message: 'Error updating product', type: 'error' })
     }
   }
 
-  const toggleVariant = (optionId: string, isCreating = false) => {
-    if (isCreating) {
-      if (newProductVariants.includes(optionId)) {
-        setNewProductVariants(newProductVariants.filter(id => id !== optionId))
-      } else {
-        setNewProductVariants([...newProductVariants, optionId])
-      }
-    } else {
-      if (selectedVariants.includes(optionId)) {
-        setSelectedVariants(selectedVariants.filter(id => id !== optionId))
-      } else {
-        setSelectedVariants([...selectedVariants, optionId])
-      }
-    }
-  }
-
-  const selectAllForType = (typeId: string, isCreating = false) => {
-    const typeOptions = getOptionsForType(typeId).map(opt => opt.id)
+  const deleteProduct = async () => {
+    if (!productToDelete) return
     
-    if (isCreating) {
-      const allSelected = typeOptions.every(id => newProductVariants.includes(id))
+    setDeleting(true)
+    try {
+      // Delete product variants first
+      const { error: variantsError } = await supabase
+        .from('product_variants')
+        .delete()
+        .eq('product_id', productToDelete.id)
+      
+      if (variantsError) throw variantsError
+      
+      // Delete the product
+      const { error: productError } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productToDelete.id)
+      
+      if (productError) throw productError
+      
+      setNotification({ message: 'Product deleted successfully!', type: 'success' })
+      setDeleteModalOpen(false)
+      setProductToDelete(null)
+      loadData()
+    } catch (error) {
+      console.error('Error deleting product:', error)
+      setNotification({ message: 'Error deleting product', type: 'error' })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const resetForm = () => {
+    setNewProductTitle('')
+    setNewProductDescription('')
+    setNewProductVariants([])
+  }
+
+  const toggleVariantType = (typeId: string) => {
+    const typeOptions = variantOptions.filter(opt => opt.type_id === typeId)
+    const typeOptionIds = typeOptions.map(opt => opt.id)
+    const allSelected = typeOptionIds.every(id => 
+      showCreateForm ? newProductVariants.includes(id) : selectedVariants.includes(id)
+    )
+    
+    if (showCreateForm) {
       if (allSelected) {
-        setNewProductVariants(newProductVariants.filter(id => !typeOptions.includes(id)))
+        setNewProductVariants(newProductVariants.filter(id => !typeOptionIds.includes(id)))
       } else {
-        const newSet = new Set([...newProductVariants, ...typeOptions])
-        setNewProductVariants(Array.from(newSet))
+        setNewProductVariants([...new Set([...newProductVariants, ...typeOptionIds])])
       }
     } else {
-      const allSelected = typeOptions.every(id => selectedVariants.includes(id))
       if (allSelected) {
-        setSelectedVariants(selectedVariants.filter(id => !typeOptions.includes(id)))
+        setSelectedVariants(selectedVariants.filter(id => !typeOptionIds.includes(id)))
       } else {
-        const newSet = new Set([...selectedVariants, ...typeOptions])
-        setSelectedVariants(Array.from(newSet))
+        setSelectedVariants([...new Set([...selectedVariants, ...typeOptionIds])])
       }
     }
   }
 
-  const getProductVariantDisplay = (productId: string) => {
+  const toggleProductExpansion = (productId: string) => {
+    const newExpanded = new Set(expandedProducts)
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId)
+    } else {
+      newExpanded.add(productId)
+    }
+    setExpandedProducts(newExpanded)
+  }
+
+  const getProductVariants = (productId: string) => {
     const variants = productVariants.filter(pv => pv.product_id === productId)
-    if (variants.length === 0) return 'No variants assigned'
-    
-    const variantsByType: { [key: string]: string[] } = {}
-    variants.forEach(pv => {
-      const option = variantOptions.find(vo => vo.id === pv.variant_option_id)
-      if (option) {
-        const type = variantTypes.find(vt => vt.id === option.type_id)
-        if (type) {
-          if (!variantsByType[type.name]) variantsByType[type.name] = []
-          variantsByType[type.name].push(option.value)
-        }
-      }
-    })
-    
-    return Object.entries(variantsByType)
-      .map(([type, values]) => `${type}: ${values.join(', ')}`)
-      .join(' | ')
+    return variants.map(v => {
+      const option = variantOptions.find(opt => opt.id === v.variant_option_id)
+      const type = variantTypes.find(t => t.id === option?.type_id)
+      return { type: type?.name, value: option?.value }
+    }).filter(v => v.type && v.value)
   }
 
-  const getOptionsForType = (typeId: string) => {
-    return variantOptions.filter(opt => opt.type_id === typeId)
+  const filteredProducts = products.filter(product =>
+    product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const canManageProducts = () => {
+    return user?.role === 'super_admin'
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading products...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
+    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center">
+            <Package className="w-8 h-8 mr-3 text-blue-600" />
+            Products Management
+          </h1>
+          {canManageProducts() && (
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              New Product
+            </button>
+          )}
+        </div>
+
+        {/* Search and View Toggle */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'grid' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <Grid3x3 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-lg transition-colors ${
+                viewMode === 'list' 
+                  ? 'bg-blue-600 text-white' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <List className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 px-4 py-3 rounded-lg text-white text-sm font-medium shadow-lg z-50 transition-all transform translate-x-0 ${
-          notification.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 ${
+          notification.type === 'success' 
+            ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
+            : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
         }`}>
-          {notification.message}
+          {notification.type === 'success' ? (
+            <Check className="w-5 h-5" />
+          ) : (
+            <AlertCircle className="w-5 h-5" />
+          )}
+          <span className="font-medium">{notification.message}</span>
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Products</h1>
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition shadow-sm w-full sm:w-auto"
-        >
-          {showCreateForm ? 'Cancel' : '+ New Product'}
-        </button>
-      </div>
-
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="mb-6 bg-white rounded-lg p-4 sm:p-6 border border-gray-200 shadow-sm">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Create Product</h2>
-          <form onSubmit={createProduct} className="space-y-4 sm:space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Product Title</label>
-              <input
-                type="text"
-                value={newProductTitle}
-                onChange={(e) => setNewProductTitle(e.target.value)}
-                placeholder="e.g., Hoodie, T-Shirt, Pants"
-                className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-                required
-              />
-            </div>
+      {/* Products Display */}
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProducts.map(product => {
+            const variants = getProductVariants(product.id)
+            const isExpanded = expandedProducts.has(product.id)
             
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-              <textarea
-                value={newProductDescription}
-                onChange={(e) => setNewProductDescription(e.target.value)}
-                placeholder="Quick description..."
-                className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-                rows={3}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">Select Variants</label>
-              <div className="space-y-3 sm:space-y-4">
-                {variantTypes.map((type) => (
-                  <div key={type.id} className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-                    <div className="flex justify-between items-center mb-3">
-                      <h3 className="text-base sm:text-lg font-medium text-gray-900">{type.name}</h3>
-                      <button
-                        type="button"
-                        onClick={() => selectAllForType(type.id, true)}
-                        className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded transition font-medium"
-                      >
-                        Select All
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                      {getOptionsForType(type.id).map((option) => (
-                        <label
-                          key={option.id}
-                          className={`flex items-center px-2 sm:px-3 py-2 rounded cursor-pointer transition text-sm ${
-                            newProductVariants.includes(option.id)
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                          }`}
+            return (
+              <div key={product.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
+                <div className="p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="text-lg font-semibold text-gray-900">{product.title}</h3>
+                    {canManageProducts() && (
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => {
+                            setEditingProduct(product)
+                            const currentVariants = productVariants
+                              .filter(pv => pv.product_id === product.id)
+                              .map(pv => pv.variant_option_id)
+                            setSelectedVariants(currentVariants)
+                          }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
                         >
-                          <input
-                            type="checkbox"
-                            checked={newProductVariants.includes(option.id)}
-                            onChange={() => toggleVariant(option.id, true)}
-                            className="mr-2 h-3 w-3 sm:h-4 sm:w-4"
-                          />
-                          <span className="truncate">{option.value}</span>
-                        </label>
-                      ))}
-                    </div>
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setProductToDelete(product)
+                            setDeleteModalOpen(true)
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full px-4 sm:px-6 py-2 sm:py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition shadow-sm text-sm sm:text-base"
-            >
-              Create Product
-            </button>
-          </form>
-        </div>
-      )}
-
-      {/* Products List */}
-      <div className="space-y-3 sm:space-y-4">
-        {products.map((product) => (
-          <div key={product.id} className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
-              <div className="flex-1">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-1">{product.title}</h3>
-                {product.description && (
-                  <p className="text-gray-600 text-sm">{product.description}</p>
-                )}
-              </div>
-              <button
-                onClick={() => deleteProduct(product.id)}
-                className="self-start sm:self-auto p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                title="Delete product"
-              >
-                <TrashIcon />
-              </button>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-xs sm:text-sm text-gray-600 break-words">
-                {getProductVariantDisplay(product.id)}
-              </div>
-              <button
-                onClick={() => openEditVariants(product)}
-                className="px-3 sm:px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs sm:text-sm transition font-medium w-full sm:w-auto"
-              >
-                Edit Variants
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Empty State */}
-      {products.length === 0 && (
-        <div className="text-center py-12 sm:py-16 bg-white rounded-lg border border-gray-200">
-          <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-          </svg>
-          <p className="mt-4 text-gray-600 text-sm sm:text-base">No products yet. Create one to get started!</p>
-        </div>
-      )}
-
-      {/* Edit Modal */}
-      {editingProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-2xl w-full border border-gray-200 shadow-xl my-8 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">
-              Edit Variants for {editingProduct.title}
-            </h2>
-
-            <div className="space-y-3 sm:space-y-4 mb-6">
-              {variantTypes.map((type) => (
-                <div key={type.id} className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-                  <div className="flex justify-between items-center mb-3">
-                    <h3 className="text-base sm:text-lg font-medium text-gray-900">{type.name}</h3>
-                    <button
-                      onClick={() => selectAllForType(type.id, false)}
-                      className="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 rounded transition font-medium"
-                    >
-                      Select All
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {getOptionsForType(type.id).map((option) => (
-                      <label
-                        key={option.id}
-                        className={`flex items-center px-3 sm:px-4 py-2 rounded cursor-pointer transition text-sm ${
-                          selectedVariants.includes(option.id)
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
-                        }`}
+                  
+                  {product.description && (
+                    <p className="text-sm text-gray-600 mb-3">{product.description}</p>
+                  )}
+                  
+                  {variants.length > 0 && (
+                    <div>
+                      <button
+                        onClick={() => toggleProductExpansion(product.id)}
+                        className="flex items-center text-sm text-blue-600 hover:text-blue-700 mb-2"
                       >
-                        <input
-                          type="checkbox"
-                          checked={selectedVariants.includes(option.id)}
-                          onChange={() => toggleVariant(option.id, false)}
-                          className="mr-2 h-3 w-3 sm:h-4 sm:w-4"
-                        />
-                        <span className="truncate">{option.value}</span>
-                      </label>
-                    ))}
+                        <Tag className="w-4 h-4 mr-1" />
+                        {variants.length} variant{variants.length !== 1 ? 's' : ''}
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 ml-1" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 ml-1" />
+                        )}
+                      </button>
+                      
+                      {isExpanded && (
+                        <div className="space-y-1">
+                          {variantTypes.map(type => {
+                            const typeVariants = variants.filter(v => v.type === type.name)
+                            if (typeVariants.length === 0) return null
+                            
+                            return (
+                              <div key={type.id} className="bg-gray-50 rounded p-2">
+                                <span className="text-xs font-medium text-gray-700">{type.name}:</span>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {typeVariants.map((v, idx) => (
+                                    <span key={idx} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600">
+                                      {v.value}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Product
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
+                    Description
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Variants
+                  </th>
+                  {canManageProducts() && (
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredProducts.map(product => {
+                  const variants = getProductVariants(product.id)
+                  
+                  return (
+                    <tr key={product.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900">{product.title}</div>
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <div className="text-sm text-gray-600">{product.description || '-'}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {variants.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {variants.slice(0, 3).map((v, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                {v.value}
+                              </span>
+                            ))}
+                            {variants.length > 3 && (
+                              <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
+                                +{variants.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-500">No variants</span>
+                        )}
+                      </td>
+                      {canManageProducts() && (
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingProduct(product)
+                                const currentVariants = productVariants
+                                  .filter(pv => pv.product_id === product.id)
+                                  .map(pv => pv.variant_option_id)
+                                setSelectedVariants(currentVariants)
+                              }}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setProductToDelete(product)
+                                setDeleteModalOpen(true)
+                              }}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {(showCreateForm || editingProduct) && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                  <Package className="w-6 h-6 mr-2 text-blue-600" />
+                  {editingProduct ? 'Edit Product' : 'Create New Product'}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowCreateForm(false)
+                    setEditingProduct(null)
+                    resetForm()
+                    setSelectedVariants([])
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={editingProduct ? (e) => { e.preventDefault(); updateProduct(); } : createProduct}>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Product Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={editingProduct ? editingProduct.title : newProductTitle}
+                      onChange={(e) => editingProduct 
+                        ? setEditingProduct({...editingProduct, title: e.target.value})
+                        : setNewProductTitle(e.target.value)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                      placeholder="Enter product title"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={editingProduct ? editingProduct.description : newProductDescription}
+                      onChange={(e) => editingProduct
+                        ? setEditingProduct({...editingProduct, description: e.target.value})
+                        : setNewProductDescription(e.target.value)
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                      placeholder="Enter product description (optional)"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Variants
+                    </label>
+                    {variantTypes.map(type => {
+                      const typeOptions = variantOptions.filter(opt => opt.type_id === type.id)
+                      const selectedOptions = showCreateForm ? newProductVariants : selectedVariants
+                      const allSelected = typeOptions.every(opt => selectedOptions.includes(opt.id))
+                      const someSelected = typeOptions.some(opt => selectedOptions.includes(opt.id))
+                      
+                      return (
+                        <div key={type.id} className="mb-4 p-3 bg-gray-50 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-medium text-gray-700">{type.name}</h4>
+                            <button
+                              type="button"
+                              onClick={() => toggleVariantType(type.id)}
+                              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                                allSelected
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                  : someSelected
+                                  ? 'bg-blue-200 text-blue-800 hover:bg-blue-300'
+                                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              {allSelected ? 'Deselect All' : 'Select All'}
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {typeOptions.map(option => {
+                              const isSelected = selectedOptions.includes(option.id)
+                              
+                              return (
+                                <button
+                                  key={option.id}
+                                  type="button"
+                                  onClick={() => {
+                                    if (showCreateForm) {
+                                      setNewProductVariants(
+                                        isSelected
+                                          ? newProductVariants.filter(id => id !== option.id)
+                                          : [...newProductVariants, option.id]
+                                      )
+                                    } else {
+                                      setSelectedVariants(
+                                        isSelected
+                                          ? selectedVariants.filter(id => id !== option.id)
+                                          : [...selectedVariants, option.id]
+                                      )
+                                    }
+                                  }}
+                                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+                                    isSelected
+                                      ? 'bg-blue-600 text-white shadow-md'
+                                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {isSelected && <Check className="w-3 h-3 inline mr-1" />}
+                                  {option.value}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              ))}
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateForm(false)
+                      setEditingProduct(null)
+                      resetForm()
+                      setSelectedVariants([])
+                    }}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
+                  >
+                    {editingProduct ? 'Update Product' : 'Create Product'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && productToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="mb-4">
+              <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+                Delete Product
+              </h3>
+              <p className="text-sm text-gray-600 text-center">
+                Are you sure you want to delete "{productToDelete.title}"? This action cannot be undone.
+              </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-amber-800">
+                <strong>Warning:</strong> This will also remove this product from any existing orders.
+              </p>
+            </div>
+
+            <div className="flex space-x-3">
               <button
                 onClick={() => {
-                  setEditingProduct(null)
-                  setSelectedVariants([])
+                  setDeleteModalOpen(false)
+                  setProductToDelete(null)
                 }}
-                className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm sm:text-base"
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={saveProductVariants}
-                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition shadow-sm text-sm sm:text-base"
+                onClick={deleteProduct}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
               >
-                Save Variants
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Product
+                  </>
+                )}
               </button>
             </div>
           </div>

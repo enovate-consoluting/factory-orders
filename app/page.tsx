@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 
 // Test users for authentication - DO NOT DELETE THIS
 const testUsers = [
-  { email: 'admin@test.com', password: 'password123', name: 'Admin User', role: 'super_admin' },
+  { email: 'admin@scanacart.com', password: 'Scanacart50', name: 'Admin User', role: 'super_admin' },
   { email: 'approver@test.com', password: 'password123', name: 'Approver User', role: 'order_approver' },
   { email: 'user@test.com', password: 'password123', name: 'Regular User', role: 'order_creator' },
-  { email: 'manufacturer@test.com', password: 'password123', name: 'Manufacturer User', role: 'manufacturer' }
+  { email: 'nikky.lee520@gmail.com', password: 'Nikky@4', name: 'Manufacturer User', role: 'manufacturer' }
 ];
 
 export default function LoginPage() {

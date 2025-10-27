@@ -1,1274 +1,980 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
+import { 
+  ArrowLeft, 
+  Plus, 
+  X, 
+  Package,
+  User,
+  Building2,
+  AlertCircle,
+  Save,
+  Send,
+  FileText,
+  Hash,
+  Trash2,
+  Upload,
+  Image as ImageIcon,
+  File,
+  Download,
+  Paperclip
+} from 'lucide-react'
 
-// Icon components as inline SVGs to avoid dependencies
-const ChevronLeft = ({ className = "w-6 h-6" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-  </svg>
-)
-
-const ChevronRight = ({ className = "w-6 h-6" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-  </svg>
-)
-
-const Plus = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-  </svg>
-)
-
-const X = ({ className = "w-6 h-6" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const Upload = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-  </svg>
-)
-
-const Save = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V2" />
-  </svg>
-)
-
-const Send = ({ className = "w-4 h-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-  </svg>
-)
-
-const Package = ({ className = "w-12 h-12" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-  </svg>
-)
-
-const Video = ({ className = "w-8 h-8" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-  </svg>
-)
-
-const Trash2 = ({ className = "w-5 h-5" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-)
-
-type Client = {
+interface Client {
   id: string
   name: string
   email: string
 }
 
-type Manufacturer = {
+interface Manufacturer {
   id: string
   name: string
   email: string
 }
 
-type Product = {
+interface Product {
   id: string
   title: string
   description: string
 }
 
-type VariantType = {
-  id: string
-  name: string
-}
-
-type VariantOption = {
-  id: string
-  type_id: string
-  value: string
-}
-
-type ProductVariant = {
+interface ProductVariant {
   id: string
   product_id: string
   variant_option_id: string
-}
-
-type SelectedProduct = {
-  productId: string
-  variantCombos: {
-    [combo: string]: {
-      quantity: number
-      notes: string
+  variant_option: {
+    id: string
+    value: string
+    variant_type: {
+      id: string
+      name: string
     }
   }
-  referenceMedia: File[]
+}
+
+interface OrderProduct {
+  product: Product
+  variants: ProductVariant[]
+  items: { [key: string]: { quantity: number; notes: string } }
+  uploadedFiles?: Array<{
+    name: string
+    type: string
+    size: number
+    file: File
+    preview?: string
+  }>
 }
 
 export default function CreateOrderPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [step, setStep] = useState(1)
+  const [user, setUser] = useState<any>(null)
   
   // Form data
   const [orderName, setOrderName] = useState('')
-  const [selectedClientId, setSelectedClientId] = useState('')
-  const [selectedManufacturerId, setSelectedManufacturerId] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
+  const [selectedClient, setSelectedClient] = useState<string>('')
+  const [selectedManufacturer, setSelectedManufacturer] = useState<string>('')
+  const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([])
   
-  // Data from database
+  // Lists
   const [clients, setClients] = useState<Client[]>([])
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [variantTypes, setVariantTypes] = useState<VariantType[]>([])
-  const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
-  const [productVariants, setProductVariants] = useState<ProductVariant[]>([])
   
-  // Selected products for order
-  const [selectedProducts, setSelectedProducts] = useState<{ [key: string]: SelectedProduct }>({})
-  
+  // Product picker state
   const [showProductPicker, setShowProductPicker] = useState(false)
+  const [selectedProducts, setSelectedProducts] = useState<{ [key: string]: boolean }>({})
+  const [searchTerm, setSearchTerm] = useState('')
   
-  // Media viewer state
-  const [viewingMedia, setViewingMedia] = useState<{ files: File[]; index: number; title: string } | null>(null)
-  
-  // Notification state
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  // Quick fill
+  const [quickFillQuantity, setQuickFillQuantity] = useState('')
 
   useEffect(() => {
-    loadData()
+    const userData = localStorage.getItem('user')
+    if (!userData) {
+      router.push('/')
+      return
+    }
+    setUser(JSON.parse(userData))
+    fetchInitialData()
   }, [])
-  
-  useEffect(() => {
-    // Auto-hide notification after 4 seconds
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null)
-      }, 4000)
-      return () => clearTimeout(timer)
-    }
-  }, [notification])
 
-  const loadData = async () => {
-    setLoading(true)
-    
-    const [clientsRes, manufacturersRes, productsRes, typesRes, optionsRes, productVariantsRes] = await Promise.all([
-      supabase.from('clients').select('*').order('name'),
-      supabase.from('manufacturers').select('*').order('name'),
-      supabase.from('products').select('*').order('title'),
-      supabase.from('variant_types').select('*').order('name'),
-      supabase.from('variant_options').select('*').order('value'),
-      supabase.from('product_variants').select('*')
-    ])
-    
-    setClients(clientsRes.data || [])
-    setManufacturers(manufacturersRes.data || [])
-    setProducts(productsRes.data || [])
-    setVariantTypes(typesRes.data || [])
-    setVariantOptions(optionsRes.data || [])
-    setProductVariants(productVariantsRes.data || [])
-    setLoading(false)
-  }
+  const fetchInitialData = async () => {
+    try {
+      const [clientsRes, manufacturersRes, productsRes] = await Promise.all([
+        supabase.from('clients').select('*').order('name'),
+        supabase.from('manufacturers').select('*').order('name'),
+        supabase.from('products').select('*').order('title')
+      ])
 
-  const handleClientChange = (clientId: string) => {
-    setSelectedClientId(clientId)
-    const client = clients.find(c => c.id === clientId)
-    if (client) {
-      setClientEmail(client.email)
+      if (clientsRes.data) setClients(clientsRes.data)
+      if (manufacturersRes.data) setManufacturers(manufacturersRes.data)
+      if (productsRes.data) setProducts(productsRes.data)
+    } catch (error) {
+      console.error('Error fetching data:', error)
     }
   }
 
-  const addProduct = (productId: string) => {
-    // Don't close modal or do anything if already selected
-    if (selectedProducts[productId]) return
-    
-    const product = products.find(p => p.id === productId)
-    if (!product) return
-    
-    // Get variants for this product
-    const productVariantIds = productVariants
-      .filter(pv => pv.product_id === productId)
-      .map(pv => pv.variant_option_id)
-    
-    if (productVariantIds.length === 0) {
-      setNotification({ message: 'This product has no variants configured. Please add variants first.', type: 'error' })
-      return
-    }
-    
-    // Group variants by type
-    const variantsByType: { [typeId: string]: string[] } = {}
-    
-    productVariantIds.forEach(optionId => {
-      const option = variantOptions.find(vo => vo.id === optionId)
-      if (option) {
-        if (!variantsByType[option.type_id]) {
-          variantsByType[option.type_id] = []
-        }
-        variantsByType[option.type_id].push(optionId)
-      }
-    })
-    
-    // Generate all combinations
-    const typesArray = Object.entries(variantsByType)
-    const combinations = generateCombinations(typesArray)
-    
-    const variantCombos: { [combo: string]: { quantity: number; notes: string } } = {}
-    combinations.forEach(combo => {
-      variantCombos[combo] = { quantity: 0, notes: '' }
-    })
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        productId,
-        variantCombos,
-        referenceMedia: []
-      }
-    })
-    
-    // Don't close the modal - removed setShowProductPicker(false)
-  }
-
-  const generateCombinations = (typesArray: [string, string[]][]): string[] => {
-    if (typesArray.length === 0) return ['']
-    
-    const [first, ...rest] = typesArray
-    const restCombinations = generateCombinations(rest)
-    
-    const result: string[] = []
-    first[1].forEach(optionId => {
-      restCombinations.forEach(restCombo => {
-        result.push(restCombo ? `${optionId},${restCombo}` : optionId)
-      })
-    })
-    
-    return result
-  }
-
-  const removeProduct = (productId: string) => {
-    const newSelected = { ...selectedProducts }
-    delete newSelected[productId]
-    setSelectedProducts(newSelected)
-  }
-
-  const updateQuantity = (productId: string, combo: string, quantity: number) => {
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        variantCombos: {
-          ...selectedProducts[productId].variantCombos,
-          [combo]: {
-            ...selectedProducts[productId].variantCombos[combo],
-            quantity
-          }
-        }
-      }
-    })
-  }
-
-  const quickFillQuantity = (productId: string, quantity: number) => {
-    const product = selectedProducts[productId]
-    const updatedCombos = { ...product.variantCombos }
-    
-    Object.keys(updatedCombos).forEach(combo => {
-      updatedCombos[combo] = {
-        ...updatedCombos[combo],
-        quantity
-      }
-    })
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...product,
-        variantCombos: updatedCombos
-      }
-    })
-  }
-
-  const updateNotes = (productId: string, combo: string, notes: string) => {
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        variantCombos: {
-          ...selectedProducts[productId].variantCombos,
-          [combo]: {
-            ...selectedProducts[productId].variantCombos[combo],
-            notes
-          }
-        }
-      }
-    })
-  }
-
-  const handleMediaUpload = (productId: string, files: FileList | null) => {
-    if (!files) return
-    
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'video/mp4', 'video/quicktime']
-    const validFiles = Array.from(files).filter(file => allowedTypes.includes(file.type))
-    
-    if (validFiles.length === 0) {
-      setNotification({ message: 'Please upload only JPG, PNG, MP4, or MOV files', type: 'error' })
-      return
-    }
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        referenceMedia: [...selectedProducts[productId].referenceMedia, ...validFiles]
-      }
-    })
-    
-    setNotification({ message: `Added ${validFiles.length} file${validFiles.length > 1 ? 's' : ''}`, type: 'success' })
-  }
-
-  const removeMedia = (productId: string, index: number) => {
-    const updatedMedia = selectedProducts[productId].referenceMedia.filter((_, i) => i !== index)
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        referenceMedia: updatedMedia
-      }
-    })
-    setNotification({ message: 'File removed', type: 'success' })
-  }
-
-  const deleteMediaFromViewer = () => {
-    if (!viewingMedia) return
-    
-    const productId = Object.keys(selectedProducts).find(id => 
-      selectedProducts[id].referenceMedia === viewingMedia.files
-    )
-    
-    if (productId) {
-      const updatedMedia = viewingMedia.files.filter((_, i) => i !== viewingMedia.index)
-      setSelectedProducts({
-        ...selectedProducts,
-        [productId]: {
-          ...selectedProducts[productId],
-          referenceMedia: updatedMedia
-        }
-      })
-      
-      // Update or close viewer
-      if (updatedMedia.length === 0) {
-        setViewingMedia(null)
-      } else if (viewingMedia.index >= updatedMedia.length) {
-        setViewingMedia({ ...viewingMedia, files: updatedMedia, index: updatedMedia.length - 1 })
-      } else {
-        setViewingMedia({ ...viewingMedia, files: updatedMedia })
-      }
-      
-      setNotification({ message: 'File removed', type: 'success' })
-    }
-  }
-
-  const openMediaViewer = (files: File[], startIndex: number, productTitle: string) => {
-    setViewingMedia({ files, index: startIndex, title: `Reference Media - ${productTitle}` })
-  }
-
-  const navigateMedia = (direction: 'prev' | 'next') => {
-    if (!viewingMedia) return
-    
-    let newIndex = viewingMedia.index
-    if (direction === 'next') {
-      newIndex = (viewingMedia.index + 1) % viewingMedia.files.length
+  // Helper function to generate client prefix
+  const getClientPrefix = (clientName: string) => {
+    const words = clientName.trim().split(' ')
+    if (words.length === 1) {
+      return clientName.substring(0, 3).toUpperCase()
     } else {
-      newIndex = viewingMedia.index === 0 ? viewingMedia.files.length - 1 : viewingMedia.index - 1
+      return words.slice(0, 3).map(w => w[0]).join('').toUpperCase()
     }
+  }
+
+  const toggleProductSelection = (productId: string) => {
+    setSelectedProducts(prev => ({
+      ...prev,
+      [productId]: !prev[productId]
+    }))
+  }
+
+  const addSelectedProducts = async () => {
+    const selectedIds = Object.keys(selectedProducts).filter(id => selectedProducts[id])
     
-    setViewingMedia({ ...viewingMedia, index: newIndex })
+    for (const productId of selectedIds) {
+      const product = products.find(p => p.id === productId)
+      if (!product) continue
+
+      // Check if product already added
+      if (orderProducts.some(op => op.product.id === productId)) continue
+
+      // Fetch variants for this product
+      const { data: variantsData, error } = await supabase
+        .from('product_variants')
+        .select(`
+          id,
+          product_id,
+          variant_option_id,
+          variant_option:variant_options (
+            id,
+            value,
+            variant_type:variant_types (
+              id,
+              name
+            )
+          )
+        `)
+        .eq('product_id', productId)
+
+      if (error) {
+        console.error('Error fetching variants:', error)
+        continue
+      }
+
+      // Group variants by type
+      const variantsByType: { [key: string]: any[] } = {}
+      variantsData?.forEach(variant => {
+        const typeName = variant.variant_option.variant_type.name
+        if (!variantsByType[typeName]) {
+          variantsByType[typeName] = []
+        }
+        variantsByType[typeName].push(variant.variant_option)
+      })
+
+      // Generate all combinations
+      const items: { [key: string]: { quantity: number; notes: string } } = {}
+      const generateCombinations = (types: string[], index: number = 0, current: string[] = []) => {
+        if (index === types.length) {
+          const key = current.join(', ')
+          items[key] = { quantity: 0, notes: '' }
+          return
+        }
+
+        const typeName = types[index]
+        variantsByType[typeName].forEach(option => {
+          generateCombinations(types, index + 1, [...current, `${typeName}: ${option.value}`])
+        })
+      }
+
+      const typeNames = Object.keys(variantsByType)
+      if (typeNames.length > 0) {
+        generateCombinations(typeNames)
+      } else {
+        items['No variants'] = { quantity: 0, notes: '' }
+      }
+
+      setOrderProducts(prev => [...prev, { product, variants: variantsData || [], items }])
+    }
+
+    setSelectedProducts({})
+    setShowProductPicker(false)
   }
 
-  const getVariantComboDisplay = (combo: string) => {
-    const optionIds = combo.split(',')
-    return optionIds.map(id => {
-      const option = variantOptions.find(vo => vo.id === id)
-      return option?.value || ''
-    }).join(' / ')
+  const removeProduct = (index: number) => {
+    setOrderProducts(orderProducts.filter((_, i) => i !== index))
   }
 
-  const saveAsDraft = async () => {
-    if (!orderName) {
-      setNotification({ message: 'Please enter an order name before saving', type: 'error' })
+  const handleFileUpload = (productIndex: number, event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files) return
+
+    const updated = [...orderProducts]
+    if (!updated[productIndex].uploadedFiles) {
+      updated[productIndex].uploadedFiles = []
+    }
+
+    Array.from(files).forEach(file => {
+      const fileData = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        file: file,
+        preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined
+      }
+      updated[productIndex].uploadedFiles!.push(fileData)
+    })
+
+    setOrderProducts(updated)
+  }
+
+  const removeFile = (productIndex: number, fileIndex: number) => {
+    const updated = [...orderProducts]
+    if (updated[productIndex].uploadedFiles) {
+      // Clean up preview URL if it exists
+      const file = updated[productIndex].uploadedFiles![fileIndex]
+      if (file.preview) {
+        URL.revokeObjectURL(file.preview)
+      }
+      updated[productIndex].uploadedFiles!.splice(fileIndex, 1)
+    }
+    setOrderProducts(updated)
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+  }
+
+  const getFileIcon = (fileType: string) => {
+    if (fileType.startsWith('image/')) return <ImageIcon className="w-4 h-4" />
+    if (fileType.includes('pdf')) return <FileText className="w-4 h-4" />
+    if (fileType.includes('doc') || fileType.includes('docx')) return <FileText className="w-4 h-4" />
+    if (fileType.includes('xls') || fileType.includes('xlsx')) return <FileText className="w-4 h-4" />
+    return <File className="w-4 h-4" />
+  }
+
+  const updateItemQuantity = (productIndex: number, itemKey: string, quantity: string) => {
+    const updated = [...orderProducts]
+    updated[productIndex].items[itemKey].quantity = parseInt(quantity) || 0
+    setOrderProducts(updated)
+  }
+
+  const updateItemNotes = (productIndex: number, itemKey: string, notes: string) => {
+    const updated = [...orderProducts]
+    updated[productIndex].items[itemKey].notes = notes
+    setOrderProducts(updated)
+  }
+
+  const applyQuickFill = (productIndex: number) => {
+    if (!quickFillQuantity) return
+    
+    const updated = [...orderProducts]
+    Object.keys(updated[productIndex].items).forEach(key => {
+      updated[productIndex].items[key].quantity = parseInt(quickFillQuantity) || 0
+    })
+    setOrderProducts(updated)
+  }
+
+  const generateOrderNumber = async (isDraft: boolean, clientId: string) => {
+    // Get client name for prefix
+    const client = clients.find(c => c.id === clientId)
+    if (!client) return null
+
+    const clientPrefix = getClientPrefix(client.name)
+    
+    // Get the latest order number to generate the next one
+    const { data: lastOrder } = await supabase
+      .from('orders')
+      .select('order_number')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+
+    let nextNumber = 1
+    if (lastOrder?.order_number) {
+      // Extract the number part from the last order
+      const matches = lastOrder.order_number.match(/\d+/)
+      if (matches) {
+        nextNumber = parseInt(matches[0]) + 1
+      }
+    }
+
+    const paddedNumber = nextNumber.toString().padStart(6, '0')
+    
+    // Generate order number with client prefix (no duplication)
+    if (isDraft) {
+      return `DRAFT-${clientPrefix}-${paddedNumber}`
+    } else {
+      return `${clientPrefix}-${paddedNumber}`
+    }
+  }
+
+  const saveOrder = async (isDraft: boolean = false) => {
+    if (!selectedClient || !selectedManufacturer) {
+      alert('Please select client and manufacturer')
       return
     }
-    
+
+    if (!orderName.trim()) {
+      alert('Please enter an order name')
+      return
+    }
+
+    if (orderProducts.length === 0) {
+      alert('Please add at least one product')
+      return
+    }
+
     setLoading(true)
-    
     try {
-      // Get current user - check both localStorage methods
-      const userEmail = localStorage.getItem('userEmail') || localStorage.getItem('user')
-      let userId = null
-      
-      if (userEmail) {
-        try {
-          // If it's a JSON string (from 'user' key), parse it
-          const userObj = typeof userEmail === 'string' && userEmail.includes('{') 
-            ? JSON.parse(userEmail) 
-            : null
-          
-          if (userObj?.email) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', userObj.email)
-              .single()
-            userId = userData?.id
-          } else if (typeof userEmail === 'string' && userEmail.includes('@')) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', userEmail)
-              .single()
-            userId = userData?.id
-          }
-        } catch (e) {
-          console.log('Could not find user, continuing without user ID')
-        }
+      // Generate order number with client prefix
+      const orderNumber = await generateOrderNumber(isDraft, selectedClient)
+      if (!orderNumber) {
+        throw new Error('Failed to generate order number')
       }
-      
-      // Generate order number with DRAFT prefix
-      const orderNumber = `DRAFT-${Date.now().toString().slice(-6)}`
-      
-      // Need at least placeholder client and manufacturer
-      let clientId = selectedClientId
-      let manufacturerId = selectedManufacturerId
-      
-      if (!clientId && clients.length > 0) {
-        clientId = clients[0].id
-      }
-      if (!manufacturerId && manufacturers.length > 0) {
-        manufacturerId = manufacturers[0].id
-      }
-      
-      if (!clientId || !manufacturerId) {
-        setNotification({ message: 'Unable to save draft. Please ensure clients and manufacturers exist.', type: 'error' })
-        setLoading(false)
-        return
-      }
-      
-      // Create order with 'draft' status
+
+      // Create the order with order_name field
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .insert([{
+        .insert({
           order_number: orderNumber,
-          client_id: clientId,
-          manufacturer_id: manufacturerId,
-          status: 'draft',
-          created_by: userId
-        }])
+          order_name: orderName.trim(), // Save the order name
+          client_id: selectedClient,
+          manufacturer_id: selectedManufacturer,
+          status: isDraft ? 'draft' : 'submitted',
+          created_by: user.id
+        })
         .select()
         .single()
-      
-      if (orderError) {
-        console.error('Order creation error:', orderError)
-        throw new Error(orderError.message || 'Failed to create order')
-      }
-      
-      // Save products if any are selected
-      for (const [productId, productData] of Object.entries(selectedProducts)) {
-        const productOrderNumber = `PRD-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-        
-        const { data: orderProduct, error: productError } = await supabase
-          .from('order_products')
-          .insert([{
-            order_id: order.id,
-            product_id: productId,
-            product_order_number: productOrderNumber
-          }])
-          .select()
-          .single()
-        
-        if (productError) {
-          console.error('Product insert error:', productError)
-          throw new Error(productError.message || 'Failed to add product')
-        }
-        
-        // Upload reference media if any
-        if (productData.referenceMedia.length > 0) {
-          for (const file of productData.referenceMedia) {
-            const fileExt = file.name.split('.').pop()
-            const fileName = `${order.id}/${orderProduct.id}/ref-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-            
-            const { data: uploadData, error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(fileName, file)
-            
-            if (!uploadError && uploadData) {
-              const { data: urlData } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(fileName)
-              
-              await supabase.from('order_media').insert([{
-                order_product_id: orderProduct.id,
-                file_url: urlData.publicUrl,
-                file_type: file.type.startsWith('image') ? 'image' : 'video',
-                uploaded_by: userId
-              }])
-            }
-          }
-        }
-        
-        // Save variant combos (even if quantities are 0)
-        const items = Object.entries(productData.variantCombos)
-          .map(([combo, data]) => ({
-            order_product_id: orderProduct.id,
-            variant_combo: combo,
-            quantity: data.quantity || 0,
-            notes: data.notes || null,
-            admin_status: 'pending',
-            manufacturer_status: 'pending'
-          }))
-        
-        if (items.length > 0) {
-          const { error: itemsError } = await supabase
-            .from('order_items')
-            .insert(items)
-          
-          if (itemsError) {
-            console.error('Items insert error:', itemsError)
-            throw new Error(itemsError.message || 'Failed to add items')
-          }
-        }
-      }
-      
-      // Log audit
-      await supabase
-        .from('audit_log')
-        .insert([{
-          user_id: userId,
-          user_name: userEmail || 'Unknown',
-          action_type: 'saved_draft',
-          target_type: 'order',
-          target_id: order.id,
-          new_value: orderNumber,
-          timestamp: new Date().toISOString()
-        }])
-      
-      setNotification({ message: 'Draft saved successfully! Redirecting...', type: 'success' })
-      setTimeout(() => {
-        router.push(`/dashboard/orders/${order.id}`)
-      }, 1500)
-      
-    } catch (error: any) {
-      console.error('Error saving draft:', error)
-      const errorMessage = error?.message || 'Error saving draft. Please try again.'
-      setNotification({ message: errorMessage, type: 'error' })
-      setLoading(false)
-    }
-  }
 
-  const createOrder = async () => {
-    if (!orderName || !selectedClientId || !selectedManufacturerId) {
-      setNotification({ message: 'Please fill in order name, client, and manufacturer', type: 'error' })
-      return
-    }
-    
-    if (Object.keys(selectedProducts).length === 0) {
-      setNotification({ message: 'Please add at least one product', type: 'error' })
-      return
-    }
-    
-    // Check if any products have quantities
-    const hasQuantities = Object.values(selectedProducts).some(product => 
-      Object.values(product.variantCombos).some(combo => combo.quantity > 0)
-    )
-    
-    if (!hasQuantities) {
-      setNotification({ message: 'Please add quantities to at least one variant', type: 'error' })
-      return
-    }
-    
-    setLoading(true)
-    
-    try {
-      // Get current user - check both localStorage methods
-      const userEmail = localStorage.getItem('userEmail') || localStorage.getItem('user')
-      let userId = null
-      
-      if (userEmail) {
-        try {
-          // If it's a JSON string (from 'user' key), parse it
-          const userObj = typeof userEmail === 'string' && userEmail.includes('{') 
-            ? JSON.parse(userEmail) 
-            : null
-          
-          if (userObj?.email) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', userObj.email)
-              .single()
-            userId = userData?.id
-          } else if (typeof userEmail === 'string' && userEmail.includes('@')) {
-            const { data: userData } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', userEmail)
-              .single()
-            userId = userData?.id
-          }
-        } catch (e) {
-          console.log('Could not find user, continuing without user ID')
-        }
-      }
-      
-      // Generate order number
-      const orderNumber = `ORD-${Date.now().toString().slice(-6)}`
-      
-      // Create order with 'submitted' status (ready to process)
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert([{
-          order_number: orderNumber,
-          client_id: selectedClientId,
-          manufacturer_id: selectedManufacturerId,  // Fixed typo here
-          status: 'submitted',  // Changed from 'draft' to 'submitted' for created orders
-          created_by: userId
-        }])
-        .select()
-        .single()
-      
-      if (orderError) {
-        console.error('Order creation error:', orderError)
-        throw orderError
-      }
-      
+      if (orderError) throw orderError
+
       // Create order products and items
-      for (const [productId, productData] of Object.entries(selectedProducts)) {
-        const productOrderNumber = `PRD-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
-        
-        const { data: orderProduct, error: productError } = await supabase
+      for (const orderProduct of orderProducts) {
+        const { data: createdProduct, error: productError } = await supabase
           .from('order_products')
-          .insert([{
+          .insert({
             order_id: order.id,
-            product_id: productId,
-            product_order_number: productOrderNumber
-          }])
+            product_id: orderProduct.product.id,
+            product_order_number: `PRD-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+          })
           .select()
           .single()
-        
-        if (productError) {
-          console.error('Product error:', productError)
-          throw productError
-        }
-        
-        // Upload reference media to Supabase Storage
-        if (productData.referenceMedia.length > 0) {
-          for (const file of productData.referenceMedia) {
-            const fileExt = file.name.split('.').pop()
-            const fileName = `${order.id}/${orderProduct.id}/ref-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-            
-            const { data: uploadData, error: uploadError } = await supabase.storage
+
+        if (productError) throw productError
+
+        // Upload files if any
+        if (orderProduct.uploadedFiles && orderProduct.uploadedFiles.length > 0) {
+          for (const fileData of orderProduct.uploadedFiles) {
+            const fileExt = fileData.name.split('.').pop()
+            const fileName = `ref-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+            const filePath = `${order.id}/${createdProduct.id}/${fileName}`
+
+            // Upload to storage
+            const { error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(fileName, file)
-            
-            if (!uploadError && uploadData) {
-              const { data: urlData } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(fileName)
-              
-              // Save to order_media table
-              await supabase.from('order_media').insert([{
-                order_product_id: orderProduct.id,
-                file_url: urlData.publicUrl,
-                file_type: file.type.startsWith('image') ? 'image' : 'video',
-                uploaded_by: userId
-              }])
+              .upload(filePath, fileData.file)
+
+            if (uploadError) {
+              console.error('Error uploading file:', uploadError)
+              continue
+            }
+
+            // Save file reference in database
+            const { error: dbError } = await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: createdProduct.id,
+                file_url: filePath,
+                file_type: fileData.type.startsWith('image/') ? 'image' : 'document',
+                uploaded_by: user.id
+              })
+
+            if (dbError) {
+              console.error('Error saving file reference:', dbError)
             }
           }
         }
-        
-        // Create order items for each variant combo with quantity > 0
-        const items = Object.entries(productData.variantCombos)
-          .filter(([_, data]) => data.quantity > 0)
-          .map(([combo, data]) => ({
-            order_product_id: orderProduct.id,
-            variant_combo: combo,
-            quantity: data.quantity,
-            notes: data.notes || null,
-            admin_status: 'pending',
-            manufacturer_status: 'pending'
+
+        // Create order items
+        const itemsToInsert = Object.entries(orderProduct.items)
+          .filter(([_, item]) => item.quantity > 0)
+          .map(([variantCombo, item]) => ({
+            order_product_id: createdProduct.id,
+            variant_combo: variantCombo,
+            quantity: item.quantity,
+            notes: item.notes
           }))
-        
-        if (items.length > 0) {
+
+        if (itemsToInsert.length > 0) {
           const { error: itemsError } = await supabase
             .from('order_items')
-            .insert(items)
-          
-          if (itemsError) {
-            console.error('Items error:', itemsError)
-            throw itemsError
-          }
+            .insert(itemsToInsert)
+
+          if (itemsError) throw itemsError
         }
       }
-      
-      // Log audit
-      await supabase
-        .from('audit_log')
-        .insert([{
-          user_id: userId,
-          user_name: userEmail || 'Unknown',
-          action_type: 'created_order',
-          target_type: 'order',
-          target_id: order.id,
-          new_value: orderNumber,
-          timestamp: new Date().toISOString()
-        }])
-      
-      setNotification({ message: 'Order created successfully!', type: 'success' })
-      setTimeout(() => {
-        router.push('/dashboard/orders')
-      }, 1500)
-      
-    } catch (error: any) {
-      console.error('Error creating order:', error)
-      const errorMessage = error?.message || 'Error creating order. Please try again.'
-      setNotification({ message: errorMessage, type: 'error' })
+
+      router.push('/dashboard/orders')
+    } catch (error) {
+      console.error('Error saving order:', error)
+      alert('Failed to save order')
+    } finally {
       setLoading(false)
     }
   }
 
-  if (loading && clients.length === 0) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="text-gray-600 text-center py-8">Loading...</div>
-      </div>
-    )
+  const canProceed = () => {
+    if (step === 1) {
+      return selectedClient && selectedManufacturer && orderName.trim()
+    }
+    if (step === 2) {
+      return orderProducts.length > 0
+    }
+    if (step === 3) {
+      return orderProducts.length > 0  // Allow saving in step 3 if there are products
+    }
+    return false
   }
 
-  // SINGLE RETURN STATEMENT - NO DUPLICATION
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      {/* Notification Toast */}
-      {notification && (
-        <div className={`fixed top-4 right-4 left-4 sm:left-auto max-w-sm z-50 animate-slide-in`}>
-          <div className={`flex items-center gap-3 px-4 sm:px-6 py-4 rounded-lg shadow-lg border ${
-            notification.type === 'success' 
-              ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
-            <div className="flex items-center gap-3 flex-1">
-              {notification.type === 'success' ? (
-                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                </div>
-              )}
-              <div className="flex-1">
-                <p className="font-semibold text-sm sm:text-base">{notification.message}</p>
-                <p className="text-xs opacity-75 mt-0.5">Just now</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setNotification(null)}
-              className="text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0"
-            >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Add CSS for animations */}
-      <style jsx>{`
-        @keyframes slide-in {
-          from {
-            transform: translateX(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateX(0);
-            opacity: 1;
-          }
-        }
-        .animate-slide-in {
-          animation: slide-in 0.3s ease-out;
-        }
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}</style>
-
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Create Factory Order</h1>
-        <button
-          onClick={() => router.push('/dashboard/orders')}
-          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition border border-gray-200 text-sm sm:text-base"
-        >
-          Cancel
-        </button>
-      </div>
-
-      {/* Order Details */}
-      <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 shadow-sm mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold text-gray-800 mb-4">Order Details</h2>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="col-span-1 md:col-span-2 lg:col-span-1">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Order Name *
-            </label>
-            <input
-              type="text"
-              value={orderName}
-              onChange={(e) => setOrderName(e.target.value)}
-              placeholder="e.g., October Drop"
-              className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Client *
-            </label>
-            <select
-              value={selectedClientId}
-              onChange={(e) => handleClientChange(e.target.value)}
-              className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-            >
-              <option value="">Select client...</option>
-              {clients.map(client => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Client Email
-            </label>
-            <input
-              type="email"
-              value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-              placeholder="client@example.com"
-              className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Manufacturer *
-            </label>
-            <select
-              value={selectedManufacturerId}
-              onChange={(e) => setSelectedManufacturerId(e.target.value)}
-              className="w-full px-3 sm:px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
-            >
-              <option value="">Select manufacturer...</option>
-              {manufacturers.map(mfr => (
-                <option key={mfr.id} value={mfr.id}>{mfr.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Products Section */}
-      <div className="bg-white rounded-lg p-4 sm:p-6 border border-gray-200 shadow-sm mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-800">Products</h2>
+    <div className="min-h-screen bg-gray-50 p-3 sm:p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-4 sm:mb-6">
           <button
-            onClick={() => setShowProductPicker(true)}
-            className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2 text-sm sm:text-base"
+            onClick={() => router.push('/dashboard/orders')}
+            className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
           >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Add Product</span>
-            <span className="sm:hidden">Add</span>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Orders
           </button>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create New Order</h1>
         </div>
 
-        {Object.keys(selectedProducts).length === 0 && (
-          <p className="text-gray-500 text-center py-8">No products added yet</p>
-        )}
+        {/* Progress Steps */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex items-center justify-between">
+            <div className={`flex items-center ${step >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm ${
+                step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200'
+              }`}>
+                1
+              </div>
+              <span className="ml-1 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Order Details</span>
+            </div>
+            <div className={`flex-1 h-1 mx-2 sm:mx-4 ${step >= 2 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+            <div className={`flex items-center ${step >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm ${
+                step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200'
+              }`}>
+                2
+              </div>
+              <span className="ml-1 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Add Products</span>
+            </div>
+            <div className={`flex-1 h-1 mx-2 sm:mx-4 ${step >= 3 ? 'bg-blue-600' : 'bg-gray-200'}`} />
+            <div className={`flex items-center ${step >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-xs sm:text-sm ${
+                step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-200'
+              }`}>
+                3
+              </div>
+              <span className="ml-1 sm:ml-2 text-xs sm:text-sm font-medium hidden sm:inline">Review</span>
+            </div>
+          </div>
+        </div>
 
-        {Object.entries(selectedProducts).map(([productId, productData]) => {
-          const product = products.find(p => p.id === productId)
-          if (!product) return null
-          
-          return (
-            <div key={productId} className="mb-6 bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex-1">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-800">{product.title}</h3>
-                  {product.description && (
-                    <p className="text-xs sm:text-sm text-gray-600 mt-1">{product.description}</p>
+        {/* Step Content */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 sm:p-6">
+          {step === 1 && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-blue-600" />
+                Order Information
+              </h2>
+              
+              {/* Order Name Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <FileText className="w-4 h-4 inline mr-1" />
+                  Order Name *
+                </label>
+                <input
+                  type="text"
+                  value={orderName}
+                  onChange={(e) => setOrderName(e.target.value)}
+                  placeholder="e.g., Summer Collection 2024, Nike Shirts Order"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700 placeholder-gray-400"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Give your order a descriptive name for easy reference
+                </p>
+              </div>
+
+              {/* Client and Manufacturer side by side */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <User className="w-4 h-4 inline mr-1" />
+                    Select Client *
+                  </label>
+                  <select
+                    value={selectedClient}
+                    onChange={(e) => setSelectedClient(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                  >
+                    <option value="" className="text-gray-500">Choose a client...</option>
+                    {clients.map(client => (
+                      <option key={client.id} value={client.id} className="text-gray-700">
+                        {client.name} ({getClientPrefix(client.name)})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedClient && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Order ID prefix: {getClientPrefix(clients.find(c => c.id === selectedClient)?.name || '')}
+                    </p>
                   )}
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Select Manufacturer *
+                  </label>
+                  <select
+                    value={selectedManufacturer}
+                    onChange={(e) => setSelectedManufacturer(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                  >
+                    <option value="" className="text-gray-500">Choose a manufacturer...</option>
+                    {manufacturers.map(manufacturer => (
+                      <option key={manufacturer.id} value={manufacturer.id} className="text-gray-700">
+                        {manufacturer.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Package className="w-5 h-5 mr-2 text-blue-600" />
+                Add Products to Order
+              </h2>
+
+              <div>
                 <button
-                  onClick={() => removeProduct(productId)}
-                  className="text-red-600 hover:text-red-700 text-sm font-medium ml-4"
+                  onClick={() => setShowProductPicker(true)}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
                 >
-                  Remove
+                  <Plus className="w-4 h-4 mr-2" />
+                  Select Products
                 </button>
               </div>
 
-              {/* Quick Fill - Make mobile friendly */}
-              <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-                <span className="text-sm text-gray-600 whitespace-nowrap">Quick fill quantity:</span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    placeholder="Quantity"
-                    className="w-32 sm:w-36 px-3 py-1.5 bg-white border border-gray-300 rounded text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        const value = parseInt((e.target as HTMLInputElement).value)
-                        if (!isNaN(value)) {
-                          quickFillQuantity(productId, value)
-                          ;(e.target as HTMLInputElement).value = ''
-                        }
-                      }
-                    }}
-                  />
-                  <span className="text-xs text-gray-500 whitespace-nowrap">Press Enter</span>
+              {/* Quick Fill */}
+              {orderProducts.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                    </div>
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700 block">
+                        Quick Fill Quantity
+                      </label>
+                      <p className="text-xs text-gray-600">Apply same quantity to all variants</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="number"
+                      value={quickFillQuantity}
+                      onChange={(e) => setQuickFillQuantity(e.target.value)}
+                      placeholder="Enter quantity"
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      min="0"
+                    />
+                    <span className="text-sm text-gray-600">units</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Reference Media Upload */}
-              <div className="mb-4 p-3 sm:p-4 bg-white rounded-lg border border-gray-200">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Upload className="w-4 h-4 inline-block mr-1" />
-                  Reference Media
-                </label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/jpg,video/mp4,video/quicktime"
-                  multiple
-                  onChange={(e) => handleMediaUpload(productId, e.target.files)}
-                  className="block w-full text-xs sm:text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:sm:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                />
-                <p className="text-xs text-gray-500 mt-1">Upload JPG, PNG, MP4, or MOV files</p>
-                
-                {/* Show uploaded files with view option */}
-                {productData.referenceMedia.length > 0 && (
-                  <div className="mt-3">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-xs sm:text-sm text-gray-700">Uploaded files ({productData.referenceMedia.length})</span>
-                      {productData.referenceMedia.length > 0 && (
-                        <button
-                          onClick={() => openMediaViewer(productData.referenceMedia, 0, product.title)}
-                          className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
-                        >
-                          View All
-                        </button>
+              {/* Products List */}
+              <div className="space-y-4">
+                {orderProducts.map((orderProduct, productIndex) => (
+                  <div key={productIndex} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{orderProduct.product.title}</h3>
+                        {orderProduct.product.description && (
+                          <p className="text-sm text-gray-600 mt-1">{orderProduct.product.description}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeProduct(productIndex)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Remove product"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* File Upload Section */}
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium text-gray-700 flex items-center">
+                          <Paperclip className="w-4 h-4 mr-2" />
+                          Reference Documents
+                        </h4>
+                        <label className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 cursor-pointer flex items-center">
+                          <Upload className="w-4 h-4 mr-2" />
+                          Upload Files
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.webp"
+                            onChange={(e) => handleFileUpload(productIndex, e)}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Uploaded Files List */}
+                      {orderProduct.uploadedFiles && orderProduct.uploadedFiles.length > 0 && (
+                        <div className="space-y-2 mt-3">
+                          {orderProduct.uploadedFiles.map((file, fileIndex) => (
+                            <div key={fileIndex} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
+                              <div className="flex items-center space-x-2 flex-1">
+                                <div className="text-gray-500">
+                                  {getFileIcon(file.type)}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-900 truncate">{file.name}</p>
+                                  <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+                                </div>
+                              </div>
+                              {file.preview && (
+                                <img 
+                                  src={file.preview} 
+                                  alt="Preview" 
+                                  className="w-10 h-10 object-cover rounded ml-2"
+                                />
+                              )}
+                              <button
+                                onClick={() => removeFile(productIndex, fileIndex)}
+                                className="ml-2 text-red-500 hover:text-red-700 p-1"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {(!orderProduct.uploadedFiles || orderProduct.uploadedFiles.length === 0) && (
+                        <p className="text-sm text-gray-500 mt-2">
+                          No files uploaded. You can add images, PDFs, Word docs, or Excel files.
+                        </p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {productData.referenceMedia.map((file, index) => (
-                        <div key={index} className="relative bg-gray-100 rounded px-2 sm:px-3 py-1.5 sm:py-2 pr-7 sm:pr-8 text-xs text-gray-700 cursor-pointer hover:bg-gray-200"
-                             onClick={() => openMediaViewer(productData.referenceMedia, index, product.title)}>
-                          <span className="truncate max-w-[100px] sm:max-w-none">{file.name}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              removeMedia(productId, index)
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-red-500 hover:text-red-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
+
+                    {quickFillQuantity && (
+                      <button
+                        onClick={() => applyQuickFill(productIndex)}
+                        className="mb-3 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2 text-sm font-medium shadow-sm hover:shadow-md"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M12 9v6" />
+                        </svg>
+                        <span>Apply Quick Fill ({quickFillQuantity} units)</span>
+                      </button>
+                    )}
+
+                    <div className="space-y-2">
+                      {Object.entries(orderProduct.items).map(([variantCombo, item]) => (
+                        <div key={variantCombo} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 items-start sm:items-center p-2 bg-gray-50 rounded">
+                          <div className="w-full sm:col-span-4 text-sm text-gray-700 font-medium">
+                            {variantCombo}
+                          </div>
+                          <div className="w-full sm:col-span-3">
+                            <input
+                              type="number"
+                              value={item.quantity}
+                              onChange={(e) => updateItemQuantity(productIndex, variantCombo, e.target.value)}
+                              placeholder="Quantity"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-700 placeholder-gray-400"
+                              min="0"
+                            />
+                          </div>
+                          <div className="w-full sm:col-span-5">
+                            <input
+                              type="text"
+                              value={item.notes}
+                              onChange={(e) => updateItemNotes(productIndex, variantCombo, e.target.value)}
+                              placeholder="Notes (optional)"
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-600 placeholder-gray-400"
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
+                ))}
+
+                {orderProducts.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                    <p>No products added yet. Click "Add Products" above to get started.</p>
+                  </div>
                 )}
               </div>
+            </div>
+          )}
 
-              {/* Variant Rows - Optimized for mobile */}
-              <div className="space-y-2">
-                {Object.entries(productData.variantCombos).map(([combo, data]) => (
-                  <div key={combo} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:gap-3 items-start sm:items-center bg-white p-3 rounded border border-gray-200">
-                    <div className="sm:col-span-4 text-gray-700 text-sm font-medium w-full">
-                      {getVariantComboDisplay(combo)}
+          {step === 3 && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold text-gray-900">Review Order</h2>
+              
+              <div className="space-y-4">
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold text-gray-900 mb-3 flex items-center">
+                    <Hash className="w-4 h-4 mr-2 text-blue-600" />
+                    Order Information
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div>
+                      <span className="text-gray-600">Order Name:</span>
+                      <span className="ml-2 font-medium text-gray-900">{orderName}</span>
                     </div>
-                    <div className="sm:col-span-2 w-full sm:w-auto">
-                      <input
-                        type="number"
-                        value={data.quantity || ''}
-                        onChange={(e) => updateQuantity(productId, combo, parseInt(e.target.value) || 0)}
-                        placeholder="Qty"
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                    <div>
+                      <span className="text-gray-600">Client:</span>
+                      <span className="ml-2 font-medium text-gray-900">
+                        {clients.find(c => c.id === selectedClient)?.name}
+                      </span>
+                      <span className="ml-2 text-gray-500">
+                        (Prefix: {getClientPrefix(clients.find(c => c.id === selectedClient)?.name || '')})
+                      </span>
                     </div>
-                    <div className="sm:col-span-6 w-full">
-                      <input
-                        type="text"
-                        value={data.notes}
-                        onChange={(e) => updateNotes(productId, combo, e.target.value)}
-                        placeholder="Notes (optional)"
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded text-gray-800 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                    <div>
+                      <span className="text-gray-600">Manufacturer:</span>
+                      <span className="ml-2 font-medium text-gray-900">
+                        {manufacturers.find(m => m.id === selectedManufacturer)?.name}
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+                </div>
 
-      {/* Submit Buttons - Mobile optimized */}
-      <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6">
-        <button
-          onClick={() => saveAsDraft()}
-          disabled={loading}
-          className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
-        >
-          <Save className="w-4 h-4" />
-          {loading ? 'Saving...' : 'Save as Draft'}
-        </button>
-        
-        <div className="flex gap-3">
-          <button
-            onClick={() => router.push('/dashboard/orders')}
-            className="flex-1 sm:flex-initial px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition border border-gray-200 text-sm sm:text-base"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={createOrder}
-            disabled={loading}
-            className="flex-1 sm:flex-initial px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
-          >
-            <Send className="w-4 h-4" />
-            {loading ? 'Creating...' : 'Create Order'}
-          </button>
-        </div>
-      </div>
+                <div className="p-4 bg-gray-50 rounded-lg">
+                  <h3 className="font-semibold text-gray-900 mb-3">Products ({orderProducts.length})</h3>
+                  {orderProducts.map((orderProduct, index) => {
+                    const totalQuantity = Object.values(orderProduct.items)
+                      .reduce((sum, item) => sum + item.quantity, 0)
+                    const variantCount = Object.keys(orderProduct.items).length
+                    const fileCount = orderProduct.uploadedFiles?.length || 0
 
-      {/* Product Picker Modal - Redesigned for better space usage */}
-      {showProductPicker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
-            {/* Compact Header */}
-            <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <h2 className="text-lg font-semibold text-gray-800">Select Products</h2>
-                <span className="text-sm text-gray-500">
-                  {Object.keys(selectedProducts).length} selected
-                </span>
-              </div>
-              <button
-                onClick={() => setShowProductPicker(false)}
-                className="text-gray-400 hover:text-gray-600 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            {/* Compact Search bar */}
-            <div className="px-4 py-2 border-b border-gray-100">
-              <input
-                type="text"
-                placeholder="Search..."
-                className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-            
-            {/* Product Grid - More compact cards */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {products.map(product => {
-                  const isSelected = !!selectedProducts[product.id]
-                  return (
-                    <div
-                      key={product.id}
-                      onClick={() => {
-                        if (isSelected) {
-                          removeProduct(product.id)
-                        } else {
-                          addProduct(product.id)
-                        }
-                      }}
-                      className={`relative p-3 rounded-lg border transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-blue-50 border-blue-400'
-                          : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {/* Selected indicator */}
-                      {isSelected && (
-                        <div className="absolute top-1.5 right-1.5">
-                          <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                            <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                            </svg>
-                          </div>
+                    return (
+                      <div key={index} className="mb-3 pb-3 border-b border-gray-200 last:border-0">
+                        <div className="font-medium text-gray-900">{orderProduct.product.title}</div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {variantCount} variants, Total quantity: {totalQuantity} units
                         </div>
-                      )}
-                      
-                      <div className="text-sm font-medium text-gray-800 mb-0.5 pr-6">{product.title}</div>
-                      {product.description && (
-                        <div className="text-xs text-gray-500 line-clamp-2">{product.description}</div>
-                      )}
-                    </div>
-                  )
-                })}
+                        {fileCount > 0 && (
+                          <div className="text-sm text-gray-600 mt-1 flex items-center">
+                            <Paperclip className="w-3 h-3 mr-1" />
+                            {fileCount} file{fileCount !== 1 ? 's' : ''} attached
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
-            
-            {/* Footer */}
-            <div className="px-4 py-3 border-t border-gray-200 flex justify-end">
-              <button
-                onClick={() => setShowProductPicker(false)}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm font-medium"
-              >
-                Done
-              </button>
+          )}
+
+          {/* Navigation Buttons */}
+          <div className="flex flex-col sm:flex-row justify-between gap-3 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200">
+            <div className="order-2 sm:order-1">
+              {step > 1 && (
+                <button
+                  onClick={() => setStep(step - 1)}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                >
+                  Previous
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 order-1 sm:order-2">
+              {step === 3 && (
+                <button
+                  onClick={() => saveOrder(true)}
+                  disabled={loading || !canProceed()}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save as Draft
+                </button>
+              )}
+
+              {step < 3 ? (
+                <button
+                  onClick={() => setStep(step + 1)}
+                  disabled={!canProceed()}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              ) : (
+                <button
+                  onClick={() => saveOrder(false)}
+                  disabled={loading || !canProceed()}
+                  className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Create Order
+                </button>
+              )}
             </div>
           </div>
         </div>
-      )}
 
-      {/* Media Viewer Modal with Carousel - Fixed Size */}
-      {viewingMedia && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50" onClick={() => setViewingMedia(null)}>
-          <div className="relative max-w-4xl w-full bg-white rounded-lg overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <div className="flex items-center gap-4">
-                <h3 className="text-lg font-semibold text-gray-800">{viewingMedia.title}</h3>
-                {viewingMedia.files.length > 1 && (
-                  <span className="text-sm text-gray-600">
-                    {viewingMedia.index + 1} of {viewingMedia.files.length}
+        {/* Product Picker Modal - Compact and beautiful design */}
+        {showProductPicker && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] flex flex-col">
+              {/* Compact Header */}
+              <div className="px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <h2 className="text-lg font-semibold text-gray-800">Select Products</h2>
+                  <span className="text-sm text-gray-500">
+                    {Object.keys(selectedProducts).filter(id => selectedProducts[id]).length} selected
                   </span>
-                )}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowProductPicker(false)
+                    setSelectedProducts({})
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => setViewingMedia(null)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="relative bg-gray-100" style={{ height: '60vh' }}>
-              <div className="absolute inset-0 flex items-center justify-center p-4">
-                {/* Previous Button */}
-                {viewingMedia.files.length > 1 && (
-                  <button
-                    onClick={() => navigateMedia('prev')}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 z-10 shadow-lg transition"
-                  >
-                    <ChevronLeft className="w-6 h-6 text-gray-800" />
-                  </button>
-                )}
-                
-                {/* Media Content - Fixed sizing */}
-                <div className="max-w-full max-h-full flex items-center justify-center">
-                  {(() => {
-                    const file = viewingMedia.files[viewingMedia.index]
-                    const url = URL.createObjectURL(file)
-                    
-                    if (file.type.startsWith('image/')) {
+              
+              {/* Compact Search bar */}
+              <div className="px-4 py-2 border-b border-gray-100">
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-white border border-gray-300 rounded text-sm text-gray-800 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              
+              {/* Product Grid - Compact cards */}
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 sm:gap-2">
+                  {products
+                    .filter(product => 
+                      product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                      (product.description && product.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                    )
+                    .map(product => {
+                      const isSelected = !!selectedProducts[product.id]
+                      const isAlreadyAdded = orderProducts.some(op => op.product.id === product.id)
+                      
                       return (
-                        <img 
-                          src={url} 
-                          alt={`Media ${viewingMedia.index + 1}`} 
-                          className="max-w-full max-h-full object-contain"
-                          style={{ maxHeight: 'calc(60vh - 2rem)' }}
-                        />
-                      )
-                    } else if (file.type.startsWith('video/')) {
-                      return (
-                        <video 
-                          src={url} 
-                          controls 
-                          className="max-w-full max-h-full"
-                          style={{ maxHeight: 'calc(60vh - 2rem)' }}
-                          autoPlay
-                        />
-                      )
-                    } else {
-                      return (
-                        <div className="text-gray-500 text-center">
-                          <Package className="w-12 h-12 mx-auto mb-2" />
-                          <p>{file.name}</p>
-                          <p className="text-sm mt-1">Preview not available</p>
+                        <div
+                          key={product.id}
+                          onClick={() => {
+                            if (!isAlreadyAdded) {
+                              toggleProductSelection(product.id)
+                            }
+                          }}
+                          className={`relative p-2 sm:p-3 rounded-lg border transition-all ${
+                            isAlreadyAdded
+                              ? 'bg-gray-50 border-gray-200 opacity-50 cursor-not-allowed'
+                              : `cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-blue-50 border-blue-400'
+                                    : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                                }`
+                          }`}
+                        >
+                          {/* Selected indicator */}
+                          {isSelected && !isAlreadyAdded && (
+                            <div className="absolute top-1.5 right-1.5">
+                              <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Already added indicator */}
+                          {isAlreadyAdded && (
+                            <div className="absolute top-1.5 right-1.5">
+                              <div className="text-xs bg-gray-500 text-white px-1.5 py-0.5 rounded">Added</div>
+                            </div>
+                          )}
+                          
+                          <div className="text-sm font-medium text-gray-800 mb-0.5 pr-6">{product.title}</div>
+                          {product.description && (
+                            <div className="text-xs text-gray-500 line-clamp-2">{product.description}</div>
+                          )}
                         </div>
                       )
-                    }
-                  })()}
+                    })}
                 </div>
-                
-                {/* Next Button */}
-                {viewingMedia.files.length > 1 && (
-                  <button
-                    onClick={() => navigateMedia('next')}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 hover:bg-white rounded-full p-2 z-10 shadow-lg transition"
-                  >
-                    <ChevronRight className="w-6 h-6 text-gray-800" />
-                  </button>
-                )}
-                
-                {/* Delete button in viewer */}
+              </div>
+              
+              {/* Footer */}
+              <div className="px-4 py-3 border-t border-gray-200 flex justify-between">
                 <button
-                  onClick={deleteMediaFromViewer}
-                  className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white rounded-full p-2 z-10 shadow-lg transition"
-                  title="Delete this file"
+                  onClick={() => {
+                    setShowProductPicker(false)
+                    setSelectedProducts({})
+                  }}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition text-sm font-medium"
                 >
-                  <Trash2 className="w-5 h-5" />
+                  Cancel
+                </button>
+                <button
+                  onClick={addSelectedProducts}
+                  disabled={Object.keys(selectedProducts).filter(id => selectedProducts[id]).length === 0}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add {Object.keys(selectedProducts).filter(id => selectedProducts[id]).length > 0 && 
+                       `(${Object.keys(selectedProducts).filter(id => selectedProducts[id]).length})`} Products
                 </button>
               </div>
             </div>
-            
-            {/* Thumbnail Strip */}
-            {viewingMedia.files.length > 1 && (
-              <div className="p-4 border-t border-gray-200 bg-gray-50">
-                <div className="flex gap-2 overflow-x-auto">
-                  {viewingMedia.files.map((file, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setViewingMedia({ ...viewingMedia, index })}
-                      className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition ${
-                        index === viewingMedia.index ? 'border-blue-500' : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                    >
-                      {file.type.startsWith('image/') ? (
-                        <img 
-                          src={URL.createObjectURL(file)} 
-                          alt={`Thumbnail ${index + 1}`} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : file.type.startsWith('video/') ? (
-                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                          <Video className="w-8 h-8 text-gray-500" />
-                        </div>
-                      ) : (
-                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                          <Package className="w-8 h-8 text-gray-500" />
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
+
+      </div>
     </div>
   )
 }
