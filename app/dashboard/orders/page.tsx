@@ -288,7 +288,7 @@ export default function OrdersPage() {
                 <div className="flex items-center gap-4 flex-1">
                   {/* Status Icon */}
                   <div className="hidden md:block">
-                    {getStatusIcon(order.status)}
+                    {getStatusIcon(order.status as any)}
                   </div>
 
                   {/* Order Info */}
@@ -297,7 +297,7 @@ export default function OrdersPage() {
                       <h3 className="font-semibold text-gray-900 text-lg">
                         {order.order_number}
                       </h3>
-                      <OrderStatusBadge status={order.status} />
+                      <OrderStatusBadge status={order.status as any} />
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
