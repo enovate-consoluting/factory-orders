@@ -172,11 +172,13 @@ export default function CreateOrderPage() {
       // Group variants by type
       const variantsByType: { [key: string]: any[] } = {}
       variantsData?.forEach(variant => {
-        const typeName = variant.variant_option.variant_type.name
-        if (!variantsByType[typeName]) {
+        const typeName = variant.variant_option?.variant_type?.name
+        if (typeName && !variantsByType[typeName]) {
           variantsByType[typeName] = []
         }
-        variantsByType[typeName].push(variant.variant_option)
+        if (typeName) {
+          variantsByType[typeName].push(variant.variant_option)
+        }
       })
 
       // Generate all combinations
