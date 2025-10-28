@@ -53,6 +53,7 @@ export interface ProductVariant {
 }
 
 export type OrderStatus = 
+  | 'pending'  // Added this to fix the build error
   | 'draft'
   | 'submitted'
   | 'submitted_to_manufacturer'
@@ -67,7 +68,8 @@ export type OrderStatus =
   | 'in_production'
   | 'partially_in_production'
   | 'completed'
-  | 'rejected';
+  | 'rejected'
+  | 'revision_requested';  // Also added this one we're using
 
 export interface Order {
   id: string;
@@ -88,14 +90,18 @@ export type ProductStatus =
   | 'pending'
   | 'manufacturer_review'
   | 'sample_required'
+  | 'sample_requested'  // Added
   | 'sample_pending'
   | 'sample_approved'
   | 'client_review'
+  | 'pending_client_approval'  // Added
   | 'client_approved'
   | 'approved'
   | 'in_production'
   | 'completed'
-  | 'on_hold';
+  | 'on_hold'
+  | 'revision_requested'  // Added
+  | 'rejected';  // Added
 
 export interface OrderProduct {
   id: string;
@@ -119,6 +125,7 @@ export interface OrderProduct {
   // Sample pricing and timing
   sample_fee?: number;
   sample_eta?: string;
+  sample_status?: string;  // Added
   sample_shipping_method?: 'air' | 'land';
   sample_shipping_cost?: number;
   
@@ -128,6 +135,9 @@ export interface OrderProduct {
   full_shipping_cost?: number;
   standard_price?: number;
   bulk_price?: number;
+  shipping_air?: number;  // Added
+  shipping_boat?: number;  // Added
+  production_time?: string;  // Added
   
   // Relations
   product?: Product;
@@ -221,6 +231,7 @@ export interface OrderFormData {
 
 // Helper type for status badge colors
 export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
+  pending: 'bg-gray-500',  // Added
   draft: 'bg-gray-500',
   submitted: 'bg-blue-500',
   submitted_to_manufacturer: 'bg-purple-500',
@@ -236,18 +247,23 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   partially_in_production: 'bg-sky-500',
   completed: 'bg-emerald-500',
   rejected: 'bg-red-500',
+  revision_requested: 'bg-orange-500',  // Added
 };
 
 export const PRODUCT_STATUS_COLORS: Record<ProductStatus, string> = {
   pending: 'bg-gray-500',
   manufacturer_review: 'bg-purple-500',
   sample_required: 'bg-yellow-500',
+  sample_requested: 'bg-yellow-500',  // Added
   sample_pending: 'bg-amber-500',
   sample_approved: 'bg-lime-500',
   client_review: 'bg-pink-500',
+  pending_client_approval: 'bg-purple-500',  // Added
   client_approved: 'bg-teal-500',
   approved: 'bg-green-500',
   in_production: 'bg-cyan-500',
   completed: 'bg-emerald-500',
   on_hold: 'bg-orange-500',
+  revision_requested: 'bg-orange-500',  // Added
+  rejected: 'bg-red-500',  // Added
 };
