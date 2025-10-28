@@ -804,7 +804,7 @@ export default function CreateOrderPage() {
                   <h3 className="font-semibold text-gray-900 mb-3">Products ({orderProducts.length})</h3>
                   {orderProducts.map((orderProduct: any, index) => {
                     const totalQuantity = Object.values(orderProduct.items)
-                      .reduce((sum: any, item: any) => sum + item.quantity, 0)
+                      .reduce((sum: any, item: any) => sum + item.quantity, 0) as number
                     const variantCount = Object.keys(orderProduct.items).length
                     const fileCount = orderProduct.uploadedFiles?.length || 0
 
