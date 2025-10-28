@@ -24,7 +24,15 @@ import { Order, OrderProduct, User, OrderStatus } from '@/app/types/database';
 import { OrderStatusBadge } from '@/app/components/StatusBadge';
 import { notify } from '@/app/hooks/useUINotification';
 
-interface OrderWithDetails extends Order {
+interface OrderWithDetails {
+  id: string;
+  order_number: string;
+  client_id: string;
+  manufacturer_id: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
   client?: { name: string; email: string };
   manufacturer?: { name: string; email: string };
   products?: OrderProduct[];
