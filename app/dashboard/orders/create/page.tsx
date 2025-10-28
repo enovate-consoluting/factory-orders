@@ -677,7 +677,7 @@ export default function CreateOrderPage() {
                       {/* Uploaded Files List */}
                       {orderProduct.uploadedFiles && orderProduct.uploadedFiles.length > 0 && (
                         <div className="space-y-2 mt-3">
-                          {orderProduct.uploadedFiles.map((file: any, fileIndex) => (
+                          {orderProduct.uploadedFiles.map((file: any, fileIndex: any) => (
                             <div key={fileIndex} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
                               <div className="flex items-center space-x-2 flex-1">
                                 <div className="text-gray-500">
