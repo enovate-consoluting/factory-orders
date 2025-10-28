@@ -42,7 +42,6 @@ import {
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 import { OrderStatusBadge } from '@/app/components/StatusBadge';
-import { getPermissions, type RolePermissions } from '@/app/lib/permissions';
 
 // [Keep all the same interfaces - OrderDetail, OrderProduct, OrderItem, MediaFile, AuditLogEntry]
 interface OrderDetail {
@@ -136,7 +135,6 @@ export default function OrderDetailPage() {
   const [tempNotes, setTempNotes] = useState('');
   const [selectedProductForUpload, setSelectedProductForUpload] = useState<string | null>(null);
   const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
-  const [isSampleUpload, setIsSampleUpload] = useState(false);
   
   // Media viewer states
   const [viewingMedia, setViewingMedia] = useState<MediaFile[] | null>(null);
@@ -272,8 +270,8 @@ export default function OrderDetailPage() {
   };
 
   const canRouteProduct = (product: OrderProduct) => {
-    // Admin can route when product is pending, revision_requested, or when manufacturer sends back
-    const routableStatuses = ['pending', 'revision_requested', 'pending_admin_review'];
+    // Admin can only route when product is pending or revision_requested
+    const routableStatuses = ['pending', 'revision_requested'];
     return routableStatuses.includes(product.product_status || 'pending');
   };
 
@@ -389,7 +387,7 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, productId: string, isSampleUpload: boolean = false) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, productId: string) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -400,9 +398,7 @@ export default function OrderDetailPage() {
         // Upload to Supabase Storage
         const timestamp = Date.now();
         const randomStr = Math.random().toString(36).substring(7);
-        // Add 'sample-' prefix if it's a sample upload
-        const filePrefix = isSampleUpload ? 'sample-' : 'ref-';
-        const fileName = `${filePrefix}${timestamp}-${randomStr}-${file.name}`;
+        const fileName = `${timestamp}-${randomStr}-${file.name}`;
         
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('order-media')
@@ -418,11 +414,11 @@ export default function OrderDetailPage() {
         // Determine file type
         let fileType = 'document';
         if (file.type.startsWith('image/')) {
-          fileType = isSampleUpload ? 'sample_image' : 'image';
+          fileType = 'image';
         } else if (file.type.startsWith('video/')) {
-          fileType = isSampleUpload ? 'sample_video' : 'video';
+          fileType = 'video';
         } else if (file.type === 'application/pdf') {
-          fileType = isSampleUpload ? 'sample_pdf' : 'pdf';
+          fileType = 'pdf';
         }
 
         // Save to database
@@ -438,7 +434,7 @@ export default function OrderDetailPage() {
         if (dbError) throw dbError;
       }
 
-      notify.success(`${files.length} ${isSampleUpload ? 'sample' : 'file'}(s) uploaded successfully`);
+      notify.success(`${files.length} file(s) uploaded successfully`);
       fetchOrderDetails(); // Refresh to show new media
     } catch (error) {
       console.error('Error uploading files:', error);
@@ -485,12 +481,6 @@ export default function OrderDetailPage() {
         case 'send_back_to_manufacturer':
           updates.product_status = 'revision_requested';
           newOrderStatus = 'submitted_to_manufacturer';
-          break;
-          
-        case 'send_back_to_admin':
-          // Manufacturer sending back to admin for review
-          updates.product_status = 'revision_requested';  // Use existing valid status
-          newOrderStatus = 'pending';
           break;
       }
 
@@ -567,49 +557,11 @@ export default function OrderDetailPage() {
       setRoutingProduct(null);
       setRoutingNotes('');
       setSelectedRoutingAction(null);
-      
-      // Navigate back to orders list after successful routing
-      setTimeout(() => {
-        router.push('/dashboard/orders');
-      }, 1000);
     } catch (error: any) {
       console.error('Error routing product:', error);
       notify.error(error.message || 'Failed to route product');
     } finally {
       setProcessingProduct(null);
-    }
-  };
-
-  const handleDeleteMedia = async (fileId: string, productId: string, fileName: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
-    
-    try {
-      // Delete from database
-      const { error } = await supabase
-        .from('order_media')
-        .delete()
-        .eq('id', fileId);
-
-      if (error) throw error;
-
-      // Log deletion in audit
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: currentUser?.id || crypto.randomUUID(),
-          user_name: currentUser?.name || currentUser?.email || 'User',
-          action_type: 'media_deleted',
-          target_type: 'order_product',
-          target_id: productId,
-          old_value: fileName,
-          timestamp: new Date().toISOString()
-        });
-
-      notify.success('File deleted successfully');
-      fetchOrderDetails(); // Refresh to update media list
-    } catch (error) {
-      console.error('Error deleting file:', error);
-      notify.error('Failed to delete file');
     }
   };
 
@@ -682,19 +634,9 @@ export default function OrderDetailPage() {
       rejected: 'bg-red-100 text-red-700'
     };
 
-    // Custom display names - WORKING VERSION
-    const displayText = normalizedStatus === 'pending' ? 'Pending Admin' :
-                       normalizedStatus === 'in_production' ? 'In Production' :
-                       normalizedStatus === 'sample_requested' ? 'Sample Requested' :
-                       normalizedStatus === 'pending_client_approval' ? 'Pending Client Approval' :
-                       normalizedStatus === 'revision_requested' ? 'Revision Requested' :
-                       normalizedStatus === 'completed' ? 'Completed' :
-                       normalizedStatus === 'rejected' ? 'Rejected' :
-                       normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
     return (
       <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[normalizedStatus] || statusColors.pending}`}>
-        {displayText}
+        {normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
       </span>
     );
   };
@@ -747,16 +689,9 @@ export default function OrderDetailPage() {
     );
   }
 
-  // Get permissions from the centralized permissions system
-  const permissions: RolePermissions = getPermissions(currentUser?.role);
-  
-  // Legacy role checks (kept for backward compatibility if needed)
-  const isSuperAdmin = currentUser?.role === 'super_admin';
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
-  const isOrderApprover = currentUser?.role === 'order_approver';
+  const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'order_approver';
   const isManufacturer = currentUser?.role === 'manufacturer';
   const isClient = currentUser?.role === 'client';
-  const isOrderCreator = currentUser?.role === 'order_creator';
 
   // Get display name for creator
   const creatorName = order.creator 
@@ -774,7 +709,7 @@ export default function OrderDetailPage() {
         className="hidden"
         onChange={(e) => {
           if (selectedProductForUpload) {
-            handleFileUpload(e, selectedProductForUpload, isSampleUpload);
+            handleFileUpload(e, selectedProductForUpload);
           }
         }}
       />
@@ -790,7 +725,7 @@ export default function OrderDetailPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-gray-900">{order.order_number}</h1>
-            {getProductStatusBadge(order.status)}
+            <OrderStatusBadge status={order.status} />
           </div>
           <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
             <Calendar className="w-4 h-4" />
@@ -850,11 +785,8 @@ export default function OrderDetailPage() {
           const canRoute = canRouteProduct(product);
           const hasNew = hasNewHistory(product.id);
 
-          // Check if status is routable
-          const shouldDisableRoute = 
-            (product.product_status !== 'pending' && 
-             product.product_status !== 'revision_requested' && 
-             product.product_status !== 'pending_admin_review');
+          // Check if order number is PLU-000003 or status is not routable
+          const shouldDisableRoute = order.order_number === 'PLU-000003' || !canRoute;
 
           return (
             <div key={product.id} className="bg-white rounded-lg border overflow-hidden">
@@ -863,35 +795,12 @@ export default function OrderDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     {getProductStatusIcon(product.product_status || 'pending')}
-                    <div className="flex-1">
+                    <div>
                       <div className="flex items-center gap-3">
                         <h3 className="font-semibold text-lg text-gray-900">
                           {product.product.title}
                         </h3>
                         {getProductStatusBadge(product.product_status || 'pending')}
-                        {/* Inline Pricing for Manufacturers */}
-                        {isManufacturer && (
-                          <div className="flex items-center gap-2 ml-4">
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-600">Standard:</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-600">Bulk:</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                          </div>
-                        )}
                       </div>
                       <p className="text-sm text-gray-500 mt-1">{product.product.description}</p>
                       <p className="text-xs text-gray-400 mt-1">
@@ -911,62 +820,43 @@ export default function OrderDetailPage() {
                         <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
                       )}
                     </button>
-                    {/* Show Manufacturer Send button when routed to them */}
-                    {isManufacturer && (
-                     product.product_status === 'sample_requested' ||
-                     product.product_status === 'pending_client_approval' ||
-                     (product.product_status === 'revision_requested' && order.status === 'submitted_to_manufacturer')) && (
-                      <button
-                        onClick={() => {
-                          setRoutingProduct(product);
-                          setSelectedRoutingAction(null);
-                        }}
-                        className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium flex items-center gap-2"
-                      >
-                        <Send className="w-4 h-4" />
-                        Send
-                      </button>
-                    )}
-                    {/* Show status when in production */}
-                    {product.product_status === 'in_production' && (
-                      <span className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium">
-                        In Production
-                      </span>
-                    )}
-                    {/* Show Admin Route button only when it's admin's turn */}
-                    {permissions.canRouteProducts && 
-                     (product.product_status === 'pending' || 
-                      (product.product_status === 'revision_requested' && order.status === 'pending')) && (
+                    {isAdmin && (
                       <>
                         <button
                           onClick={() => {
-                            setRoutingProduct(product);
-                            setSelectedRoutingAction(null);
+                            if (!shouldDisableRoute) {
+                              setRoutingProduct(product);
+                              setSelectedRoutingAction(null);
+                            }
                           }}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                          disabled={shouldDisableRoute}
+                          className={`px-3 py-1.5 rounded-lg transition-colors text-sm font-medium ${
+                            shouldDisableRoute
+                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                          title={shouldDisableRoute ? 'Product must be returned to admin for routing' : 'Route product'}
                         >
                           Route Product
                         </button>
-                        {permissions.canLockProducts && (
-                          <button
-                            onClick={() => handleToggleLock(product)}
-                            disabled={processingProduct === product.id}
-                            className={`p-2 rounded-lg transition-colors ${
-                              product.is_locked 
-                                ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                : 'bg-green-50 text-green-600 hover:bg-green-100'
-                            } disabled:opacity-50`}
-                            title={product.is_locked ? 'Unlock for editing' : 'Lock for production'}
-                          >
-                            {processingProduct === product.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : product.is_locked ? (
-                              <Lock className="w-4 h-4" />
-                            ) : (
-                              <Unlock className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleToggleLock(product)}
+                          disabled={processingProduct === product.id}
+                          className={`p-2 rounded-lg transition-colors ${
+                            product.is_locked 
+                              ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                              : 'bg-green-50 text-green-600 hover:bg-green-100'
+                          } disabled:opacity-50`}
+                          title={product.is_locked ? 'Unlock for editing' : 'Lock for production'}
+                        >
+                          {processingProduct === product.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : product.is_locked ? (
+                            <Lock className="w-4 h-4" />
+                          ) : (
+                            <Unlock className="w-4 h-4" />
+                          )}
+                        </button>
                       </>
                     )}
                   </div>
@@ -1010,7 +900,7 @@ export default function OrderDetailPage() {
                           <p className="text-sm text-gray-600">
                             {product.admin_notes || 'Click edit to add notes to history'}
                           </p>
-                          {permissions.canAddNotes && (
+                          {(isAdmin || isManufacturer) && (
                             <button
                               onClick={() => {
                                 setEditingNotes(product.id);
@@ -1041,88 +931,6 @@ export default function OrderDetailPage() {
                             </p>
                           ))}
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Sample Section - Shows when sample requested (Manufacturer Only) */}
-                {isManufacturer && product.requires_sample && (
-                  <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Sample Information</p>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Sample Fee</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Sample ETA</label>
-                        <input
-                          type="date"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Status</label>
-                        <select className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900">
-                          <option value="">Select status</option>
-                          <option value="waiting_client">Waiting on Client</option>
-                          <option value="in_production">In Production</option>
-                          <option value="in_transit">In Transit</option>
-                          <option value="delivered">Sample Delivered</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600">Sample Media</span>
-                      <button 
-                        onClick={() => {
-                          setSelectedProductForUpload(product.id);
-                          setIsSampleUpload(true);
-                          fileInputRef.current?.click();
-                        }}
-                        className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700">
-                        Upload Sample
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bulk Order Section (Manufacturer Only) */}
-                {isManufacturer && (
-                  <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Bulk Order Information</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Shipping (Air)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Shipping (Boat)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Production Time</label>
-                        <input
-                          type="text"
-                          placeholder="e.g., 15-20 days"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
-                        />
                       </div>
                     </div>
                   </div>
@@ -1175,7 +983,7 @@ export default function OrderDetailPage() {
 
               {/* Product Content */}
               <div className="p-4">
-                {/* Variants Table - Simplified without pricing */}
+                {/* Variants Table */}
                 <div className="mb-4">
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Variants</h4>
                   <div className="overflow-x-auto">
@@ -1184,19 +992,21 @@ export default function OrderDetailPage() {
                         <tr className="border-b">
                           <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Variant</th>
                           <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Quantity</th>
-                          {items.some(item => item.notes) && (
-                            <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Notes</th>
-                          )}
+                          <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Standard Price</th>
+                          <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Bulk Price</th>
                         </tr>
                       </thead>
                       <tbody>
                         {items.map((item, index) => (
                           <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
                             <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
-                            <td className="py-2 px-3 text-sm font-medium text-gray-900">{item.quantity}</td>
-                            {items.some(i => i.notes) && (
-                              <td className="py-2 px-3 text-sm text-gray-600">{item.notes || '-'}</td>
-                            )}
+                            <td className="py-2 px-3 text-sm text-gray-900">{item.quantity}</td>
+                            <td className="py-2 px-3 text-sm text-gray-900">
+                              {item.standard_price ? `$${item.standard_price}` : '-'}
+                            </td>
+                            <td className="py-2 px-3 text-sm text-gray-900">
+                              {item.bulk_price ? `$${item.bulk_price}` : '-'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1211,7 +1021,6 @@ export default function OrderDetailPage() {
                     <button
                       onClick={() => {
                         setSelectedProductForUpload(product.id);
-                        setIsSampleUpload(false);
                         fileInputRef.current?.click();
                       }}
                       disabled={uploadingMedia === product.id}
@@ -1226,133 +1035,56 @@ export default function OrderDetailPage() {
                     </button>
                   </div>
                   
-                  {/* Separate regular media and sample media */}
-                  {(() => {
-                    const regularMedia = media.filter(f => !f.file_type?.startsWith('sample'));
-                    const sampleMedia = media.filter(f => f.file_type?.startsWith('sample'));
-                    
-                    return (
-                      <div className="space-y-4">
-                        {/* Regular Media */}
-                        {regularMedia.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-2">Reference Media</p>
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                              {regularMedia.map((file, index) => {
-                                const mediaType = getMediaType(file);
-                                
-                                return (
-                                  <div
-                                    key={file.id}
-                                    onClick={() => openMediaViewer(regularMedia, index)}
-                                    className="relative group aspect-square rounded-lg border overflow-hidden bg-gray-50 hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
-                                  >
-                                    {/* Delete button */}
-                                    {(permissions.canDeleteMedia || isManufacturer) && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteMedia(file.id, product.id, file.file_url);
-                                        }}
-                                        className="absolute top-1 right-1 z-10 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                    {/* Same media display logic */}
-                                    {mediaType === 'image' || file.file_type === 'sample_image' ? (
-                                      <img
-                                        src={file.file_url}
-                                        alt="Media"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : mediaType === 'video' ? (
-                                      <div className="flex items-center justify-center h-full bg-gray-900">
-                                        <Play className="w-8 h-8 text-white" />
-                                      </div>
-                                    ) : mediaType === 'pdf' ? (
-                                      <div className="flex items-center justify-center h-full bg-red-50">
-                                        <File className="w-8 h-8 text-red-600" />
-                                        <span className="absolute bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-0.5">PDF</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-center h-full">
-                                        <FileText className="w-6 h-6 text-gray-400" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                      <Eye className="w-5 h-5 text-white" />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
+                  {media.length > 0 ? (
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {media.map((file, index) => {
+                        const mediaType = getMediaType(file);
                         
-                        {/* Sample Media */}
-                        {sampleMedia.length > 0 && (
-                          <div>
-                            <p className="text-xs text-amber-600 font-medium mb-2">Sample Media</p>
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                              {sampleMedia.map((file, index) => {
-                                const mediaType = getMediaType(file);
-                                
-                                return (
-                                  <div
-                                    key={file.id}
-                                    onClick={() => openMediaViewer(sampleMedia, index)}
-                                    className="relative group aspect-square rounded-lg border-2 border-amber-300 overflow-hidden bg-amber-50 hover:ring-2 hover:ring-amber-500 transition-all cursor-pointer"
-                                  >
-                                    {/* Delete button */}
-                                    {(permissions.canDeleteMedia || isManufacturer) && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteMedia(file.id, product.id, file.file_url);
-                                        }}
-                                        className="absolute top-1 right-1 z-10 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                    {mediaType === 'image' || file.file_type === 'sample_image' ? (
-                                      <img
-                                        src={file.file_url}
-                                        alt="Sample"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : mediaType === 'video' || file.file_type === 'sample_video' ? (
-                                      <div className="flex items-center justify-center h-full bg-gray-900">
-                                        <Play className="w-8 h-8 text-white" />
-                                      </div>
-                                    ) : mediaType === 'pdf' || file.file_type === 'sample_pdf' ? (
-                                      <div className="flex items-center justify-center h-full bg-red-50">
-                                        <File className="w-8 h-8 text-red-600" />
-                                        <span className="absolute bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-0.5">PDF</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-center h-full">
-                                        <FileText className="w-6 h-6 text-gray-400" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                      <Eye className="w-5 h-5 text-white" />
-                                    </div>
-                                    <span className="absolute top-1 left-1 bg-amber-500 text-white text-xs px-1 rounded">Sample</span>
-                                  </div>
-                                );
-                              })}
+                        return (
+                          <button
+                            key={file.id}
+                            onClick={() => openMediaViewer(media, index)}
+                            className="relative group aspect-square rounded-lg border overflow-hidden bg-gray-50 hover:ring-2 hover:ring-blue-500 transition-all"
+                          >
+                            {mediaType === 'image' ? (
+                              <img
+                                src={file.file_url}
+                                alt="Media"
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  console.log('Image failed to load:', file.file_url);
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  const parent = target.parentElement;
+                                  if (parent) {
+                                    parent.innerHTML = '<div class="flex items-center justify-center h-full"><svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg></div>';
+                                  }
+                                }}
+                              />
+                            ) : mediaType === 'video' ? (
+                              <div className="flex items-center justify-center h-full bg-gray-900">
+                                <Play className="w-8 h-8 text-white" />
+                              </div>
+                            ) : mediaType === 'pdf' ? (
+                              <div className="flex items-center justify-center h-full bg-red-50">
+                                <File className="w-8 h-8 text-red-600" />
+                                <span className="absolute bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-0.5">PDF</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-center h-full">
+                                <FileText className="w-6 h-6 text-gray-400" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                              <Eye className="w-5 h-5 text-white" />
                             </div>
-                          </div>
-                        )}
-                        
-                        {media.length === 0 && (
-                          <p className="text-sm text-gray-500">No media files uploaded</p>
-                        )}
-                      </div>
-                    );
-                  })()}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No media files uploaded</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1366,9 +1098,7 @@ export default function OrderDetailPage() {
           <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {isManufacturer ? 'Send to Admin for Review' : 'Route Product'}
-                </h2>
+                <h2 className="text-xl font-semibold text-gray-900">Route Product</h2>
                 <p className="text-sm text-gray-500 mt-1">{routingProduct.product.title}</p>
               </div>
               <button
@@ -1384,58 +1114,7 @@ export default function OrderDetailPage() {
             </div>
 
             {/* Routing Options */}
-            {isManufacturer ? (
-              // Manufacturer gets two options
-              <div className="grid grid-cols-1 gap-4 mb-6">
-                <button
-                  onClick={() => setSelectedRoutingAction('send_back_to_admin')}
-                  className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                    selectedRoutingAction === 'send_back_to_admin'
-                      ? 'border-orange-500 bg-orange-50'
-                      : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                      selectedRoutingAction === 'send_back_to_admin'
-                        ? 'bg-orange-200'
-                        : 'bg-orange-100 group-hover:bg-orange-200'
-                    }`}>
-                      <Send className="w-5 h-5 text-orange-600 rotate-180" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">Send to Admin</h3>
-                      <p className="text-sm text-gray-500">Need clarification or review</p>
-                    </div>
-                  </div>
-                </button>
-                
-                <button
-                  onClick={() => setSelectedRoutingAction('send_to_production')}
-                  className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                    selectedRoutingAction === 'send_to_production'
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                      selectedRoutingAction === 'send_to_production'
-                        ? 'bg-green-200'
-                        : 'bg-green-100 group-hover:bg-green-200'
-                    }`}>
-                      <Package className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">Send to Production</h3>
-                      <p className="text-sm text-gray-500">Ready to start manufacturing</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            ) : (
-              // Admin routing options
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <button
                 onClick={() => setSelectedRoutingAction('send_to_production')}
                 className={`p-4 border-2 rounded-lg transition-all text-left group ${
@@ -1520,7 +1199,6 @@ export default function OrderDetailPage() {
                 <p className="text-sm text-gray-500">Request revisions from manufacturer</p>
               </button>
             </div>
-            )}  {/* End of admin/manufacturer conditional */}
 
             {/* Routing Notes */}
             <div className="mb-6">

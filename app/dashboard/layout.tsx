@@ -1,41 +1,66 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname, useRouter } from 'next/navigation';
 import { 
-  LayoutDashboard, 
-  Package, 
+  LayoutGrid,
   ShoppingCart, 
-  Settings, 
-  LogOut,
+  Package,
   Layers,
+  Activity,
   Users,
+  UserCheck,
+  Building2,
   Factory,
-  UserCircle,
-  Mail,
-  Menu,
+  LogOut,
+  Bell,
   X,
-  Activity
+  Mail
 } from 'lucide-react';
+import { useNotifications, getNotificationMessage, getNotificationIcon, formatNotificationTime } from '@/app/hooks/useNotifications';
+import { UINotification } from '@/app/components/UINotification';
+import { useUINotification } from '@/app/hooks/useUINotification';
 
-interface DashboardLayoutProps {
-  children: ReactNode;
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const pathname = usePathname();
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Database notifications (existing)
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications(user?.id || null);
+  
+  // UI notifications (new - for success/error messages)
+  const { notification: uiNotification, hideNotification } = useUINotification();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
       router.push('/');
-    } else {
-      setUser(JSON.parse(storedUser));
+      return;
+    }
+    
+    try {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+      router.push('/');
+    } finally {
+      setLoading(false);
     }
   }, [router]);
 
@@ -44,252 +69,307 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     router.push('/');
   };
 
-  const navigation = [
-    { 
-      name: 'Dashboard', 
-      href: '/dashboard', 
-      icon: LayoutDashboard,
-      roles: ['super_admin', 'admin', 'user', 'order_creator', 'order_approver', 'manufacturer'] 
-    },
-    { 
-      name: 'Orders', 
-      href: '/dashboard/orders', 
-      icon: ShoppingCart,
-      roles: ['super_admin', 'admin', 'user', 'order_creator', 'order_approver', 'manufacturer'] 
-    },
-    { 
-      name: 'Products', 
-      href: '/dashboard/products', 
-      icon: Package,
-      roles: ['super_admin'] 
-    },
-    { 
-      name: 'Variants', 
-      href: '/dashboard/variants', 
-      icon: Layers,
-      roles: ['super_admin'] 
-    },
-    { 
-      name: 'Activity', 
-      href: '/dashboard/activity', 
-      icon: Activity,
-      roles: ['super_admin', 'admin'] 
-    },
-  ];
-
-  const configNavigation = [
-    { 
-      name: 'Clients', 
-      href: '/dashboard/clients', 
-      icon: Users,
-      roles: ['super_admin', 'admin', 'order_approver'],
-      description: 'Manage client emails'
-    },
-    { 
-      name: 'Manufacturers', 
-      href: '/dashboard/manufacturers', 
-      icon: Factory,
-      roles: ['super_admin', 'admin', 'order_approver'],
-      description: 'Manage manufacturer emails'
-    },
-    { 
-      name: 'Users', 
-      href: '/dashboard/users', 
-      icon: UserCircle,
-      roles: ['super_admin', 'admin'],
-      description: 'Manage system users'
-    },
-  ];
-
-  const isActiveRoute = (href: string) => pathname === href;
-
-  const handleNavigate = (href: string) => {
-    router.push(href);
-    setSidebarOpen(false);
+  const handleNotificationClick = async (notificationId: string, orderId?: string, orderProductId?: string) => {
+    await markAsRead(notificationId);
+    if (orderId) {
+      router.push(`/dashboard/orders/${orderId}`);
+      setShowNotifications(false);
+    }
   };
 
+  const menuItems = [
+    {
+      type: 'section',
+      label: 'MAIN MENU',
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'client'],
+    },
+    {
+      href: '/dashboard',
+      label: 'Dashboard',
+      icon: LayoutGrid,
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'client'],
+    },
+    {
+      href: '/dashboard/orders',
+      label: 'Orders',
+      icon: ShoppingCart,
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer'],
+      badge: user?.role !== 'client' && unreadCount > 0 ? unreadCount : 0,
+    },
+    {
+      href: '/dashboard/products',
+      label: 'Products',
+      icon: Package,
+      roles: ['super_admin', 'admin'],
+    },
+    {
+      href: '/dashboard/variants',
+      label: 'Variants',
+      icon: Layers,
+      roles: ['super_admin', 'admin'],
+    },
+    {
+      href: '/dashboard/activity',
+      label: 'Activity',
+      icon: Activity,
+      roles: ['super_admin', 'admin'],
+    },
+    {
+      type: 'section',
+      label: 'CONFIGURATION',
+      roles: ['super_admin', 'admin', 'client'],
+    },
+    {
+      href: '/dashboard/clients',
+      label: 'Clients',
+      icon: Users,
+      roles: ['super_admin', 'admin'],
+      description: 'Manage client emails'
+    },
+    {
+      href: '/dashboard/manufacturers',
+      label: 'Manufacturers',
+      icon: Factory,
+      roles: ['super_admin', 'admin'],
+      description: 'Manage manufacturer emails'
+    },
+    {
+      href: '/dashboard/users',
+      label: 'Users',
+      icon: UserCheck,
+      roles: ['super_admin'],
+      description: 'Manage system users'
+    },
+    {
+      href: '/dashboard/review',
+      label: 'Review Orders',
+      icon: ShoppingCart,
+      roles: ['client'],
+      badge: user?.role === 'client' && unreadCount > 0 ? unreadCount : 0,
+    },
+  ];
+
+  const visibleMenuItems = menuItems.filter(item =>
+    item.roles?.includes(user?.role || '')
+  );
+
+  const getInitial = (name: string) => {
+    return name ? name.charAt(0).toUpperCase() : 'U';
+  };
+
+  const formatRole = (role: string) => {
+    const roleDisplay: Record<string, string> = {
+      'super_admin': 'Super Admin',
+      'admin': 'Admin',
+      'order_creator': 'Order Creator',
+      'order_approver': 'Order Approver',
+      'manufacturer': 'Manufacturer',
+      'client': 'Client'
+    };
+    return roleDisplay[role] || role.replace('_', ' ');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Mobile Sidebar Backdrop */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <div className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white shadow-xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
-        <div className="flex flex-col h-full">
-          {/* Logo Section */}
-          <div className="py-1 px-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex flex-col items-center w-full">
-                {/* Logo - Pull up 3 more units */}
-                <img
-                  src="/logo.png"
-                  alt="Birdhaus Logo"
-                  className="w-48 h-48 object-contain -mt-13"
-                />
-                {/* Text position */}
-                <div className="text-center -mt-16">
-                  <p className="text-xs sm:text-sm font-medium text-gray-700">Order Management</p>
-                </div>
-              </div>
-              {/* Mobile Close Button */}
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden absolute top-2 right-2 p-1 rounded-lg hover:bg-gray-100"
-              >
-                <X className="w-5 h-5 text-gray-600" />
-              </button>
+      <aside className="w-72 bg-white h-screen flex flex-col border-r border-gray-100">
+        {/* Logo Section */}
+        <div className="p-6 border-b border-gray-100">
+          <h1 className="text-2xl font-bold text-gray-900">BirdHaus</h1>
+          <p className="text-sm text-gray-500 mt-1">Order Management</p>
+        </div>
+
+        {/* User Profile Section */}
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+              {getInitial(user?.name || '')}
             </div>
-          </div>
-
-          {/* User Info */}
-          {user && (
-            <div className="p-3 sm:p-4 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-full flex items-center justify-center">
-                  <span className="text-white font-medium text-sm sm:text-base">
-                    {user.name?.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-gray-800 text-sm font-medium truncate">{user.name}</p>
-                  <p className="text-gray-500 text-xs capitalize truncate">
-                    {user.role?.replace('_', ' ')}
-                  </p>
-                </div>
-              </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+              <p className="text-xs text-gray-500">{formatRole(user?.role || '')}</p>
             </div>
-          )}
-
-          {/* Main Navigation */}
-          <nav className="flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto">
-            <div className="mb-4 sm:mb-6">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 sm:mb-3 px-3">
-                Main Menu
-              </h3>
-              {navigation.map((item) => {
-                if (user && !item.roles.includes(user.role)) return null;
-                
-                return (
-                  <button
-                    key={item.name}
-                    onClick={() => handleNavigate(item.href)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                      isActiveRoute(item.href)
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                    {item.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Configuration Section */}
-            {user && (user.role === 'super_admin' || user.role === 'admin' || user.role === 'order_approver') && (
-              <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 sm:mb-3 px-3 flex items-center gap-2">
-                  <Settings className="w-3 h-3" />
-                  Configuration
-                </h3>
-                {configNavigation.map((item) => {
-                  if (!item.roles.includes(user.role)) return null;
-                  
-                  return (
-                    <button
-                      key={item.name}
-                      onClick={() => handleNavigate(item.href)}
-                      className={`w-full group flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                        isActiveRoute(item.href)
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <div className="flex-1 text-left">
-                        <div className="flex items-center gap-2">
-                          {item.name}
-                          {(item.href === '/dashboard/clients' || item.href === '/dashboard/manufacturers') && (
-                            <Mail className="w-3 h-3 opacity-60" />
-                          )}
-                        </div>
-                        {!isActiveRoute(item.href) && (
-                          <p className="text-xs text-gray-500 group-hover:text-gray-600 mt-0.5">
-                            {item.description}
-                          </p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </nav>
-
-          {/* Logout */}
-          <div className="p-3 sm:p-4 border-t border-gray-200">
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-100 transition-all w-full"
-            >
-              <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-              Logout
-            </button>
           </div>
         </div>
-      </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto py-4">
+          {visibleMenuItems.map((item, index) => {
+            if (item.type === 'section') {
+              return (
+                <div key={`section-${index}`} className="px-6 py-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                    {item.label}
+                  </p>
+                </div>
+              );
+            }
+
+            const Icon = item.icon!;
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+            
+            return (
+              <div key={item.href} className="mb-1">
+                <Link
+                  href={item.href!}
+                  className={`flex items-center justify-between px-6 py-2.5 text-sm transition-colors relative ${
+                    isActive
+                      ? 'text-blue-600 bg-blue-50 border-r-2 border-blue-600'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                    <span className="font-medium">{item.label}</span>
+                  </div>
+                  {item.badge && item.badge > 0 && (
+                    <span className="px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+                
+                {/* Description text underneath (no dropdown) */}
+                {item.description && (
+                  <p className="px-6 pl-14 py-1 text-xs text-gray-500">
+                    {item.description}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Logout Section */}
+        <div className="p-4 border-t border-gray-100">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            <div className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center">
+              <span className="text-white font-semibold">{getInitial(user?.name || '')}</span>
+            </div>
+            <span className="flex-1 text-left font-medium">Logout</span>
+          </button>
+        </div>
+      </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col">
         {/* Top Bar */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="px-4 sm:px-6 py-3 sm:py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
-                >
-                  <Menu className="w-5 h-5 text-gray-600" />
-                </button>
-                <h2 className="text-lg sm:text-xl font-semibold text-gray-800">
-                  {pathname === '/dashboard' && 'Dashboard'}
-                  {pathname === '/dashboard/orders' && 'Orders Management'}
-                  {pathname?.startsWith('/dashboard/orders/create') && 'Create New Order'}
-                  {pathname?.startsWith('/dashboard/orders/edit') && 'Edit Draft Order'}
-                  {pathname === '/dashboard/products' && 'Products Management'}
-                  {pathname === '/dashboard/variants' && 'Variants Configuration'}
-                  {pathname === '/dashboard/clients' && 'Client Configuration'}
-                  {pathname === '/dashboard/manufacturers' && 'Manufacturer Configuration'}
-                  {pathname === '/dashboard/users' && 'Users Management'}
-                  {pathname === '/dashboard/activity' && 'Activity Dashboard'}
-                  {pathname?.match(/\/dashboard\/orders\/[^\/]+$/) && 'Order Details'}
-                </h2>
+        <header className="bg-white h-16 border-b border-gray-100 flex items-center justify-between px-6">
+          <h2 className="text-xl font-semibold text-gray-900">
+            {pathname === '/dashboard' && 'Dashboard'}
+            {pathname === '/dashboard/orders' && 'Orders Management'}
+            {pathname === '/dashboard/products' && 'Products'}
+            {pathname === '/dashboard/variants' && 'Variants Configuration'}
+            {pathname === '/dashboard/activity' && 'Activity Log'}
+            {pathname === '/dashboard/clients' && 'Client Management'}
+            {pathname === '/dashboard/manufacturers' && 'Manufacturer Management'}
+            {pathname === '/dashboard/users' && 'User Management'}
+            {pathname === '/dashboard/review' && 'Review Orders'}
+            {pathname.startsWith('/dashboard/orders/') && 'Order Details'}
+          </h2>
+
+          {/* Notification Bell */}
+          <div className="relative">
+            <button
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notification Dropdown */}
+            {showNotifications && (
+              <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-900">Notifications</h3>
+                  <div className="flex items-center gap-2">
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={markAllAsRead}
+                        className="text-xs text-blue-600 hover:text-blue-700"
+                      >
+                        Mark all as read
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowNotifications(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-gray-500">
+                      No notifications
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-gray-100">
+                      {notifications.slice(0, 10).map((notification) => (
+                        <div
+                          key={notification.id}
+                          onClick={() => handleNotificationClick(
+                            notification.id,
+                            notification.order_id,
+                            notification.order_product_id
+                          )}
+                          className={`p-4 hover:bg-gray-50 cursor-pointer ${
+                            !notification.is_read ? 'bg-blue-50/30' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="text-xl">{getNotificationIcon(notification.type)}</span>
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-900">
+                                {getNotificationMessage(notification)}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                {formatNotificationTime(notification.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="hidden sm:block text-sm text-gray-500">
-                {new Date().toLocaleDateString('en-US', { 
-                  weekday: 'short', 
-                  month: 'short', 
-                  day: 'numeric' 
-                })}
-              </div>
-            </div>
+            )}
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50">
+        {/* Main Content Area */}
+        <main className="flex-1 p-6 bg-gray-50 overflow-auto">
           {children}
         </main>
       </div>
+
+      {/* UI Notification Component - Shows success/error messages */}
+      {uiNotification && (
+        <UINotification
+          message={uiNotification.message}
+          type={uiNotification.type}
+          onClose={hideNotification}
+        />
+      )}
     </div>
   );
 }

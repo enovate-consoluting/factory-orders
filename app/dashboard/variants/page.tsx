@@ -1,891 +1,610 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useEffect, useState } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { 
+  Layers, 
   Plus, 
-  X, 
-  Edit2, 
+  Edit2,
   Trash2, 
-  Search,
-  Tag,
+  X, 
   Check,
-  AlertCircle,
   Loader2,
-  ChevronDown,
-  ChevronUp,
-  Layers,
-  Hash,
-  Palette,
-  Ruler,
-  Package2,
-  Grid3x3,
-  List,
-  Settings2
-} from 'lucide-react'
+  AlertTriangle,
+  Tag,
+  Save
+} from 'lucide-react';
+import { notify } from '@/app/hooks/useUINotification';
 
-type VariantType = {
-  id: string
-  name: string
-  created_at: string
+interface VariantType {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
-type VariantOption = {
-  id: string
-  type_id: string
-  value: string
-  created_at: string
+interface VariantOption {
+  id: string;
+  type_id: string;
+  value: string;
+  created_at: string;
+  type?: VariantType;
 }
 
 export default function VariantsPage() {
-  const [variantTypes, setVariantTypes] = useState<VariantType[]>([])
-  const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
-  const [loading, setLoading] = useState(true)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [user, setUser] = useState<any>(null)
-  
-  // Modal states
-  const [showCreateTypeModal, setShowCreateTypeModal] = useState(false)
-  const [newTypeName, setNewTypeName] = useState('')
-  
-  const [showAddOptionsModal, setShowAddOptionsModal] = useState(false)
-  const [selectedTypeForOptions, setSelectedTypeForOptions] = useState<VariantType | null>(null)
-  const [newOptions, setNewOptions] = useState<string[]>([''])
-  
-  const [editingType, setEditingType] = useState<VariantType | null>(null)
-  const [editingOption, setEditingOption] = useState<VariantOption | null>(null)
-  
-  // Delete confirmation
-  const [deleteTypeModalOpen, setDeleteTypeModalOpen] = useState(false)
-  const [typeToDelete, setTypeToDelete] = useState<VariantType | null>(null)
-  const [deleteOptionModalOpen, setDeleteOptionModalOpen] = useState(false)
-  const [optionToDelete, setOptionToDelete] = useState<VariantOption | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [variantTypes, setVariantTypes] = useState<VariantType[]>([]);
+  const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showTypeModal, setShowTypeModal] = useState(false);
+  const [showOptionModal, setShowOptionModal] = useState(false);
+  const [selectedTypeForOption, setSelectedTypeForOption] = useState<VariantType | null>(null);
+  const [editingType, setEditingType] = useState<VariantType | null>(null);
+  const [editingOption, setEditingOption] = useState<VariantOption | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'type' | 'option', item: any } | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const supabase = createClientComponentClient();
 
-  // Notification state
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-
-  // Expanded types for option display
-  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set())
+  // Form states
+  const [newTypeName, setNewTypeName] = useState('');
+  const [newOptionValue, setNewOptionValue] = useState('');
 
   useEffect(() => {
-    const userData = localStorage.getItem('user')
-    if (userData) {
-      setUser(JSON.parse(userData))
-    }
-    loadData()
-  }, [])
+    fetchVariants();
+  }, []);
 
-  useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null)
-      }, 3000)
-      return () => clearTimeout(timer)
-    }
-  }, [notification])
-
-  const loadData = async () => {
-    setLoading(true)
+  const fetchVariants = async () => {
     try {
-      const [typesData, optionsData] = await Promise.all([
-        supabase.from('variant_types').select('*').order('name'),
-        supabase.from('variant_options').select('*').order('value')
-      ])
-      
-      if (typesData.error) throw typesData.error
-      if (optionsData.error) throw optionsData.error
-      
-      setVariantTypes(typesData.data || [])
-      setVariantOptions(optionsData.data || [])
+      // Fetch variant types
+      const { data: typesData, error: typesError } = await supabase
+        .from('variant_types')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (typesError) throw typesError;
+
+      // Fetch variant options with type info
+      const { data: optionsData, error: optionsError } = await supabase
+        .from('variant_options')
+        .select('*, type:variant_types(*)')
+        .order('value', { ascending: true });
+
+      if (optionsError) throw optionsError;
+
+      setVariantTypes(typesData || []);
+      setVariantOptions(optionsData || []);
     } catch (error) {
-      console.error('Error loading data:', error)
-      setNotification({ message: 'Error loading variants', type: 'error' })
+      console.error('Error fetching variants:', error);
+      notify.error('Failed to load variants. Please refresh the page.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const createVariantType = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!newTypeName.trim()) {
-      setNotification({ message: 'Please enter a variant type name', type: 'error' })
-      return
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('variant_types')
-        .insert({ name: newTypeName })
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Variant type created successfully!', type: 'success' })
-      setShowCreateTypeModal(false)
-      setNewTypeName('')
-      loadData()
-    } catch (error) {
-      console.error('Error creating variant type:', error)
-      setNotification({ message: 'Error creating variant type', type: 'error' })
-    }
-  }
+  const handleCreateType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProcessingId('create-type');
 
-  const updateVariantType = async () => {
-    if (!editingType || !editingType.name.trim()) {
-      setNotification({ message: 'Please enter a variant type name', type: 'error' })
-      return
-    }
-    
     try {
-      const { error } = await supabase
-        .from('variant_types')
-        .update({ name: editingType.name })
-        .eq('id', editingType.id)
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Variant type updated successfully!', type: 'success' })
-      setEditingType(null)
-      loadData()
-    } catch (error) {
-      console.error('Error updating variant type:', error)
-      setNotification({ message: 'Error updating variant type', type: 'error' })
-    }
-  }
+      if (editingType) {
+        // Update existing type
+        const { error } = await supabase
+          .from('variant_types')
+          .update({ name: newTypeName })
+          .eq('id', editingType.id);
 
-  const deleteVariantType = async () => {
-    if (!typeToDelete) return
-    
-    setDeleting(true)
+        if (error) throw error;
+        notify.success(`Variant type updated to "${newTypeName}"!`);
+        setEditingType(null);
+      } else {
+        // Create new type
+        const { error } = await supabase
+          .from('variant_types')
+          .insert({ name: newTypeName });
+
+        if (error) throw error;
+        notify.success(`Variant type "${newTypeName}" has been created successfully!`);
+      }
+
+      setNewTypeName('');
+      setShowTypeModal(false);
+      await fetchVariants();
+    } catch (error: any) {
+      console.error('Error saving variant type:', error);
+      notify.error(error.message || 'Failed to save variant type.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleCreateOption = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTypeForOption && !editingOption) return;
+
+    setProcessingId('create-option');
+
     try {
-      // Delete all options for this type first
+      if (editingOption) {
+        // Update existing option
+        const { error } = await supabase
+          .from('variant_options')
+          .update({ value: newOptionValue })
+          .eq('id', editingOption.id);
+
+        if (error) throw error;
+        notify.success(`Option updated to "${newOptionValue}"!`);
+        setEditingOption(null);
+      } else {
+        // Create new option
+        const { error } = await supabase
+          .from('variant_options')
+          .insert({
+            type_id: selectedTypeForOption!.id,
+            value: newOptionValue
+          });
+
+        if (error) throw error;
+        notify.success(`Option "${newOptionValue}" added to ${selectedTypeForOption!.name}!`);
+      }
+
+      setNewOptionValue('');
+      setShowOptionModal(false);
+      setSelectedTypeForOption(null);
+      await fetchVariants();
+    } catch (error: any) {
+      console.error('Error saving variant option:', error);
+      notify.error(error.message || 'Failed to save variant option.');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleEditType = (type: VariantType) => {
+    setEditingType(type);
+    setNewTypeName(type.name);
+    setShowTypeModal(true);
+  };
+
+  const handleEditOption = (option: VariantOption) => {
+    setEditingOption(option);
+    setNewOptionValue(option.value);
+    setShowOptionModal(true);
+  };
+
+  const handleDeleteType = async () => {
+    if (!deleteConfirm || deleteConfirm.type !== 'type') return;
+    
+    const type = deleteConfirm.item as VariantType;
+    setProcessingId(type.id);
+
+    try {
+      // First delete all options for this type
       const { error: optionsError } = await supabase
         .from('variant_options')
         .delete()
-        .eq('type_id', typeToDelete.id)
-      
-      if (optionsError) throw optionsError
-      
-      // Delete the variant type
+        .eq('type_id', type.id);
+
+      if (optionsError) throw optionsError;
+
+      // Then delete the type
       const { error: typeError } = await supabase
         .from('variant_types')
         .delete()
-        .eq('id', typeToDelete.id)
-      
-      if (typeError) throw typeError
-      
-      setNotification({ message: 'Variant type deleted successfully!', type: 'success' })
-      setDeleteTypeModalOpen(false)
-      setTypeToDelete(null)
-      loadData()
-    } catch (error) {
-      console.error('Error deleting variant type:', error)
-      setNotification({ message: 'Error deleting variant type', type: 'error' })
+        .eq('id', type.id);
+
+      if (typeError) throw typeError;
+
+      notify.success(`Variant type "${type.name}" and all its options have been deleted.`);
+      await fetchVariants();
+      setDeleteConfirm(null);
+    } catch (error: any) {
+      console.error('Error deleting variant type:', error);
+      notify.error('Failed to delete variant type. It may be in use by products.');
     } finally {
-      setDeleting(false)
+      setProcessingId(null);
     }
-  }
+  };
 
-  const addVariantOptions = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleDeleteOption = async () => {
+    if (!deleteConfirm || deleteConfirm.type !== 'option') return;
     
-    if (!selectedTypeForOptions) return
-    
-    const validOptions = newOptions.filter(opt => opt.trim())
-    if (validOptions.length === 0) {
-      setNotification({ message: 'Please enter at least one option', type: 'error' })
-      return
-    }
-    
-    try {
-      const optionsToInsert = validOptions.map(option => ({
-        type_id: selectedTypeForOptions.id,
-        value: option.trim()
-      }))
-      
-      const { error } = await supabase
-        .from('variant_options')
-        .insert(optionsToInsert)
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Options added successfully!', type: 'success' })
-      setShowAddOptionsModal(false)
-      setSelectedTypeForOptions(null)
-      setNewOptions([''])
-      loadData()
-    } catch (error) {
-      console.error('Error adding options:', error)
-      setNotification({ message: 'Error adding options', type: 'error' })
-    }
-  }
+    const option = deleteConfirm.item as VariantOption;
+    setProcessingId(option.id);
 
-  const updateVariantOption = async () => {
-    if (!editingOption || !editingOption.value.trim()) {
-      setNotification({ message: 'Please enter an option value', type: 'error' })
-      return
-    }
-    
-    try {
-      const { error } = await supabase
-        .from('variant_options')
-        .update({ value: editingOption.value })
-        .eq('id', editingOption.id)
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Option updated successfully!', type: 'success' })
-      setEditingOption(null)
-      loadData()
-    } catch (error) {
-      console.error('Error updating option:', error)
-      setNotification({ message: 'Error updating option', type: 'error' })
-    }
-  }
-
-  const deleteVariantOption = async () => {
-    if (!optionToDelete) return
-    
-    setDeleting(true)
     try {
       const { error } = await supabase
         .from('variant_options')
         .delete()
-        .eq('id', optionToDelete.id)
-      
-      if (error) throw error
-      
-      setNotification({ message: 'Option deleted successfully!', type: 'success' })
-      setDeleteOptionModalOpen(false)
-      setOptionToDelete(null)
-      loadData()
-    } catch (error) {
-      console.error('Error deleting option:', error)
-      setNotification({ message: 'Error deleting option', type: 'error' })
+        .eq('id', option.id);
+
+      if (error) throw error;
+
+      notify.success(`Option "${option.value}" has been deleted.`);
+      await fetchVariants();
+      setDeleteConfirm(null);
+    } catch (error: any) {
+      console.error('Error deleting variant option:', error);
+      notify.error('Failed to delete option. It may be in use by products.');
     } finally {
-      setDeleting(false)
+      setProcessingId(null);
     }
-  }
-
-  const toggleTypeExpansion = (typeId: string) => {
-    const newExpanded = new Set(expandedTypes)
-    if (newExpanded.has(typeId)) {
-      newExpanded.delete(typeId)
-    } else {
-      newExpanded.add(typeId)
-    }
-    setExpandedTypes(newExpanded)
-  }
-
-  const getTypeIcon = (typeName: string) => {
-    const name = typeName.toLowerCase()
-    if (name.includes('size')) return <Ruler className="w-5 h-5" />
-    if (name.includes('color') || name.includes('colour')) return <Palette className="w-5 h-5" />
-    if (name.includes('material') || name.includes('fabric')) return <Layers className="w-5 h-5" />
-    if (name.includes('style') || name.includes('type')) return <Package2 className="w-5 h-5" />
-    return <Tag className="w-5 h-5" />
-  }
-
-  const filteredTypes = variantTypes.filter(type =>
-    type.name.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  };
 
   const getOptionsForType = (typeId: string) => {
-    return variantOptions.filter(opt => opt.type_id === typeId)
-  }
-
-  const canManageVariants = () => {
-    return user?.role === 'super_admin'
-  }
+    return variantOptions.filter(option => option.type_id === typeId);
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
+    <div className="p-6">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center">
-            <Settings2 className="w-8 h-8 mr-3 text-blue-600" />
-            Variants Management
-          </h1>
-          {canManageVariants() && (
-            <button
-              onClick={() => setShowCreateTypeModal(true)}
-              className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center justify-center shadow-lg hover:shadow-xl"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              New Variant Type
-            </button>
-          )}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-semibold text-gray-900">Variant Configuration</h1>
+          <p className="text-gray-500 mt-2">Manage product variant types and options</p>
         </div>
-
-        {/* Search and View Toggle */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search variant types..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'grid' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Grid3x3 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-lg transition-colors ${
-                viewMode === 'list' 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <List className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={() => {
+            setEditingType(null);
+            setNewTypeName('');
+            setShowTypeModal(true);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Add Variant Type
+        </button>
       </div>
 
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center space-x-3 ${
-          notification.type === 'success' 
-            ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
-            : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
-        }`}>
-          {notification.type === 'success' ? (
-            <Check className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="font-medium">{notification.message}</span>
-        </div>
-      )}
-
-      {/* Variants Display */}
-      {viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredTypes.map(type => {
-            const options = getOptionsForType(type.id)
-            const isExpanded = expandedTypes.has(type.id)
-            
-            return (
-              <div key={type.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center">
-                      <div className="text-blue-600 mr-2">
-                        {getTypeIcon(type.name)}
+      {/* Variant Types Table */}
+      <div className="bg-white rounded-lg border overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Type Name</th>
+              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Options</th>
+              <th className="text-right px-6 py-3 text-sm font-medium text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {variantTypes.map((type) => {
+              const options = getOptionsForType(type.id);
+              
+              return (
+                <tr 
+                  key={type.id} 
+                  className={`hover:bg-gray-50 transition-colors ${
+                    processingId === type.id ? 'opacity-50' : ''
+                  }`}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Layers className="w-5 h-5 text-blue-600" />
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900">{type.name}</h3>
-                    </div>
-                    {canManageVariants() && (
-                      <div className="flex space-x-1">
-                        <button
-                          onClick={() => setEditingType(type)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Edit type"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setTypeToDelete(type)
-                            setDeleteTypeModalOpen(true)
-                          }}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete type"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <div>
+                        <p className="font-semibold text-gray-900">{type.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {options.length} {options.length === 1 ? 'option' : 'options'}
+                        </p>
                       </div>
-                    )}
-                  </div>
-                  
-                  <div className="mb-3">
-                    <div className="flex items-center justify-between">
-                      <button
-                        onClick={() => toggleTypeExpansion(type.id)}
-                        className="flex items-center text-sm text-blue-600 hover:text-blue-700"
-                      >
-                        <Hash className="w-4 h-4 mr-1" />
-                        {options.length} option{options.length !== 1 ? 's' : ''}
-                        {isExpanded ? (
-                          <ChevronUp className="w-4 h-4 ml-1" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 ml-1" />
-                        )}
-                      </button>
-                      {canManageVariants() && (
-                        <button
-                          onClick={() => {
-                            setSelectedTypeForOptions(type)
-                            setShowAddOptionsModal(true)
-                          }}
-                          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                        >
-                          + Add Options
-                        </button>
-                      )}
                     </div>
-                  </div>
+                  </td>
                   
-                  {isExpanded && (
-                    <div className="flex flex-wrap gap-2">
-                      {options.map(option => (
-                        <div
-                          key={option.id}
-                          className="group relative px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium border border-blue-200"
-                        >
-                          {option.value}
-                          {canManageVariants() && (
-                            <div className="absolute -top-2 -right-2 hidden group-hover:flex space-x-1">
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-1.5 max-w-2xl">
+                      {options.length > 0 ? (
+                        options.map((option) => (
+                          <div 
+                            key={option.id}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 rounded-md text-sm group hover:bg-gray-200 transition-colors ${
+                              processingId === option.id ? 'opacity-50' : ''
+                            }`}
+                          >
+                            <span className="font-medium">{option.value}</span>
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={() => setEditingOption(option)}
-                                className="p-1 bg-white rounded shadow-md text-blue-600 hover:bg-blue-50"
+                                onClick={() => handleEditOption(option)}
+                                className="p-0.5 hover:text-blue-600"
                               >
                                 <Edit2 className="w-3 h-3" />
                               </button>
                               <button
-                                onClick={() => {
-                                  setOptionToDelete(option)
-                                  setDeleteOptionModalOpen(true)
-                                }}
-                                className="p-1 bg-white rounded shadow-md text-red-600 hover:bg-red-50"
+                                onClick={() => setDeleteConfirm({ type: 'option', item: option })}
+                                className="p-0.5 hover:text-red-600"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             </div>
-                          )}
-                        </div>
-                      ))}
-                      {options.length === 0 && (
-                        <p className="text-sm text-gray-500 italic">No options added yet</p>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-gray-400 text-sm italic">No options added</span>
                       )}
                     </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Variant Type
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Options
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Count
-                  </th>
-                  {canManageVariants() && (
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredTypes.map(type => {
-                  const options = getOptionsForType(type.id)
+                  </td>
                   
-                  return (
-                    <tr key={type.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center">
-                          <div className="text-blue-600 mr-2">
-                            {getTypeIcon(type.name)}
-                          </div>
-                          <div className="font-medium text-gray-900">{type.name}</div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1 max-w-md">
-                          {options.slice(0, 5).map(option => (
-                            <span key={option.id} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                              {option.value}
-                            </span>
-                          ))}
-                          {options.length > 5 && (
-                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                              +{options.length - 5} more
-                            </span>
-                          )}
-                          {options.length === 0 && (
-                            <span className="text-sm text-gray-500 italic">No options</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-gray-700">
-                          {options.length}
-                        </span>
-                      </td>
-                      {canManageVariants() && (
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={() => {
-                                setSelectedTypeForOptions(type)
-                                setShowAddOptionsModal(true)
-                              }}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="Add options"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setEditingType(type)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="Edit type"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setTypeToDelete(type)
-                                setDeleteTypeModalOpen(true)
-                              }}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                              title="Delete type"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedTypeForOption(type);
+                          setEditingOption(null);
+                          setNewOptionValue('');
+                          setShowOptionModal(true);
+                        }}
+                        className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Add Option"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleEditType(type)}
+                        className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit Type"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm({ type: 'type', item: type })}
+                        disabled={processingId === type.id}
+                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Delete Type"
+                      >
+                        {processingId === type.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {variantTypes.length === 0 && (
+          <div className="text-center py-12">
+            <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500">No variant types found</p>
+            <p className="text-gray-400 text-sm mt-1">Create your first variant type to get started</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Create/Edit Type Modal */}
-      {(showCreateTypeModal || editingType) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                  <Settings2 className="w-6 h-6 mr-2 text-blue-600" />
-                  {editingType ? 'Edit Variant Type' : 'Create Variant Type'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowCreateTypeModal(false)
-                    setEditingType(null)
-                    setNewTypeName('')
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-
-              <form onSubmit={editingType ? (e) => { e.preventDefault(); updateVariantType(); } : createVariantType}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={editingType ? editingType.name : newTypeName}
-                    onChange={(e) => editingType 
-                      ? setEditingType({...editingType, name: e.target.value})
-                      : setNewTypeName(e.target.value)
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                    placeholder="e.g., Size, Color, Material"
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateTypeModal(false)
-                      setEditingType(null)
-                      setNewTypeName('')
-                    }}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    {editingType ? 'Update' : 'Create'} Type
-                  </button>
-                </div>
-              </form>
+      {showTypeModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full animate-scale-in">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-semibold text-gray-900">
+                {editingType ? 'Edit Variant Type' : 'Create Variant Type'}
+              </h2>
+              <button
+                onClick={() => {
+                  setShowTypeModal(false);
+                  setNewTypeName('');
+                  setEditingType(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Add Options Modal */}
-      {showAddOptionsModal && selectedTypeForOptions && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Add Options to {selectedTypeForOptions.name}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowAddOptionsModal(false)
-                    setSelectedTypeForOptions(null)
-                    setNewOptions([''])
-                  }}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+            <form onSubmit={handleCreateType}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type Name
+                </label>
+                <input
+                  type="text"
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500"
+                  placeholder="e.g. Size, Color, Material"
+                  required
+                />
+                <p className="mt-1 text-sm text-gray-500">
+                  This will be the category name for your variants
+                </p>
               </div>
 
-              <form onSubmit={addVariantOptions}>
-                <div className="space-y-3 mb-4">
-                  {newOptions.map((option, index) => (
-                    <div key={index} className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={option}
-                        onChange={(e) => {
-                          const updated = [...newOptions]
-                          updated[index] = e.target.value
-                          setNewOptions(updated)
-                        }}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                        placeholder="Enter option value"
-                      />
-                      {newOptions.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNewOptions(newOptions.filter((_, i) => i !== index))
-                          }}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setNewOptions([...newOptions, ''])}
-                  className="mb-4 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors font-medium"
+                  onClick={() => {
+                    setShowTypeModal(false);
+                    setNewTypeName('');
+                    setEditingType(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <Plus className="w-4 h-4 inline mr-2" />
-                  Add Another Option
+                  Cancel
                 </button>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddOptionsModal(false)
-                      setSelectedTypeForOptions(null)
-                      setNewOptions([''])
-                    }}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Add Options
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Option Modal */}
-      {editingOption && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">
-                  Edit Option
-                </h2>
                 <button
-                  onClick={() => setEditingOption(null)}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  type="submit"
+                  disabled={processingId === 'create-type'}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <X className="w-6 h-6" />
+                  {processingId === 'create-type' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {editingType ? 'Updating...' : 'Creating...'}
+                    </>
+                  ) : (
+                    <>
+                      {editingType ? <Save className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                      {editingType ? 'Update Type' : 'Create Type'}
+                    </>
+                  )}
                 </button>
               </div>
-
-              <form onSubmit={(e) => { e.preventDefault(); updateVariantOption(); }}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Option Value *
-                  </label>
-                  <input
-                    type="text"
-                    value={editingOption.value}
-                    onChange={(e) => setEditingOption({...editingOption, value: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditingOption(null)}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
-                  >
-                    Update Option
-                  </button>
-                </div>
-              </form>
-            </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Delete Type Confirmation Modal */}
-      {deleteTypeModalOpen && typeToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="mb-4">
-              <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                Delete Variant Type
-              </h3>
-              <p className="text-sm text-gray-600 text-center">
-                Are you sure you want to delete "{typeToDelete.name}"? This will also delete all its options.
-              </p>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
-              <p className="text-sm text-amber-800">
-                <strong>Warning:</strong> This will remove this variant type and all its options from existing products.
-              </p>
-            </div>
-
-            <div className="flex space-x-3">
-              <button
-                onClick={() => {
-                  setDeleteTypeModalOpen(false)
-                  setTypeToDelete(null)
-                }}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={deleteVariantType}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
-              >
-                {deleting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Type
-                  </>
+      {/* Add/Edit Option Modal */}
+      {showOptionModal && (selectedTypeForOption || editingOption) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full animate-scale-in">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-900">
+                  {editingOption ? 'Edit Option' : 'Add Option'}
+                </h2>
+                {!editingOption && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    Adding to: <span className="font-semibold">{selectedTypeForOption?.name}</span>
+                  </p>
                 )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowOptionModal(false);
+                  setSelectedTypeForOption(null);
+                  setEditingOption(null);
+                  setNewOptionValue('');
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
+
+            <form onSubmit={handleCreateOption}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Option Value
+                </label>
+                <input
+                  type="text"
+                  value={newOptionValue}
+                  onChange={(e) => setNewOptionValue(e.target.value)}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-500"
+                  placeholder={
+                    selectedTypeForOption?.name === 'Size' ? 'e.g. Small, Medium, Large' :
+                    selectedTypeForOption?.name === 'Color' ? 'e.g. Red, Blue, Green' :
+                    'Enter option value'
+                  }
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOptionModal(false);
+                    setSelectedTypeForOption(null);
+                    setEditingOption(null);
+                    setNewOptionValue('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingId === 'create-option'}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {processingId === 'create-option' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {editingOption ? 'Updating...' : 'Adding...'}
+                    </>
+                  ) : (
+                    <>
+                      {editingOption ? <Save className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                      {editingOption ? 'Update Option' : 'Add Option'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Delete Option Confirmation Modal */}
-      {deleteOptionModalOpen && optionToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="mb-4">
-              <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full animate-scale-in">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-                Delete Option
-              </h3>
-              <p className="text-sm text-gray-600 text-center">
-                Are you sure you want to delete "{optionToDelete.value}"?
-              </p>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Delete {deleteConfirm.type === 'type' ? 'Variant Type' : 'Option'}?
+                </h3>
+                <p className="text-sm text-gray-500">This action cannot be undone</p>
+              </div>
             </div>
 
-            <div className="flex space-x-3">
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <p className="text-sm text-gray-700 mb-2">
+                You are about to permanently delete:
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white">
+                  {deleteConfirm.type === 'type' ? (
+                    <Layers className="w-5 h-5" />
+                  ) : (
+                    <Tag className="w-5 h-5" />
+                  )}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">
+                    {deleteConfirm.type === 'type' 
+                      ? (deleteConfirm.item as VariantType).name
+                      : (deleteConfirm.item as VariantOption).value}
+                  </p>
+                  {deleteConfirm.type === 'type' && (
+                    <p className="text-sm text-red-600">
+                      Warning: This will also delete all options under this type
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              {deleteConfirm.type === 'type' 
+                ? 'All products using this variant type will be affected.'
+                : 'Any products using this option will be affected.'}
+            </p>
+
+            <div className="flex gap-3">
               <button
-                onClick={() => {
-                  setDeleteOptionModalOpen(false)
-                  setOptionToDelete(null)
-                }}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={deleteVariantOption}
-                disabled={deleting}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+                onClick={deleteConfirm.type === 'type' ? handleDeleteType : handleDeleteOption}
+                disabled={!!processingId}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {deleting ? (
+                {processingId ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     Deleting...
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Option
+                    <Trash2 className="w-4 h-4" />
+                    Delete {deleteConfirm.type === 'type' ? 'Type' : 'Option'}
                   </>
                 )}
               </button>
@@ -894,5 +613,5 @@ export default function VariantsPage() {
         </div>
       )}
     </div>
-  )
+  );
 }

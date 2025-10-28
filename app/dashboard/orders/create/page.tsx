@@ -352,7 +352,7 @@ export default function CreateOrderPage() {
           order_name: orderName.trim(), // Save the order name
           client_id: selectedClient,
           manufacturer_id: selectedManufacturer,
-          status: isDraft ? 'draft' : 'submitted',
+          status: isDraft ? 'draft' : 'submitted_to_manufacturer',
           created_by: user.id
         })
         .select()
