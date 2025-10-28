@@ -171,13 +171,18 @@ export default function CreateOrderPage() {
 
       // Group variants by type
       const variantsByType: { [key: string]: any[] } = {}
-      variantsData?.forEach(variant => {
-        const typeName = variant.variant_option?.variant_type?.name
+      variantsData?.forEach((variant: any) => {
+        // Handle both array and object cases for variant_option
+        const variantOption = Array.isArray(variant.variant_option) 
+          ? variant.variant_option[0] 
+          : variant.variant_option
+        
+        const typeName = variantOption?.variant_type?.name
         if (typeName && !variantsByType[typeName]) {
           variantsByType[typeName] = []
         }
-        if (typeName) {
-          variantsByType[typeName].push(variant.variant_option)
+        if (typeName && variantOption) {
+          variantsByType[typeName].push(variantOption)
         }
       })
 
