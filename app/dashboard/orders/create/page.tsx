@@ -426,8 +426,8 @@ export default function CreateOrderPage() {
 
         // Create order items
         const itemsToInsert = Object.entries(orderProduct.items)
-          .filter(([_, item]) => item.quantity > 0)
-          .map(([variantCombo, item]) => ({
+          .filter(([_, item]: any) => item.quantity > 0)
+          .map(([variantCombo, item]: any) => ({
             order_product_id: createdProduct.id,
             variant_combo: variantCombo,
             quantity: item.quantity,
@@ -727,7 +727,7 @@ export default function CreateOrderPage() {
                     )}
 
                     <div className="space-y-2">
-                      {Object.entries(orderProduct.items).map(([variantCombo, item]) => (
+                      {Object.entries(orderProduct.items).map(([variantCombo, item]: any) => (
                         <div key={variantCombo} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 items-start sm:items-center p-2 bg-gray-50 rounded">
                           <div className="w-full sm:col-span-4 text-sm text-gray-700 font-medium">
                             {variantCombo}
