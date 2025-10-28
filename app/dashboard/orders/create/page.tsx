@@ -636,7 +636,7 @@ export default function CreateOrderPage() {
 
               {/* Products List */}
               <div className="space-y-4">
-                {orderProducts.map((orderProduct, productIndex) => (
+                {orderProducts.map((orderProduct: any, productIndex) => (
                   <div key={productIndex} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex justify-between items-start mb-4">
                       <div>
@@ -677,7 +677,7 @@ export default function CreateOrderPage() {
                       {/* Uploaded Files List */}
                       {orderProduct.uploadedFiles && orderProduct.uploadedFiles.length > 0 && (
                         <div className="space-y-2 mt-3">
-                          {orderProduct.uploadedFiles.map((file, fileIndex) => (
+                          {orderProduct.uploadedFiles.map((file: any, fileIndex) => (
                             <div key={fileIndex} className="flex items-center justify-between p-2 bg-white rounded border border-gray-200">
                               <div className="flex items-center space-x-2 flex-1">
                                 <div className="text-gray-500">
@@ -802,7 +802,7 @@ export default function CreateOrderPage() {
 
                 <div className="p-4 bg-gray-50 rounded-lg">
                   <h3 className="font-semibold text-gray-900 mb-3">Products ({orderProducts.length})</h3>
-                  {orderProducts.map((orderProduct, index) => {
+                  {orderProducts.map((orderProduct: any, index) => {
                     const totalQuantity = Object.values(orderProduct.items)
                       .reduce((sum, item) => sum + item.quantity, 0)
                     const variantCount = Object.keys(orderProduct.items).length
