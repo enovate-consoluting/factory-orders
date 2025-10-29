@@ -2,11 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { supabase } from '@/lib/supabase'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Handle missing API key gracefully
+const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
 export async function POST(request: NextRequest) {
   try {
     console.log('Manufacturer email API called')
+    
+    // Check if Resend is configured
+    if (!resend) {
+      console.warn('Resend API key not configured - skipping email')
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Email service not configured',
+        warning: 'RESEND_API_KEY not set'
+      })
+    }
     
     const { orderId, includeAttachments = true } = await request.json()
 
