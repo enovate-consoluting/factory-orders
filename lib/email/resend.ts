@@ -8,6 +8,5 @@ export interface EmailData {
   cc?: string[];
   subject: string;
   html: string;
-  attachments?: Array;
+  attachments?: Array<any>;  // Fixed: Added <any> type argument
 }
-```
