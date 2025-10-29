@@ -4,7 +4,16 @@ import { useEffect, useState, useCallback } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Notification, User } from '@/app/types/database';
 
-interface NotificationWithRelations extends Notification {
+// Fix: Don't extend Notification, define the full interface
+interface NotificationWithRelations {
+  id: string;
+  user_id: string;
+  order_id?: string;
+  order_product_id?: string;
+  type: 'new_order' | 'product_update' | 'sample_ready' | 'approval_needed';
+  is_read: boolean;
+  message: string;
+  created_at: string;
   order?: {
     order_number: string;
   };
@@ -257,8 +266,8 @@ export function getNotificationMessage(notification: NotificationWithRelations):
 }
 
 // Helper to get notification icon
-export function getNotificationIcon(type: Notification['type']) {
-  const icons = {
+export function getNotificationIcon(type: string) {
+  const icons: Record<string, string> = {
     new_order: '📦',
     product_update: '🔄',
     sample_ready: '✅',
