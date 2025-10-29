@@ -161,8 +161,7 @@ export default function ReviewPage() {
       // Create notification
       await createNotification(
         'product_update',
-        `Item approved by ${currentUser.name || currentUser.email}`,
-        { order_product_id: orderProductId }
+        `Item approved by ${currentUser.name || currentUser.email}`
       );
     } catch (error) {
       console.error('Error approving item:', error);
@@ -194,8 +193,7 @@ export default function ReviewPage() {
       // Create notification with reason
       await createNotification(
         'product_update',
-        `Item rejected by ${currentUser.name || currentUser.email}: ${reason}`,
-        { order_product_id: orderProductId }
+        `Item rejected by ${currentUser.name || currentUser.email}: ${reason}`
       );
     } catch (error) {
       console.error('Error rejecting item:', error);
