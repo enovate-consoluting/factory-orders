@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "npm run use-dev && next dev --turbopack",
+    "dev:prod": "npm run use-prod && next dev --turbopack",
+    "use-dev": "copy .env.local.dev .env.local",
+    "use-prod": "copy .env.local.prod .env.local",
     "build": "next build --turbopack",
     "start": "next start"
   },

@@ -23,7 +23,6 @@ import {
 type Product = {
   id: string
   title: string
-  description: string
   created_at: string
 }
 
@@ -57,7 +56,6 @@ export default function ProductsPage() {
   // Modal states
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newProductTitle, setNewProductTitle] = useState('')
-  const [newProductDescription, setNewProductDescription] = useState('')
   const [newProductVariants, setNewProductVariants] = useState<string[]>([])
   
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
@@ -70,9 +68,6 @@ export default function ProductsPage() {
 
   // Notification state
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
-
-  // Expanded products for variant display
-  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -127,12 +122,11 @@ export default function ProductsPage() {
     }
     
     try {
-      // Create the product
+      // Create the product (NO DESCRIPTION FIELD)
       const { data: product, error: productError } = await supabase
         .from('products')
         .insert({
-          title: newProductTitle,
-          description: newProductDescription
+          title: newProductTitle
         })
         .select()
         .single()
@@ -170,12 +164,11 @@ export default function ProductsPage() {
     }
     
     try {
-      // Update the product
+      // Update the product (NO DESCRIPTION FIELD)
       const { error: updateError } = await supabase
         .from('products')
         .update({
-          title: editingProduct.title,
-          description: editingProduct.description
+          title: editingProduct.title
         })
         .eq('id', editingProduct.id)
       
@@ -248,7 +241,6 @@ export default function ProductsPage() {
 
   const resetForm = () => {
     setNewProductTitle('')
-    setNewProductDescription('')
     setNewProductVariants([])
   }
 
@@ -274,16 +266,6 @@ export default function ProductsPage() {
     }
   }
 
-  const toggleProductExpansion = (productId: string) => {
-    const newExpanded = new Set(expandedProducts)
-    if (newExpanded.has(productId)) {
-      newExpanded.delete(productId)
-    } else {
-      newExpanded.add(productId)
-    }
-    setExpandedProducts(newExpanded)
-  }
-
   const getProductVariants = (productId: string) => {
     const variants = productVariants.filter(pv => pv.product_id === productId)
     return variants.map(v => {
@@ -293,9 +275,27 @@ export default function ProductsPage() {
     }).filter(v => v.type && v.value)
   }
 
+  // Group variants by type for display
+  const getGroupedVariants = (productId: string) => {
+    const variants = getProductVariants(productId)
+    const grouped: { [key: string]: string[] } = {}
+    
+    variants.forEach(v => {
+      if (v.type) {
+        if (!grouped[v.type]) {
+          grouped[v.type] = []
+        }
+        if (v.value) {
+          grouped[v.type].push(v.value)
+        }
+      }
+    })
+    
+    return grouped
+  }
+
   const filteredProducts = products.filter(product =>
-    product.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    product.title.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const canManageProducts = () => {
@@ -339,7 +339,7 @@ export default function ProductsPage() {
               placeholder="Search products..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-medium placeholder-gray-400"
             />
           </div>
           <div className="flex gap-2">
@@ -387,8 +387,8 @@ export default function ProductsPage() {
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProducts.map(product => {
-            const variants = getProductVariants(product.id)
-            const isExpanded = expandedProducts.has(product.id)
+            const groupedVariants = getGroupedVariants(product.id)
+            const hasVariants = Object.keys(groupedVariants).length > 0
             
             return (
               <div key={product.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
@@ -422,47 +422,28 @@ export default function ProductsPage() {
                     )}
                   </div>
                   
-                  {product.description && (
-                    <p className="text-sm text-gray-600 mb-3">{product.description}</p>
-                  )}
-                  
-                  {variants.length > 0 && (
-                    <div>
-                      <button
-                        onClick={() => toggleProductExpansion(product.id)}
-                        className="flex items-center text-sm text-blue-600 hover:text-blue-700 mb-2"
-                      >
+                  {/* VARIANTS ALWAYS VISIBLE */}
+                  {hasVariants ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm text-gray-600 mb-2">
                         <Tag className="w-4 h-4 mr-1" />
-                        {variants.length} variant{variants.length !== 1 ? 's' : ''}
-                        {isExpanded ? (
-                          <ChevronUp className="w-4 h-4 ml-1" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 ml-1" />
-                        )}
-                      </button>
-                      
-                      {isExpanded && (
-                        <div className="space-y-1">
-                          {variantTypes.map(type => {
-                            const typeVariants = variants.filter(v => v.type === type.name)
-                            if (typeVariants.length === 0) return null
-                            
-                            return (
-                              <div key={type.id} className="bg-gray-50 rounded p-2">
-                                <span className="text-xs font-medium text-gray-700">{type.name}:</span>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {typeVariants.map((v, idx) => (
-                                    <span key={idx} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600">
-                                      {v.value}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )
-                          })}
+                        <span className="font-medium">Variants</span>
+                      </div>
+                      {Object.entries(groupedVariants).map(([typeName, values]) => (
+                        <div key={typeName} className="bg-gray-50 rounded p-2">
+                          <span className="text-xs font-medium text-gray-700">{typeName}:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {values.map((value, idx) => (
+                              <span key={idx} className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-600">
+                                {value}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">No variants assigned</p>
                   )}
                 </div>
               </div>
@@ -477,9 +458,6 @@ export default function ProductsPage() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Product
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">
-                    Description
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                     Variants
@@ -499,9 +477,6 @@ export default function ProductsPage() {
                     <tr key={product.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <div className="font-medium text-gray-900">{product.title}</div>
-                      </td>
-                      <td className="px-4 py-3 hidden sm:table-cell">
-                        <div className="text-sm text-gray-600">{product.description || '-'}</div>
                       </td>
                       <td className="px-4 py-3">
                         {variants.length > 0 ? (
@@ -557,9 +532,9 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal - FIXED: Using bg-black/50 for semi-transparent background */}
       {(showCreateForm || editingProduct) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
@@ -593,25 +568,9 @@ export default function ProductsPage() {
                         ? setEditingProduct({...editingProduct, title: e.target.value})
                         : setNewProductTitle(e.target.value)
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-medium placeholder-gray-400"
                       placeholder="Enter product title"
                       required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={editingProduct ? editingProduct.description : newProductDescription}
-                      onChange={(e) => editingProduct
-                        ? setEditingProduct({...editingProduct, description: e.target.value})
-                        : setNewProductDescription(e.target.value)
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-700"
-                      placeholder="Enter product description (optional)"
-                      rows={3}
                     />
                   </div>
 
@@ -710,9 +669,9 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal - ALSO FIXED with bg-black/50 */}
       {deleteModalOpen && productToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="mb-4">
               <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">

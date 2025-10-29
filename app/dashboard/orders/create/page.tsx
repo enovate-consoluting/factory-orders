@@ -293,13 +293,28 @@ export default function CreateOrderPage() {
     setOrderProducts(updated)
   }
 
-  const applyQuickFill = (productIndex: number) => {
+  const applyQuickFillToAll = () => {
     if (!quickFillQuantity) return
     
+    const totalQuantity = parseInt(quickFillQuantity) || 0
+    if (totalQuantity <= 0) return
+    
     const updated = [...orderProducts]
-    Object.keys(updated[productIndex].items).forEach(key => {
-      updated[productIndex].items[key].quantity = parseInt(quickFillQuantity) || 0
+    
+    // Apply to each product
+    updated.forEach(product => {
+      const variantCount = Object.keys(product.items).length
+      if (variantCount > 0) {
+        // Divide total quantity by number of variants, round down (no decimals)
+        const quantityPerVariant = Math.floor(totalQuantity / variantCount)
+        
+        // Apply to each variant
+        Object.keys(product.items).forEach(key => {
+          product.items[key].quantity = quantityPerVariant
+        })
+      }
     })
+    
     setOrderProducts(updated)
   }
 
@@ -604,32 +619,46 @@ export default function CreateOrderPage() {
                 </button>
               </div>
 
-              {/* Quick Fill */}
+              {/* Smart Quick Fill - Mobile Responsive */}
               {orderProducts.length > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                  <div className="flex items-center space-x-2">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                  <div className="flex flex-col gap-3">
+                    {/* Header */}
+                    <div className="flex items-center space-x-2">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-sm font-semibold text-gray-700 block">
+                          Smart Quick Fill
+                        </label>
+                        <p className="text-xs text-gray-600">Divides total equally across each product's variants</p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-semibold text-gray-700 block">
-                        Quick Fill Quantity
-                      </label>
-                      <p className="text-xs text-gray-600">Apply same quantity to all variants</p>
+                    
+                    {/* Input and Button - Responsive */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="number"
+                          value={quickFillQuantity}
+                          onChange={(e) => setQuickFillQuantity(e.target.value)}
+                          placeholder="Total units"
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          min="0"
+                        />
+                        <span className="text-sm text-gray-600 whitespace-nowrap">units</span>
+                      </div>
+                      <button
+                        onClick={applyQuickFillToAll}
+                        disabled={!quickFillQuantity || parseInt(quickFillQuantity) <= 0}
+                        className="w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-all duration-200 shadow-sm hover:shadow-md"
+                      >
+                        Apply to All
+                      </button>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="number"
-                      value={quickFillQuantity}
-                      onChange={(e) => setQuickFillQuantity(e.target.value)}
-                      placeholder="Enter quantity"
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-gray-700 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      min="0"
-                    />
-                    <span className="text-sm text-gray-600">units</span>
                   </div>
                 </div>
               )}
@@ -712,19 +741,6 @@ export default function CreateOrderPage() {
                         </p>
                       )}
                     </div>
-
-                    {quickFillQuantity && (
-                      <button
-                        onClick={() => applyQuickFill(productIndex)}
-                        className="mb-3 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2 text-sm font-medium shadow-sm hover:shadow-md"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M12 9v6" />
-                        </svg>
-                        <span>Apply Quick Fill ({quickFillQuantity} units)</span>
-                      </button>
-                    )}
 
                     <div className="space-y-2">
                       {Object.entries(orderProduct.items).map(([variantCombo, item]: any) => (

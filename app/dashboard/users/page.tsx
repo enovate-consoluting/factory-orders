@@ -20,12 +20,14 @@ import {
   Save,
   X,
   Search,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,7 +38,7 @@ export default function UsersPage() {
     name: '',
     email: '',
     password: '',
-    role: 'user' as UserRole,
+    role: 'order_creator' as UserRole,
     is_active: true
   });
 
@@ -49,19 +51,17 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      setLoading(true);
       console.log('Fetching users...');
-      
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Fetch error:', error);
+        console.error('Supabase error:', error);
         throw error;
       }
-      
+
       console.log('Fetched users:', data);
       setUsers(data || []);
     } catch (error) {
@@ -72,28 +72,27 @@ export default function UsersPage() {
     }
   };
 
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitting(true);
     
     try {
       if (editingUser) {
-        // Update existing user
-        const updateData: any = {
-          name: formData.name,
-          email: formData.email,
-          role: formData.role,
-          is_active: formData.is_active,
-          updated_at: new Date().toISOString()
-        };
-
-        // Only update password if provided
-        if (formData.password) {
-          updateData.password = formData.password; // In real app, hash this
-        }
-
+        // Update existing user (only in database, not auth)
         const { error } = await supabase
           .from('users')
-          .update(updateData)
+          .update({
+            name: formData.name,
+            email: formData.email,
+            role: formData.role,
+            is_active: formData.is_active,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', editingUser.id);
 
         if (error) throw error;
@@ -106,39 +105,61 @@ export default function UsersPage() {
 
         showNotification('success', 'User updated successfully');
       } else {
-        // Create new user
-        const { data, error } = await supabase
-          .from('users')
-          .insert([{
-            name: formData.name,
-            email: formData.email,
-            password: formData.password, // In real app, hash this
-            role: formData.role,
-            is_active: formData.is_active,
-            created_at: new Date().toISOString()
-          }])
-          .select()
-          .single();
+        // CREATE NEW USER - Using the new API route
+        console.log('Creating new user with Auth...');
+        
+        // Validate password length
+        if (formData.password.length < 6) {
+          showNotification('error', 'Password must be at least 6 characters');
+          setSubmitting(false);
+          return;
+        }
 
-        if (error) throw error;
-
-        // Log the action
-        await logUserAction('CREATE_USER', 'users', data.id, {
-          user_email: formData.email,
-          role: formData.role
+        // Call the API route to create user in both Auth and database
+        console.log('Calling API with data:', {
+          email: formData.email,
+          name: formData.name,
+          role: formData.role,
         });
 
-        showNotification('success', 'User created successfully');
+        const response = await fetch('/api/admin/users/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            name: formData.name,
+            role: formData.role,
+            is_active: formData.is_active
+          })
+        });
+
+        // Check if we got HTML instead of JSON (404 error)
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          console.error('API route not found or returning HTML. Check that app/api/admin/users/create/route.ts exists');
+          throw new Error('API route not found. Please check the server configuration.');
+        }
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to create user');
+        }
+
+        console.log('User created successfully:', result);
+        showNotification('success', 'User created successfully! They can now login with their email and password.');
       }
 
       fetchUsers();
       closeModal();
     } catch (error: any) {
       console.error('Error saving user - Full error:', error);
-      console.error('Error message:', error?.message);
-      console.error('Error details:', error?.details);
-      console.error('Error hint:', error?.hint);
       showNotification('error', error?.message || 'Failed to save user - check console for details');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -198,28 +219,24 @@ export default function UsersPage() {
     }
   };
 
-  const logUserAction = async (action: string, targetType: string, targetId: string, details: any) => {
+  const logUserAction = async (actionType: string, targetType: string, targetId: string, details: any) => {
     try {
-      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+      // Get current user from localStorage (if you're using that for auth)
+      const currentUserStr = localStorage.getItem('currentUser');
+      const currentUser = currentUserStr ? JSON.parse(currentUserStr) : { email: 'system', name: 'System' };
       
-      if (!currentUser.id) {
-        console.error('No current user found for audit log');
-        return;
-      }
-
-      const { error } = await supabase.from('audit_log').insert([{
-        user_id: currentUser.id,
-        user_name: currentUser.name,
-        action_type: action,
-        target_type: targetType,
-        target_id: targetId,
-        new_value: JSON.stringify(details),
-        timestamp: new Date().toISOString()
-      }]);
-
-      if (error) {
-        console.error('Audit log error:', error);
-      }
+      await supabase
+        .from('audit_log')
+        .insert({
+          user_id: currentUser.id || 'system',
+          user_name: currentUser.name || 'System',
+          action_type: actionType,
+          target_type: targetType,
+          target_id: targetId,
+          old_value: null,
+          new_value: JSON.stringify(details),
+          timestamp: new Date().toISOString()
+        });
     } catch (error) {
       console.error('Error logging action:', error);
     }
@@ -231,9 +248,9 @@ export default function UsersPage() {
       setFormData({
         name: user.name,
         email: user.email,
-        password: '',
-        role: user.role as UserRole,
-        is_active: user.is_active ?? true
+        password: '', // Don't populate password when editing
+        role: user.role,
+        is_active: user.is_active ?? true  // FIX: Use nullish coalescing to provide default value
       });
     } else {
       setEditingUser(null);
@@ -241,7 +258,7 @@ export default function UsersPage() {
         name: '',
         email: '',
         password: '',
-        role: 'user',
+        role: 'order_creator' as UserRole,
         is_active: true
       });
     }
@@ -255,16 +272,12 @@ export default function UsersPage() {
       name: '',
       email: '',
       password: '',
-      role: 'user',
+      role: 'order_creator' as UserRole,
       is_active: true
     });
   };
 
-  const showNotification = (type: 'success' | 'error', message: string) => {
-    setNotification({ type, message });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
+  // Filter users based on search and role
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -272,352 +285,366 @@ export default function UsersPage() {
     return matchesSearch && matchesRole;
   });
 
-  const getRoleBadge = (role: string) => {
-    const roleConfig = {
-      super_admin: { bg: 'bg-purple-100', text: 'text-purple-700', icon: Shield },
-      admin: { bg: 'bg-blue-100', text: 'text-blue-700', icon: Shield },
-      user: { bg: 'bg-gray-100', text: 'text-gray-700', icon: UserIcon },
-      order_creator: { bg: 'bg-green-100', text: 'text-green-700', icon: UserIcon },
-      order_approver: { bg: 'bg-orange-100', text: 'text-orange-700', icon: UserIcon },
-      manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: UserIcon }
+  const getRoleColor = (role: string) => {
+    const colors = {
+      super_admin: 'bg-purple-100 text-purple-800',
+      admin: 'bg-red-100 text-red-800',
+      order_approver: 'bg-blue-100 text-blue-800',
+      order_creator: 'bg-green-100 text-green-800',
+      manufacturer: 'bg-orange-100 text-orange-800',
+      client: 'bg-indigo-100 text-indigo-800',
+      user: 'bg-gray-100 text-gray-800'
     };
-
-    const config = roleConfig[role as keyof typeof roleConfig] || roleConfig.user;
-    const Icon = config.icon;
-
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
-        <Icon className="w-3 h-3" />
-        {role.replace('_', ' ').toUpperCase()}
-      </span>
-    );
+    return colors[role as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
-  const getStatusBadge = (isActive: boolean) => {
-    return (
-      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-        isActive 
-          ? 'bg-green-100 text-green-700' 
-          : 'bg-red-100 text-red-700'
-      }`}>
-        {isActive ? 'Active' : 'Inactive'}
-      </span>
-    );
+  const formatRole = (role: string) => {
+    return role.split('_').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+    <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">User Management</h1>
-        <p className="text-gray-600 mt-1">Manage system users and their roles</p>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">User Management</h1>
+        <p className="text-gray-600">Manage system users and their roles</p>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <UserIcon className="h-10 w-10 text-blue-600" />
+            <div className="ml-4">
+              <p className="text-sm text-gray-500">Total Users</p>
+              <p className="text-2xl font-bold text-gray-900">{users.length}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <Shield className="h-10 w-10 text-purple-600" />
+            <div className="ml-4">
+              <p className="text-sm text-gray-500">Admins</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {users.filter(u => u.role === 'admin' || u.role === 'super_admin').length}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <UserIcon className="h-10 w-10 text-green-600" />
+            <div className="ml-4">
+              <p className="text-sm text-gray-500">Active Users</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {users.filter(u => u.is_active).length}
+              </p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <Calendar className="h-10 w-10 text-orange-600" />
+            <div className="ml-4">
+              <p className="text-sm text-gray-500">This Month</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {users.filter(u => {
+                  const created = new Date(u.created_at);
+                  const now = new Date();
+                  return created.getMonth() === now.getMonth() && 
+                         created.getFullYear() === now.getFullYear();
+                }).length}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Actions Bar */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4 justify-between">
-          {/* Search and Filter */}
-          <div className="flex flex-col sm:flex-row gap-3 flex-1">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search users..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500"
-              />
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-4 border-b">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-col md:flex-row gap-4 flex-1">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <select
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value)}
+                  className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none bg-white"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="admin">Admin</option>
+                  <option value="order_approver">Order Approver</option>
+                  <option value="order_creator">Order Creator</option>
+                  <option value="manufacturer">Manufacturer</option>
+                  <option value="client">Client</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
             </div>
-            <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="px-4 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            
+            <button
+              onClick={() => openModal()}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
             >
-              <option value="all">All Roles</option>
-              <option value="super_admin">Super Admin</option>
-              <option value="admin">Admin</option>
-              <option value="user">User</option>
-              <option value="order_creator">Order Creator</option>
-              <option value="order_approver">Order Approver</option>
-              <option value="manufacturer">Manufacturer</option>
-            </select>
+              <UserPlus className="h-5 w-5" />
+              Add User
+            </button>
           </div>
-
-          {/* Add User Button */}
-          <button
-            onClick={() => openModal()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <UserPlus className="w-5 h-5" />
-            <span>Add User</span>
-          </button>
         </div>
-      </div>
 
-      {/* Users Table/Cards */}
-      {loading ? (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-          <div className="text-center text-gray-500">Loading users...</div>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {/* Desktop Table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-gray-200 rounded-full flex items-center justify-center">
-                          <UserIcon className="w-5 h-5 text-gray-500" />
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                          <div className="text-sm text-gray-500">{user.email}</div>
-                        </div>
+        {/* Users Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  User
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Role
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Created
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <span className="text-blue-600 font-medium text-sm">
+                          {user.name.charAt(0).toUpperCase()}
+                        </span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getRoleBadge(user.role)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(user.is_active ?? true)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleToggleActive(user)}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            user.is_active 
-                              ? 'text-orange-600 hover:bg-orange-50' 
-                              : 'text-green-600 hover:bg-green-50'
-                          }`}
-                          title={user.is_active ? 'Deactivate' : 'Activate'}
-                        >
-                          <Key className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => openModal(user)}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user)}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                      <div className="ml-4">
+                        <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                        <div className="text-sm text-gray-500">{user.email}</div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile Cards */}
-          <div className="md:hidden divide-y divide-gray-200">
-            {filteredUsers.map((user) => (
-              <div key={user.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-gray-200 rounded-full flex items-center justify-center">
-                      <UserIcon className="w-5 h-5 text-gray-500" />
                     </div>
-                    <div>
-                      <div className="font-medium text-gray-900">{user.name}</div>
-                      <div className="text-sm text-gray-500">{user.email}</div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2 mb-3">
-                  {getRoleBadge(user.role)}
-                  {getStatusBadge(user.is_active ?? true)}
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">
-                    Created {new Date(user.created_at).toLocaleDateString()}
-                  </span>
-                  <div className="flex items-center gap-2">
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getRoleColor(user.role)}`}>
+                      {formatRole(user.role)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <button
                       onClick={() => handleToggleActive(user)}
-                      className={`p-1.5 rounded-lg transition-colors ${
+                      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                         user.is_active 
-                          ? 'text-orange-600 hover:bg-orange-50' 
-                          : 'text-green-600 hover:bg-green-50'
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
                       }`}
                     >
-                      <Key className="w-4 h-4" />
+                      {user.is_active ? 'Active' : 'Inactive'}
                     </button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {new Date(user.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <button
                       onClick={() => openModal(user)}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className="text-blue-600 hover:text-blue-900 mr-4"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="h-4 w-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(user)}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="text-red-600 hover:text-red-900"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
           {filteredUsers.length === 0 && (
-            <div className="p-8 text-center text-gray-500">
-              No users found
+            <div className="text-center py-12">
+              <UserIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-500">No users found</p>
             </div>
           )}
         </div>
-      )}
-
-      {/* User Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                {editingUser ? 'Edit User' : 'Add New User'}
-              </h2>
-            </div>
-            
-            <div className="p-4 sm:p-6">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500"
-                    placeholder="Enter user's full name"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500"
-                    placeholder="user@example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password {editingUser && '(leave blank to keep current)'}
-                  </label>
-                  <input
-                    type="password"
-                    required={!editingUser}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500"
-                    placeholder="Enter password"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
-                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                    <option value="super_admin">Super Admin</option>
-                    <option value="order_creator">Order Creator</option>
-                    <option value="order_approver">Order Approver</option>
-                    <option value="manufacturer">Manufacturer</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.is_active}
-                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">Active</span>
-                  </label>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    <Save className="w-4 h-4" />
-                    {editingUser ? 'Update User' : 'Create User'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
-                  >
-                    <X className="w-4 h-4" />
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 ${
-          notification.type === 'success' 
-            ? 'bg-green-500 text-white' 
-            : 'bg-red-500 text-white'
-        }`}>
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg ${
+          notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+        } text-white z-50 max-w-md`}>
           {notification.message}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900">
+                {editingUser ? 'Edit User' : 'Add New User'}
+              </h2>
+              <button
+                onClick={closeModal}
+                className="text-gray-400 hover:text-gray-600"
+                disabled={submitting}
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="John Doe"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="user@example.com"
+                  disabled={submitting}
+                />
+              </div>
+
+              {!editingUser && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={formData.password}
+                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Minimum 6 characters"
+                    disabled={submitting}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    User will be able to login immediately with this password
+                  </p>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Role
+                </label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  disabled={submitting}
+                >
+                  <option value="order_creator">Order Creator</option>
+                  <option value="order_approver">Order Approver</option>
+                  <option value="manufacturer">Manufacturer</option>
+                  <option value="client">Client</option>
+                  <option value="admin">Admin</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="user">User</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
+                    className="mr-2 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    disabled={submitting}
+                  />
+                  <span className="text-sm font-medium text-gray-700">Active</span>
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 font-medium"
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {editingUser ? 'Updating...' : 'Creating...'}
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      {editingUser ? 'Update' : 'Create'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

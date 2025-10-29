@@ -222,25 +222,13 @@ export default function LoginPage() {
               }}
               className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
             >
-              {isSignUp 
+     {isSignUp 
                 ? 'Already have an account? Sign in' 
                 : "Don't have an account? Sign up"
               }
             </button>
           </div>
         </form>
-
-        {!isSignUp && (
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-xs font-medium text-gray-700 mb-2">Test Accounts:</p>
-            <ul className="text-xs text-gray-600 space-y-1">
-              <li>• admin@test.com (Super Admin)</li>
-              <li>• man@test.com (Manufacturer)</li>
-              <li>• client@test.com (Client)</li>
-              <li>• creator@test.com (Order Creator)</li>
-            </ul>
-          </div>
-        )}
       </div>
     </div>
   );
