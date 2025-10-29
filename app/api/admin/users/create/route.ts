@@ -1,35 +1,45 @@
-// app/api/admin/users/create/route.ts
-// API route for creating users in both Supabase Auth and database
-
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-// Initialize Supabase with service role key for admin operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password, name, role, is_active = true } = body;
+    // Get environment variables at runtime, not build time
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // Validate input
-    if (!email || !password || !name || !role) {
+    // Check if environment variables are available
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing environment variables:', {
+        hasUrl: !!supabaseUrl,
+        hasServiceKey: !!supabaseServiceKey
+      });
+      
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Server configuration error. Please check environment variables.' },
+        { status: 500 }
+      );
+    }
+
+    // Initialize Supabase Admin client only when the function is called
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+
+    // Parse request body
+    const { email, password, name, role, is_active } = await request.json();
+
+    // Validate required fields
+    if (!email || !password || !name) {
+      return NextResponse.json(
+        { error: 'Email, password, and name are required' },
         { status: 400 }
       );
     }
 
-    // Validate password length (Supabase requires minimum 6 characters)
+    // Validate password length
     if (password.length < 6) {
       return NextResponse.json(
         { error: 'Password must be at least 6 characters' },
@@ -37,49 +47,58 @@ export async function POST(request: Request) {
       );
     }
 
-    // Step 1: Create user in Supabase Auth with auto-confirm
+    console.log('Creating user in Auth with email:', email);
+
+    // Step 1: Create user in Supabase Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true, // Auto-confirm so they can login immediately
+      email: email,
+      password: password,
+      email_confirm: true, // Auto-confirm email
       user_metadata: {
-        name,
-        role
+        name: name,
+        role: role
       }
     });
 
     if (authError) {
-      console.error('Auth error:', authError);
+      console.error('Auth creation error:', authError);
+      
+      // Handle specific error cases
+      if (authError.message?.includes('already registered')) {
+        return NextResponse.json(
+          { error: 'A user with this email already exists' },
+          { status: 409 }
+        );
+      }
+      
       return NextResponse.json(
-        { error: authError.message },
+        { error: authError.message || 'Failed to create user in authentication system' },
         { status: 400 }
       );
     }
 
-    if (!authData.user) {
-      return NextResponse.json(
-        { error: 'User creation failed' },
-        { status: 500 }
-      );
-    }
+    console.log('Auth user created successfully:', authData.user?.id);
 
-    // Step 2: Create user record in your users table
-    const { error: dbError } = await supabaseAdmin
+    // Step 2: Create user record in the database
+    const { data: dbData, error: dbError } = await supabaseAdmin
       .from('users')
       .insert({
-        id: authData.user.id, // Use the same ID from Auth
-        email,
-        name,
-        role,
-        is_active,
-        created_at: new Date().toISOString()
-      });
+        id: authData.user!.id,
+        email: email,
+        name: name,
+        role: role || 'order_creator',
+        is_active: is_active !== undefined ? is_active : true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
 
     if (dbError) {
-      console.error('Database error:', dbError);
+      console.error('Database creation error:', dbError);
       
-      // If database insert fails, delete the auth user to keep things in sync
-      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      // If database insert fails, try to clean up the auth user
+      await supabaseAdmin.auth.admin.deleteUser(authData.user!.id);
       
       return NextResponse.json(
         { error: 'Failed to create user record in database' },
@@ -87,42 +106,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Log the action (if you have audit logging)
-    try {
-      const currentUser = { email: 'system', name: 'System' }; // Since this is admin action
-      await supabaseAdmin
-        .from('audit_log')
-        .insert({
-          user_id: authData.user.id,
-          user_name: currentUser.name,
-          action_type: 'CREATE_USER',
-          target_type: 'users',
-          target_id: authData.user.id,
-          old_value: null,
-          new_value: JSON.stringify({ email, name, role }),
-          timestamp: new Date().toISOString()
-        });
-    } catch (logError) {
-      // Don't fail if logging fails
-      console.error('Audit log error:', logError);
-    }
+    console.log('User created successfully in both Auth and Database');
 
     return NextResponse.json({
       success: true,
       user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        name,
-        role,
-        is_active
-      },
-      message: 'User created successfully and can login immediately'
+        id: dbData.id,
+        email: dbData.email,
+        name: dbData.name,
+        role: dbData.role
+      }
     });
 
-  } catch (error: any) {
-    console.error('User creation error:', error);
+  } catch (error) {
+    console.error('Unexpected error in create user API:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     );
   }
