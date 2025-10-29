@@ -2,64 +2,63 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { 
-  Package,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Eye,
-  MessageSquare,
-  ThumbsUp,
-  ThumbsDown,
-  AlertCircle,
-  Calendar
-} from 'lucide-react';
-import { Order, OrderProduct, User } from '@/app/types/database';
-import { OrderStatusBadge, ProductStatusBadge } from '@/app/components/StatusBadge';
+import { CheckCircle, XCircle, Clock, AlertCircle, ArrowLeft, Package, User, Building2, Calendar, Eye, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Order, OrderProduct, Product, Client, Manufacturer } from '@/app/types/database';
+import { OrderStatusBadge } from '@/app/components/StatusBadge';
 import { createNotification } from '@/app/hooks/useNotifications';
 
-interface OrderWithDetails extends Order {
+// Fix: Don't extend Order, define the full interface
+interface OrderWithDetails {
+  id: string;
+  order_number: string;
+  client_id: string;
+  manufacturer_id: string;
+  status: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
   client?: { name: string; email: string };
   manufacturer?: { name: string; email: string };
   products?: OrderProduct[];
 }
 
-export default function ClientReviewPage() {
+interface OrderItem {
+  id: string;
+  order_product_id: string;
+  variant_combo: string;
+  quantity: number;
+  notes?: string;
+  admin_status: 'pending' | 'approved' | 'rejected';
+  manufacturer_status: 'pending' | 'approved' | 'rejected';
+  created_at: string;
+}
+
+export default function ReviewPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
   
   const [orders, setOrders] = useState<OrderWithDetails[]>([]);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [orderItems, setOrderItems] = useState<{ [key: string]: OrderItem[] }>({});
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
-  const [approvalNotes, setApprovalNotes] = useState<{ [key: string]: string }>({});
-  const [processingApproval, setProcessingApproval] = useState(false);
+  const [processing, setProcessing] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const user = JSON.parse(userData);
-      setCurrentUser(user);
-      
-      // Only allow client users to access this page
-      if (user.role !== 'client') {
-        router.push('/dashboard/orders');
-        return;
-      }
-    } else {
+    const userStr = localStorage.getItem('currentUser');
+    if (!userStr) {
       router.push('/');
       return;
     }
-    
-    fetchClientOrders();
+    const user = JSON.parse(userStr);
+    setCurrentUser(user);
+    fetchOrdersForReview(user);
   }, []);
 
-  const fetchClientOrders = async () => {
+  const fetchOrdersForReview = async (user: any) => {
     try {
-      // Fetch orders that are submitted to client or require client approval
-      const { data, error } = await supabase
+      let query = supabase
         .from('orders')
         .select(`
           *,
@@ -68,340 +67,337 @@ export default function ClientReviewPage() {
           products:order_products(
             id,
             product_id,
-            product_order_number,
             product_status,
             requires_client_approval,
-            requires_sample,
-            admin_notes,
-            sample_eta,
-            full_order_eta,
-            product:products(title, description),
-            items:order_items(
-              id,
-              variant_combo,
-              quantity
-            )
+            product:products(id, title)
           )
-        `)
-        .in('status', [
-          'submitted_to_client',
-          'client_reviewed',
-          'approved_by_client'
-        ])
-        .order('created_at', { ascending: false });
+        `);
+
+      // Filter based on user role
+      if (user.role === 'client') {
+        // Clients see orders submitted to them
+        query = query.eq('client_id', user.id)
+                    .eq('status', 'submitted_to_client');
+      } else if (user.role === 'manufacturer') {
+        // Manufacturers see orders submitted to them
+        query = query.eq('manufacturer_id', user.id)
+                    .in('status', ['submitted_to_manufacturer', 'submitted_for_sample']);
+      } else if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'order_approver') {
+        // Admins see all orders needing review
+        query = query.in('status', ['submitted', 'manufacturer_processed', 'client_reviewed']);
+      } else {
+        // Other roles don't have review access
+        setOrders([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Filter products that need client approval
-      const ordersWithClientProducts = data?.map(order => ({
-        ...order,
-        products: order.products?.filter((p: OrderProduct) => 
-          p.requires_client_approval || p.product_status === 'client_review'
-        )
-      })).filter(order => order.products && order.products.length > 0);
 
-      setOrders(ordersWithClientProducts || []);
+      setOrders(data || []);
+
+      // Fetch items for each order product
+      for (const order of (data || [])) {
+        for (const product of (order.products || [])) {
+          await fetchOrderItems(product.id);
+        }
+      }
     } catch (error) {
-      console.error('Error fetching client orders:', error);
+      console.error('Error fetching orders for review:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleProductApproval = async (orderId: string, productId: string, approved: boolean) => {
-    setProcessingApproval(true);
-    const notes = approvalNotes[productId] || '';
-
+  const fetchOrderItems = async (orderProductId: string) => {
     try {
-      // Update product status
-      const newStatus = approved ? 'client_approved' : 'client_review';
-      
-      const { error: productError } = await supabase
-        .from('order_products')
-        .update({
-          product_status: newStatus,
-          admin_notes: notes ? 
-            `Client ${approved ? 'approved' : 'rejected'}: ${notes}` : 
-            null
-        })
-        .eq('id', productId);
+      const { data, error } = await supabase
+        .from('order_items')
+        .select('*')
+        .eq('order_product_id', orderProductId);
 
-      if (productError) throw productError;
+      if (error) throw error;
 
-      // Get order details for notification
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('created_by, manufacturer_id')
-        .eq('id', orderId)
-        .single();
-
-      if (orderData) {
-        // Notify admin
-        await createNotification(supabase, {
-          user_id: orderData.created_by,
-          order_id: orderId,
-          order_product_id: productId,
-          type: approved ? 'product_update' : 'approval_needed',
-          message: approved ? 
-            `Client approved product` : 
-            `Client requested changes to product`
-        });
-
-        // If approved, also notify manufacturer
-        if (approved && orderData.manufacturer_id) {
-          await createNotification(supabase, {
-            user_id: orderData.manufacturer_id,
-            order_id: orderId,
-            order_product_id: productId,
-            type: 'product_update',
-            message: `Product approved by client and ready for production`
-          });
-        }
-      }
-
-      // Check if all products in order are approved
-      const { data: allProducts } = await supabase
-        .from('order_products')
-        .select('product_status')
-        .eq('order_id', orderId);
-
-      const allApproved = allProducts?.every(p => 
-        p.product_status === 'client_approved' || 
-        p.product_status === 'approved' ||
-        p.product_status === 'in_production'
-      );
-
-      if (allApproved) {
-        // Update order status if all products approved
-        await supabase
-          .from('orders')
-          .update({ status: 'approved_by_client' })
-          .eq('id', orderId);
-      }
-
-      alert(approved ? 'Product approved successfully' : 'Feedback sent to admin');
-      setApprovalNotes(prev => ({ ...prev, [productId]: '' }));
-      await fetchClientOrders();
+      setOrderItems(prev => ({
+        ...prev,
+        [orderProductId]: data || []
+      }));
     } catch (error) {
-      console.error('Error processing approval:', error);
-      alert('Failed to process approval');
-    } finally {
-      setProcessingApproval(false);
+      console.error('Error fetching order items:', error);
     }
   };
 
-  const updateNote = (productId: string, value: string) => {
-    setApprovalNotes(prev => ({ ...prev, [productId]: value }));
+  const toggleOrderExpansion = (orderId: string) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
   };
 
-  const renderProductForApproval = (order: OrderWithDetails, product: OrderProduct) => {
-    const needsApproval = product.product_status === 'client_review';
-    const isApproved = product.product_status === 'client_approved';
-    const note = approvalNotes[product.id] || '';
+  const handleApproveItem = async (itemId: string, orderProductId: string) => {
+    setProcessing(itemId);
+    try {
+      const updateField = currentUser.role === 'manufacturer' 
+        ? { manufacturer_status: 'approved' }
+        : { admin_status: 'approved' };
 
-    return (
-      <div key={product.id} className="border border-slate-700 rounded-lg p-4 mb-4">
-        <div className="flex justify-between items-start mb-3">
-          <div>
-            <h4 className="font-medium text-white">{product.product?.title}</h4>
-            <p className="text-sm text-slate-400">
-              {product.product?.description}
-            </p>
-            <p className="text-xs text-slate-500 mt-1">
-              Product Code: {product.product_order_number}
-            </p>
-          </div>
-          <ProductStatusBadge status={product.product_status} />
-        </div>
+      const { error } = await supabase
+        .from('order_items')
+        .update(updateField)
+        .eq('id', itemId);
 
-        {/* Timeline Information (No pricing shown) */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          {product.requires_sample && product.sample_eta && (
-            <div className="bg-slate-800/50 rounded p-3">
-              <h5 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                Sample Timeline
-              </h5>
-              <div className="text-sm text-white">
-                Expected: {new Date(product.sample_eta).toLocaleDateString()}
-              </div>
-            </div>
-          )}
-          
-          {product.full_order_eta && (
-            <div className="bg-slate-800/50 rounded p-3">
-              <h5 className="text-xs font-medium text-slate-400 mb-2 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                Production Timeline
-              </h5>
-              <div className="text-sm text-white">
-                Expected: {new Date(product.full_order_eta).toLocaleDateString()}
-              </div>
-            </div>
-          )}
-        </div>
+      if (error) throw error;
 
-        {/* Variant Quantities */}
-        {product.items && product.items.length > 0 && (
-          <div className="mb-4">
-            <h5 className="text-xs font-medium text-slate-400 mb-2">Variants & Quantities</h5>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {product.items.map((item: any) => (
-                <div key={item.id} className="flex justify-between text-xs bg-slate-800/30 p-2 rounded">
-                  <span className="text-white">{item.variant_combo}</span>
-                  <span className="text-slate-400">Qty: {item.quantity}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Admin Notes Only (No manufacturer notes shown) */}
-        {product.admin_notes && !product.admin_notes.startsWith('Client') && (
-          <div className="bg-blue-950/20 border border-blue-800 rounded p-3 mb-4">
-            <p className="text-xs font-medium text-blue-400 mb-1">Notes from Admin</p>
-            <p className="text-sm text-white">{product.admin_notes}</p>
-          </div>
-        )}
-
-        {/* Sample Required Indicator */}
-        {product.requires_sample && (
-          <div className="bg-yellow-950/20 border border-yellow-800 rounded p-3 mb-4">
-            <div className="flex items-center gap-2 text-yellow-400">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">Sample will be provided for approval before production</span>
-            </div>
-          </div>
-        )}
-
-        {/* Approval Actions */}
-        {needsApproval && (
-          <div className="space-y-3">
-            <textarea
-              value={note}
-              onChange={(e) => updateNote(product.id, e.target.value)}
-              placeholder="Add any notes or feedback (optional for approval, required for changes)..."
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
-              rows={2}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleProductApproval(order.id, product.id, true)}
-                disabled={processingApproval}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-700 text-white rounded transition-colors"
-              >
-                <ThumbsUp className="w-4 h-4" />
-                Approve Product
-              </button>
-              <button
-                onClick={() => handleProductApproval(order.id, product.id, false)}
-                disabled={processingApproval || !note}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white rounded transition-colors"
-              >
-                <ThumbsDown className="w-4 h-4" />
-                Request Changes
-              </button>
-            </div>
-            {!note && (
-              <p className="text-xs text-yellow-500 text-center">
-                Note: Feedback is required when requesting changes
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Already Approved */}
-        {isApproved && (
-          <div className="bg-green-950/20 border border-green-800 rounded p-3">
-            <div className="flex items-center gap-2 text-green-400">
-              <CheckCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">Product Approved</span>
-            </div>
-            <p className="text-xs text-green-400/80 mt-1">
-              This product has been approved and will proceed with production
-            </p>
-          </div>
-        )}
-      </div>
-    );
+      // Refresh items
+      await fetchOrderItems(orderProductId);
+      
+      // Create notification
+      await createNotification({
+        type: 'product_update',
+        message: `Item approved by ${currentUser.name || currentUser.email}`,
+        order_product_id: orderProductId
+      });
+    } catch (error) {
+      console.error('Error approving item:', error);
+    } finally {
+      setProcessing(null);
+    }
   };
+
+  const handleRejectItem = async (itemId: string, orderProductId: string) => {
+    const reason = prompt('Please provide a reason for rejection:');
+    if (!reason) return;
+
+    setProcessing(itemId);
+    try {
+      const updateField = currentUser.role === 'manufacturer' 
+        ? { manufacturer_status: 'rejected' }
+        : { admin_status: 'rejected' };
+
+      const { error } = await supabase
+        .from('order_items')
+        .update(updateField)
+        .eq('id', itemId);
+
+      if (error) throw error;
+
+      // Refresh items
+      await fetchOrderItems(orderProductId);
+      
+      // Create notification with reason
+      await createNotification({
+        type: 'product_update',
+        message: `Item rejected by ${currentUser.name || currentUser.email}: ${reason}`,
+        order_product_id: orderProductId
+      });
+    } catch (error) {
+      console.error('Error rejecting item:', error);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'rejected':
+        return <XCircle className="w-4 h-4 text-red-500" />;
+      case 'pending':
+        return <Clock className="w-4 h-4 text-yellow-500" />;
+      default:
+        return <AlertCircle className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const canApproveItems = currentUser?.role === 'super_admin' || 
+                         currentUser?.role === 'admin' || 
+                         currentUser?.role === 'order_approver' ||
+                         currentUser?.role === 'manufacturer' ||
+                         currentUser?.role === 'client';
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-white">Loading orders for review...</div>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="mb-6">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </button>
+        </div>
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-lg font-medium text-gray-900 mb-2">No Orders to Review</h2>
+          <p className="text-gray-500">There are no orders requiring your review at this time.</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      {/* Header */}
+    <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-white">Product Approval</h1>
-        <p className="text-slate-400 mt-1">
-          Review and approve product specifications before production
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Review Orders</h1>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        </div>
+        <p className="text-gray-600 mt-2">
+          {currentUser?.role === 'client' && 'Review and approve orders from manufacturers'}
+          {currentUser?.role === 'manufacturer' && 'Review order details and set pricing'}
+          {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && 'Review and approve pending orders'}
         </p>
       </div>
 
-      {/* Info Banner */}
-      <div className="bg-blue-950/20 border border-blue-800 rounded-lg p-4 mb-6">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" />
-          <div className="text-sm text-blue-300">
-            <p className="font-medium mb-1">Review Guidelines:</p>
-            <ul className="list-disc list-inside space-y-1 text-blue-300/80">
-              <li>Review product specifications and quantities</li>
-              <li>Check expected delivery timelines</li>
-              <li>Approve products to proceed with manufacturing</li>
-              <li>Request changes if modifications are needed</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* Orders List */}
-      {orders.length === 0 ? (
-        <div className="bg-slate-800 rounded-lg p-8 text-center">
-          <Package className="w-12 h-12 text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-400">No products pending your review</p>
-          <p className="text-sm text-slate-500 mt-2">
-            You'll be notified when products need your approval
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {orders.map((order) => (
-            <div key={order.id} className="bg-slate-800 rounded-lg p-6">
+      <div className="space-y-6">
+        {orders.map(order => {
+          const isExpanded = expandedOrders.has(order.id);
+          
+          return (
+            <div key={order.id} className="bg-white rounded-lg shadow">
               {/* Order Header */}
-              <div className="flex justify-between items-start mb-4 pb-4 border-b border-slate-700">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">
-                    Order: {order.order_number}
-                  </h3>
-                  <div className="flex items-center gap-4 mt-2 text-sm text-slate-400">
-                    <span>Manufacturer: {order.manufacturer?.name}</span>
-                    <span>•</span>
-                    <span>Submitted: {new Date(order.created_at).toLocaleDateString()}</span>
+              <div 
+                className="p-6 cursor-pointer hover:bg-gray-50"
+                onClick={() => toggleOrderExpansion(order.id)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-semibold text-gray-900">
+                          {order.order_number}
+                        </h2>
+                        <OrderStatusBadge status={order.status as any} />
+                      </div>
+                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
+                        <span className="flex items-center gap-1">
+                          <User className="w-4 h-4" />
+                          {order.client?.name}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Building2 className="w-4 h-4" />
+                          {order.manufacturer?.name}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(order.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/dashboard/orders/${order.id}`);
+                      }}
+                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                    >
+                      <Eye className="w-5 h-5" />
+                    </button>
+                    {isExpanded ? (
+                      <ChevronUp className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-gray-400" />
+                    )}
                   </div>
                 </div>
-                <OrderStatusBadge status={order.status} />
               </div>
 
-              {/* Products for Review */}
-              <div className="space-y-4">
-                <h4 className="font-medium text-white flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Products for Approval ({order.products?.length || 0})
-                </h4>
-                {order.products?.map((product) => 
-                  renderProductForApproval(order, product)
-                )}
-              </div>
+              {/* Order Products - Expandable */}
+              {isExpanded && (
+                <div className="border-t px-6 py-4 bg-gray-50">
+                  <h3 className="font-medium text-gray-900 mb-4">Products for Review</h3>
+                  <div className="space-y-4">
+                    {order.products?.map(product => {
+                      const items = orderItems[product.id] || [];
+                      
+                      return (
+                        <div key={product.id} className="bg-white rounded-lg p-4">
+                          <h4 className="font-medium text-gray-900 mb-3">
+                            {(product as any).product?.title || 'Product'}
+                          </h4>
+                          <div className="space-y-2">
+                            {items.map(item => {
+                              const status = currentUser?.role === 'manufacturer' 
+                                ? item.manufacturer_status 
+                                : item.admin_status;
+                              
+                              return (
+                                <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                                  <div className="flex items-center gap-3">
+                                    {getStatusIcon(status)}
+                                    <div>
+                                      <div className="font-medium">{item.variant_combo}</div>
+                                      <div className="text-sm text-gray-600">
+                                        Quantity: {item.quantity}
+                                        {item.notes && ` • Notes: ${item.notes}`}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {canApproveItems && status === 'pending' && (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() => handleApproveItem(item.id, product.id)}
+                                        disabled={processing === item.id}
+                                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
+                                      >
+                                        {processing === item.id ? 'Processing...' : 'Approve'}
+                                      </button>
+                                      <button
+                                        onClick={() => handleRejectItem(item.id, product.id)}
+                                        disabled={processing === item.id}
+                                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                                      >
+                                        Reject
+                                      </button>
+                                    </div>
+                                  )}
+                                  {status !== 'pending' && (
+                                    <span className={`px-3 py-1 rounded text-sm font-medium ${
+                                      status === 'approved' 
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-red-100 text-red-700'
+                                    }`}>
+                                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
