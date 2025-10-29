@@ -159,11 +159,11 @@ export default function ReviewPage() {
       await fetchOrderItems(orderProductId);
       
       // Create notification
-      await createNotification({
-        type: 'product_update',
-        message: `Item approved by ${currentUser.name || currentUser.email}`,
-        order_product_id: orderProductId
-      });
+      await createNotification(
+        'product_update',
+        `Item approved by ${currentUser.name || currentUser.email}`,
+        { order_product_id: orderProductId }
+      );
     } catch (error) {
       console.error('Error approving item:', error);
     } finally {
@@ -192,11 +192,11 @@ export default function ReviewPage() {
       await fetchOrderItems(orderProductId);
       
       // Create notification with reason
-      await createNotification({
-        type: 'product_update',
-        message: `Item rejected by ${currentUser.name || currentUser.email}: ${reason}`,
-        order_product_id: orderProductId
-      });
+      await createNotification(
+        'product_update',
+        `Item rejected by ${currentUser.name || currentUser.email}: ${reason}`,
+        { order_product_id: orderProductId }
+      );
     } catch (error) {
       console.error('Error rejecting item:', error);
     } finally {
