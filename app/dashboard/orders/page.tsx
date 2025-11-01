@@ -27,6 +27,7 @@ import { notify } from '@/app/hooks/useUINotification';
 interface OrderWithDetails {
   id: string;
   order_number: string;
+  order_name?: string;
   client_id: string;
   manufacturer_id: string;
   status: string;
