@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRight, Plus, Minus, Trash2, Upload, X, Package, DollarSign, FileText, Tag, Ship, Plane, Clock, StickyNote, Calendar, CreditCard, AlertCircle } from 'lucide-react'
@@ -57,29 +57,9 @@ const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focu
 
 export default function CreateOrderPage() {
   const router = useRouter()
-  const productDataRef = useRef<any>({}) // Store products persistently
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  
-  // Notification state
-  const [notification, setNotification] = useState<{
-    show: boolean
-    type: 'success' | 'error' | 'info'
-    message: string
-  }>({
-    show: false,
-    type: 'success',
-    message: ''
-  })
-  
-  // Function to show notification
-  const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
-    setNotification({ show: true, type, message })
-    setTimeout(() => {
-      setNotification(prev => ({ ...prev, show: false }))
-    }, 3000)
-  }
   
   // Step 1: Basic Info
   const [orderName, setOrderName] = useState('')
@@ -170,11 +150,6 @@ export default function CreateOrderPage() {
         })
         
         setProducts(processedProducts)
-        
-        // CRITICAL: Store products in ref for persistence
-        processedProducts.forEach(p => {
-          productDataRef.current[p.id] = p;
-        });
       }
     } catch (error) {
       console.error('Error fetching initial data:', error)
@@ -198,14 +173,12 @@ export default function CreateOrderPage() {
   const initializeOrderProducts = () => {
     console.log('Initializing order products...');
     console.log('Selected products:', selectedProducts);
-    console.log('Available products in ref:', productDataRef.current);
-    console.log('Available products in state:', products);
+    console.log('Available products:', products);
     
     const orderProds: OrderProduct[] = []
     
     Object.entries(selectedProducts).forEach(([productId, quantity]) => {
-      // TRY TO GET FROM REF FIRST, THEN FALL BACK TO STATE
-      const product = productDataRef.current[productId] || products.find(p => p.id === productId)
+      const product = products.find(p => p.id === productId)
       
       if (!product) {
         console.error(`Product not found for ID: ${productId}`);
@@ -238,7 +211,7 @@ export default function CreateOrderPage() {
         }
         
         orderProds.push({
-          product: JSON.parse(JSON.stringify(product)), // Deep copy to prevent reference loss
+          product,
           productOrderNumber,
           productDescription: '',
           standardPrice: '',
@@ -318,43 +291,23 @@ export default function CreateOrderPage() {
   const handleFileUpload = (productIndex: number, files: FileList | null) => {
     if (!files) return
     
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
-    const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
-        return false
-      }
-      return true
-    })
-    
-    if (newFiles.length > 0) {
-      setOrderProducts(prev => prev.map((op, idx) => 
-        idx === productIndex 
-          ? { ...op, mediaFiles: [...op.mediaFiles, ...newFiles] }
-          : op
-      ))
-    }
+    const newFiles = Array.from(files)
+    setOrderProducts(prev => prev.map((op, idx) => 
+      idx === productIndex 
+        ? { ...op, mediaFiles: [...op.mediaFiles, ...newFiles] }
+        : op
+    ))
   }
 
   const handleSampleFileUpload = (productIndex: number, files: FileList | null) => {
     if (!files) return
     
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
-    const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
-        return false
-      }
-      return true
-    })
-    
-    if (newFiles.length > 0) {
-      setOrderProducts(prev => prev.map((op, idx) => 
-        idx === productIndex 
-          ? { ...op, sampleMediaFiles: [...op.sampleMediaFiles, ...newFiles] }
-          : op
-      ))
-    }
+    const newFiles = Array.from(files)
+    setOrderProducts(prev => prev.map((op, idx) => 
+      idx === productIndex 
+        ? { ...op, sampleMediaFiles: [...op.sampleMediaFiles, ...newFiles] }
+        : op
+    ))
   }
 
   const removeFile = (productIndex: number, fileIndex: number) => {
@@ -378,244 +331,268 @@ export default function CreateOrderPage() {
   }
 
   const handleSubmit = async (isDraft = false) => {
-    console.log('=== HANDLE SUBMIT STARTED ===')
-    console.log('Draft mode:', isDraft)
-    console.log('Order name:', orderName)
-    console.log('Client:', selectedClient)
-    console.log('Manufacturer:', selectedManufacturer)
+    console.log('=== STARTING ORDER SUBMISSION ===');
+    console.log('orderProducts at submission time:', orderProducts);
+    console.log('Number of products selected:', orderProducts.length);
+    console.log('Products details:', orderProducts.map(op => ({
+      productId: op.product?.id,
+      productTitle: op.product?.title,
+      hasItems: op.items?.length > 0,
+      itemsWithQuantity: op.items?.filter(i => i.quantity > 0).length,
+      fullProduct: op.product
+    })));
+    
+    // Make sure we have products
+    if (orderProducts.length === 0) {
+      alert('No products in order! Please go back and select products.');
+      setSaving(false);
+      return;
+    }
     
     setSaving(true)
-    
     try {
       const userData = localStorage.getItem('user')
       const user = userData ? JSON.parse(userData) : null
       
-      // Get the client name for the prefix
-      const { data: clientData } = await supabase
-        .from('clients')
-        .select('name')
-        .eq('id', selectedClient)
-        .single()
-      
-      const clientPrefix = clientData?.name?.substring(0, 3).toUpperCase() || 'ORD'
-      
-      // Generate order number based on draft or not
+      if (!user) {
+        alert('User not found. Please login again.')
+        return
+      }
+
+      // Generate order number
       const orderNumber = isDraft 
         ? `DRAFT-${Date.now().toString(36).toUpperCase()}`
-        : `${clientPrefix}-${orderName.replace(/\s+/g, '-').toUpperCase().substring(0, 50)}`
+        : `ORD-${Date.now().toString(36).toUpperCase()}`
 
       // Check if any product has sample information filled
       let hasSampleRequest = false
       for (const orderProduct of orderProducts) {
-        if (orderProduct.sampleNotes && orderProduct.sampleNotes.trim() !== '') {
+        if (orderProduct.sampleNotes || orderProduct.sampleMediaFiles.length > 0) {
           hasSampleRequest = true
           break
         }
       }
 
-      // Determine the correct status based on draft and sample requirements
-      // Using EXACT statuses from database constraint
+      // Determine the correct status
       let orderStatus = 'draft'
       if (!isDraft) {
         if (hasSampleRequest) {
-          orderStatus = 'submitted_for_sample'  // Sample requested (valid in DB)
-          console.log('Status: submitted_for_sample (sample notes found)')
+          orderStatus = 'sample_requested'
         } else {
-          orderStatus = 'submitted_to_manufacturer'  // Direct to manufacturer (valid in DB)
-          console.log('Status: submitted_to_manufacturer (no sample needed)')
+          orderStatus = 'submitted_to_manufacturer'
         }
-      } else {
-        console.log('Status: draft (saved as draft)')
       }
-      
-      console.log('Final order status:', orderStatus)
-      console.log('Has sample request:', hasSampleRequest)
+
+      // Create order with proper status
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
           order_number: orderNumber,
-          order_name: orderName || 'New Order',
+          order_name: orderName,
           client_id: selectedClient,
           manufacturer_id: selectedManufacturer,
-          status: orderStatus,  // Use the status we determined above
-          created_by: user?.id
+          status: orderStatus,
+          created_by: user.id
         })
         .select()
         .single()
 
-      if (orderError) {
-        console.error('Database error creating order:', orderError)
-        throw new Error(orderError.message || 'Failed to create order')
+      if (orderError) throw orderError
+
+      // Create notification for manufacturer when order is submitted
+      if (!isDraft) {
+        const manufacturer = manufacturers.find(m => m.id === selectedManufacturer)
+        const client = clients.find(c => c.id === selectedClient)
+        
+        // Create notification
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: selectedManufacturer,
+            type: 'new_order',
+            title: 'New Order Received',
+            message: `You have received a new order ${orderNumber} from ${client?.name || 'Unknown Client'}`,
+            metadata: {
+              order_id: orderData.id,
+              order_number: orderNumber,
+              client_name: client?.name,
+              status: 'submitted_to_manufacturer'
+            },
+            read: false
+          })
+
+        if (notificationError) {
+          console.error('Error creating notification:', notificationError)
+        }
       }
 
-      console.log('Order created successfully!')
-      console.log('Order ID:', orderData.id)
-      console.log('Order Number:', orderNumber)
-      
-      // Now save all the products and their items
-      console.log(`Saving ${orderProducts.length} products...`)
+      // Create order products and items
+      console.log('Starting to save products. Count:', orderProducts.length);
+      console.log('Order products data:', orderProducts);
       
       for (const orderProduct of orderProducts) {
-        console.log('Saving product:', orderProduct.product.title)
+        // Generate a unique product order number
+        const productOrderNumber = `PRD-${Date.now().toString(36).substring(2, 6).toUpperCase()}${Math.random().toString(36).substring(2, 4).toUpperCase()}`;
         
-        // Save the order product with description
-        const { data: productData, error: productError } = await supabase
+        // Create order_product - handle fields that might not exist in DB yet
+        const orderProductData: any = {
+          order_id: orderData.id,
+          product_id: orderProduct.product.id,
+          product_order_number: productOrderNumber,
+          description: orderProduct.productDescription || '',  // Note: using 'description' not 'product_description'
+        }
+
+        // Add optional fields only if they have values
+        if (orderProduct.standardPrice) {
+          orderProductData.standard_price = parseFloat(orderProduct.standardPrice)
+        }
+        if (orderProduct.bulkPrice) {
+          orderProductData.bulk_price = parseFloat(orderProduct.bulkPrice)
+        }
+
+        // Try to add sample fields - they might not exist in DB yet
+        try {
+          if (orderProduct.sampleRequired !== undefined) {
+            orderProductData.sample_required = orderProduct.sampleRequired
+          }
+          if (orderProduct.sampleFee) {
+            orderProductData.sample_fee = parseFloat(orderProduct.sampleFee)
+          }
+          if (orderProduct.sampleETA) {
+            orderProductData.sample_eta = orderProduct.sampleETA
+          }
+          if (orderProduct.sampleStatus) {
+            orderProductData.sample_status = orderProduct.sampleStatus
+          }
+          if (orderProduct.sampleNotes) {
+            orderProductData.sample_notes = orderProduct.sampleNotes
+          }
+          if (orderProduct.shippingAirPrice) {
+            orderProductData.shipping_air_price = parseFloat(orderProduct.shippingAirPrice)
+          }
+          if (orderProduct.shippingBoatPrice) {
+            orderProductData.shipping_boat_price = parseFloat(orderProduct.shippingBoatPrice)
+          }
+          if (orderProduct.productionTime) {
+            orderProductData.production_time = orderProduct.productionTime
+          }
+        } catch (e) {
+          console.log('Some sample fields might not exist in database yet')
+        }
+
+        console.log('Attempting to insert order_product:', orderProductData);
+
+        const { data: orderProductDataResult, error: productError } = await supabase
           .from('order_products')
-          .insert({
-            order_id: orderData.id,
-            product_id: orderProduct.product.id,
-            product_order_number: orderProduct.productOrderNumber,
-            description: orderProduct.productDescription || '',
-            sample_notes: orderProduct.sampleNotes || ''
-          })
+          .insert(orderProductData)
           .select()
           .single()
 
         if (productError) {
-          console.error('Error saving product:', productError)
-          continue
+          console.error('Error creating order product:', productError);
+          console.error('Failed data:', orderProductData);
+          // Don't continue silently - show the actual error
+          alert(`Error saving product: ${productError.message}`);
+          throw productError;
         }
 
-        console.log('Product saved with ID:', productData.id)
+        if (orderProductDataResult) {
+          // Create order_items for each variant
+          const itemsToInsert = orderProduct.items
+            .filter(item => item.quantity > 0)
+            .map(item => ({
+              order_product_id: orderProductDataResult.id,
+              variant_combo: item.variantCombo,
+              quantity: item.quantity,
+              notes: item.notes || null,
+              admin_status: 'pending',
+              manufacturer_status: 'pending'
+            }))
 
-        // Save ALL order items (variants) - not just ones with quantity > 0
-        const itemsToSave = orderProduct.items.map((item: any) => ({
-          order_product_id: productData.id,
-          variant_combo: item.variantCombo,
-          quantity: item.quantity || 0,
-          notes: item.notes || '',
-          admin_status: 'pending',
-          manufacturer_status: 'pending'
-        }))
+          if (itemsToInsert.length > 0) {
+            const { error: itemsError } = await supabase
+              .from('order_items')
+              .insert(itemsToInsert)
 
-        console.log(`Saving ${itemsToSave.length} variant items...`)
-
-        if (itemsToSave.length > 0) {
-          const { error: itemsError } = await supabase
-            .from('order_items')
-            .insert(itemsToSave)
-
-          if (itemsError) {
-            console.error('Error saving items:', itemsError)
-          } else {
-            console.log('Items saved successfully')
-          }
-        }
-
-        // Upload and save media files if any
-        if (orderProduct.mediaFiles && orderProduct.mediaFiles.length > 0) {
-          console.log(`Uploading ${orderProduct.mediaFiles.length} media files...`)
-          
-          for (const file of orderProduct.mediaFiles) {
-            try {
-              const fileExt = file.name.split('.').pop()
-              const fileName = `ref-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${fileName}`
-
-              // Upload to Supabase storage
-              const { error: uploadError } = await supabase.storage
-                .from('order-media')
-                .upload(filePath, file)
-
-              if (uploadError) {
-                console.error('Error uploading file:', uploadError)
-                if (uploadError.message?.includes('exceeded the maximum allowed size')) {
-                  showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
-                } else {
-                  showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
-                }
-                continue
-              }
-
-              // Get public URL
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath)
-
-              // Save media record with original filename
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: productData.id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'image' : 'document',
-                  uploaded_by: user?.id,
-                  original_filename: file.name
-                })
-
-              console.log('Media file uploaded:', fileName)
-            } catch (mediaError) {
-              console.error('Error with media:', mediaError)
+            if (itemsError) {
+              console.error('Error creating order items:', itemsError)
             }
           }
-        }
 
-        // Upload and save sample media files if any
-        if (orderProduct.sampleMediaFiles && orderProduct.sampleMediaFiles.length > 0) {
-          console.log(`Uploading ${orderProduct.sampleMediaFiles.length} sample media files...`)
-          
-          for (const file of orderProduct.sampleMediaFiles) {
-            try {
-              const fileExt = file.name.split('.').pop()
-              const fileName = `sample-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${fileName}`
+          // Upload reference media files
+          for (const file of orderProduct.mediaFiles) {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `ref-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+            const filePath = `${orderData.id}/${orderProductDataResult.id}/${fileName}`
 
-              // Upload to Supabase storage
-              const { error: uploadError } = await supabase.storage
-                .from('order-media')
-                .upload(filePath, file)
+            const { error: uploadError } = await supabase.storage
+              .from('order-media')
+              .upload(filePath, file)
 
-              if (uploadError) {
-                console.error('Error uploading sample file:', uploadError)
-                if (uploadError.message?.includes('exceeded the maximum allowed size')) {
-                  showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
-                } else {
-                  showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
-                }
-                continue
-              }
-
-              // Get public URL
+            if (!uploadError) {
               const { data: { publicUrl } } = supabase.storage
                 .from('order-media')
                 .getPublicUrl(filePath)
 
-              // Save media record with original filename
               await supabase
                 .from('order_media')
                 .insert({
-                  order_product_id: productData.id,
+                  order_product_id: orderProductDataResult.id,
                   file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'image' : 'document',
-                  uploaded_by: user?.id,
-                  original_filename: file.name
+                  file_type: 'reference_' + (file.type.startsWith('image/') ? 'image' : 'other'),
+                  uploaded_by: user.id
                 })
+            }
+          }
 
-              console.log('Sample media file uploaded:', fileName)
-            } catch (mediaError) {
-              console.error('Error with sample media:', mediaError)
+          // Upload sample media files
+          for (const file of orderProduct.sampleMediaFiles) {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `sample-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`
+            const filePath = `${orderData.id}/${orderProductDataResult.id}/${fileName}`
+
+            const { error: uploadError } = await supabase.storage
+              .from('order-media')
+              .upload(filePath, file)
+
+            if (!uploadError) {
+              const { data: { publicUrl } } = supabase.storage
+                .from('order-media')
+                .getPublicUrl(filePath)
+
+              await supabase
+                .from('order_media')
+                .insert({
+                  order_product_id: orderProductDataResult.id,
+                  file_url: publicUrl,
+                  file_type: 'sample_' + (file.type.startsWith('image/') ? 'image' : 'other'),
+                  uploaded_by: user.id
+                })
             }
           }
         }
       }
-      
-      console.log('All products and items saved!')
-      
-      // Show success notification
-      showNotification('success', `Order ${orderNumber} created successfully!`)
-      
-      // Log that we're about to navigate
-      console.log('Navigating to orders list in 1.5 seconds...')
-      
-      // Navigate after a short delay to let user see the notification
-      setTimeout(() => {
-        console.log('Now navigating to /dashboard/orders')
-        router.push('/dashboard/orders')
-      }, 1500)
+
+      // Log activity
+      await supabase
+        .from('audit_log')
+        .insert({
+          user_id: user.id,
+          user_name: user.name,
+          action_type: isDraft ? 'order_draft_created' : 'order_submitted',
+          target_type: 'order',
+          target_id: orderData.id,
+          new_value: orderNumber
+        })
+
+      // Redirect to orders list
+      router.push('/dashboard/orders')
     } catch (error) {
       console.error('Error creating order:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Error creating order'
-      showNotification('error', errorMessage)
+      alert('Order created but some features might be missing. Please check the order details.')
+      // Still try to navigate even if there were partial errors
+      router.push('/dashboard/orders')
+    } finally {
       setSaving(false)
     }
   }
@@ -623,17 +600,17 @@ export default function CreateOrderPage() {
   const nextStep = () => {
     if (currentStep === 1) {
       if (!orderName.trim()) {
-        showNotification('error', 'Please enter an order name')
+        alert('Please enter an order name')
         return
       }
       if (!selectedClient || !selectedManufacturer) {
-        showNotification('error', 'Please select both client and manufacturer')
+        alert('Please select both client and manufacturer')
         return
       }
       setCurrentStep(2)
     } else if (currentStep === 2) {
       if (Object.keys(selectedProducts).length === 0) {
-        showNotification('error', 'Please select at least one product')
+        alert('Please select at least one product')
         return
       }
       initializeOrderProducts()
@@ -661,46 +638,6 @@ export default function CreateOrderPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      {/* Beautiful Notification Toast */}
-      {notification.show && (
-        <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
-          ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
-        `}>
-          <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
-              : notification.type === 'error'
-              ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
-              : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
-            }
-          `}>
-            <div className="flex items-center space-x-3">
-              {notification.type === 'success' && (
-                <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              )}
-              {notification.type === 'error' && (
-                <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-              )}
-              <div className="flex-1">
-                <p className="font-semibold text-white">
-                  {notification.message}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {/* Header */}
       <div className="mb-6">
         <button
@@ -924,12 +861,10 @@ export default function CreateOrderPage() {
                           onClick={(e) => {
                             e.stopPropagation()
                             handleProductQuantityChange(product.id, 0)
-                            showNotification('info', `${product.title} removed from order`)
                           }}
-                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium bg-red-50 px-2 py-1 rounded hover:bg-red-100 transition-colors"
+                          className="text-xs text-red-600 hover:text-red-700 font-medium"
                         >
-                          <Trash2 className="w-3 h-3" />
-                          Remove
+                          Remove all
                         </button>
                       </div>
                     ) : (
@@ -1061,22 +996,6 @@ export default function CreateOrderPage() {
                     Product Order Number: {orderProduct.productOrderNumber}
                   </p>
                 </div>
-                {/* Delete Product Button */}
-                <button
-                  onClick={() => {
-                    if (orderProducts.length === 1) {
-                      showNotification('error', 'Cannot remove the last product. Add another product first or go back to step 2.');
-                      return;
-                    }
-                    const updatedProducts = orderProducts.filter((_, index) => index !== productIndex);
-                    setOrderProducts(updatedProducts);
-                    showNotification('info', `${orderProduct.product.title} removed from order`);
-                  }}
-                  className="p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all group"
-                  title="Remove this product from order"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
               </div>
 
               {/* Product Description - Single Line */}
@@ -1288,7 +1207,7 @@ export default function CreateOrderPage() {
             </div>
           ))}
 
-          {/* Action Buttons with Loading Spinners */}
+          {/* Action Buttons */}
           <div className="flex justify-between">
             <button
               onClick={prevStep}
@@ -1302,27 +1221,15 @@ export default function CreateOrderPage() {
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
               >
-                {saving && (
-                  <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                )}
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {saving && (
-                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                )}
                 {saving ? 'Submitting...' : 'Submit Order'}
               </button>
             </div>

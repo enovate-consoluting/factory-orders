@@ -1,0 +1,43 @@
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
+
+  // Always try to refresh the session
+  const { data: { session }, error } = await supabase.auth.getSession();
+  
+  // If there's a session, try to refresh it
+  if (session) {
+    const { data: { session: refreshedSession }, error: refreshError } = 
+      await supabase.auth.refreshSession();
+    
+    if (refreshError) {
+      console.log('Session refresh failed, user needs to login again');
+    }
+  }
+  
+  const isProtectedRoute = req.nextUrl.pathname.startsWith('/dashboard');
+  const isAuthRoute = req.nextUrl.pathname === '/';
+
+  // Protected routes need authentication
+  if (isProtectedRoute && !session) {
+    const redirectUrl = new URL('/', req.url);
+    // Add a message parameter so login page can show "Session expired"
+    redirectUrl.searchParams.set('message', 'session_expired');
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  // Already logged in users shouldn't see login page
+  if (isAuthRoute && session) {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
+  }
+
+  return res;
+}
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|robots.txt).*)',]
+};

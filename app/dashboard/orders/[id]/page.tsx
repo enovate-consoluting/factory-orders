@@ -44,10 +44,11 @@ import { notify } from '@/app/hooks/useUINotification';
 import { OrderStatusBadge } from '@/app/components/StatusBadge';
 import { getPermissions, type RolePermissions } from '@/app/lib/permissions';
 
-// [Keep all the same interfaces - OrderDetail, OrderProduct, OrderItem, MediaFile, AuditLogEntry]
+// Updated interface to include order_name
 interface OrderDetail {
   id: string;
   order_number: string;
+  order_name: string;  // Added order_name field
   status: string;
   created_at: string;
   updated_at: string;
@@ -76,10 +77,19 @@ interface OrderProduct {
   requires_sample?: boolean;
   requires_client_approval?: boolean;
   admin_notes?: string;
+  description?: string;  // Description is at order_product level, not product level
+  product_description?: string;  // Added for the product description from create order
+  sample_required?: boolean;
+  sample_fee?: number;
+  sample_eta?: string;
+  sample_status?: string;
+  sample_notes?: string;
+  shipping_air_price?: number;
+  shipping_boat_price?: number;
+  production_time?: string;
   product: {
     id: string;
     title: string;
-    description: string;
   };
 }
 
@@ -160,7 +170,7 @@ export default function OrderDetailPage() {
 
   const fetchOrderDetails = async () => {
     try {
-      // Fetch order details with creator info
+      // Fetch order details with creator info - now includes order_name
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select(`
@@ -201,12 +211,12 @@ export default function OrderDetailPage() {
       
       setOrder(orderData);
 
-      // Fetch order products
+      // Fetch order products - including sample fields
       const { data: productsData, error: productsError } = await supabase
         .from('order_products')
         .select(`
           *,
-          product:products(id, title, description)
+          product:products(id, title)
         `)
         .eq('order_id', params.id)
         .order('created_at');
@@ -220,7 +230,17 @@ export default function OrderDetailPage() {
         is_locked: p.is_locked || false,
         requires_sample: p.requires_sample || false,
         requires_client_approval: p.requires_client_approval || false,
-        admin_notes: p.admin_notes || ''
+        admin_notes: p.admin_notes || '',
+        description: p.description || '',  // Ensure description has a default value
+        product_description: p.product_description || '',  // Include product_description
+        sample_required: p.sample_required || false,
+        sample_fee: p.sample_fee || null,
+        sample_eta: p.sample_eta || '',
+        sample_status: p.sample_status || 'pending',
+        sample_notes: p.sample_notes || '',
+        shipping_air_price: p.shipping_air_price || null,
+        shipping_boat_price: p.shipping_boat_price || null,
+        production_time: p.production_time || ''
       }));
       
       setOrderProducts(productsWithDefaults);
@@ -779,7 +799,7 @@ export default function OrderDetailPage() {
         }}
       />
 
-      {/* Header */}
+      {/* FIXED: Header now shows order_name */}
       <div className="flex items-center gap-4 mb-6">
         <button
           onClick={() => router.back()}
@@ -789,9 +809,12 @@ export default function OrderDetailPage() {
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900">{order.order_number}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {order.order_name || order.order_number}
+            </h1>
             {getProductStatusBadge(order.status)}
           </div>
+          <p className="text-sm text-gray-500 mt-1">Order #{order.order_number}</p>
           <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
             <Calendar className="w-4 h-4" />
             <span>Created {new Date(order.created_at).toLocaleDateString()}</span>
@@ -893,7 +916,7 @@ export default function OrderDetailPage() {
                           </div>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 mt-1">{product.product.description}</p>
+                      <p className="text-sm text-gray-500 mt-1">{product.product_description || product.description || ''}</p>
                       <p className="text-xs text-gray-400 mt-1">
                         Product Order: {product.product_order_number}
                       </p>
@@ -972,6 +995,80 @@ export default function OrderDetailPage() {
                   </div>
                 </div>
 
+                {/* ENHANCED: Sample Request Section - Always visible when sample_notes or sample_required exists */}
+                {(product.sample_notes || product.sample_required) && (
+                  <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                    <p className="text-sm font-medium text-amber-900 mb-2 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-2" />
+                      Sample Request Information
+                    </p>
+                    
+                    {/* Show sample notes from create order */}
+                    {product.sample_notes && (
+                      <div className="mb-3">
+                        <p className="text-xs text-amber-700 font-medium mb-1">Sample Instructions:</p>
+                        <p className="text-sm text-amber-800 bg-white p-2 rounded border border-amber-300">
+                          {product.sample_notes}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* Fields for manufacturer to fill */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-xs text-amber-700 font-medium">Sample Fee</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Enter fee"
+                          value={product.sample_fee || ''}
+                          disabled={!isManufacturer}
+                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 placeholder-gray-400 disabled:bg-amber-50 disabled:text-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-amber-700 font-medium">Sample ETA</label>
+                        <input
+                          type="date"
+                          value={product.sample_eta || ''}
+                          disabled={!isManufacturer}
+                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 disabled:bg-amber-50 disabled:text-gray-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-amber-700 font-medium">Status</label>
+                        <select 
+                          value={product.sample_status || 'pending'}
+                          disabled={!isManufacturer}
+                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 disabled:bg-amber-50 disabled:text-gray-500"
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="in_review">In Review</option>
+                          <option value="approved">Approved</option>
+                          <option value="ready_for_production">Ready for Production</option>
+                          <option value="in_production">Sample in Production</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    {/* Sample Media Upload for Manufacturer */}
+                    {isManufacturer && (
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="text-xs text-amber-700">Sample Media</span>
+                        <button 
+                          onClick={() => {
+                            setSelectedProductForUpload(product.id);
+                            setIsSampleUpload(true);
+                            fileInputRef.current?.click();
+                          }}
+                          className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700">
+                          Upload Sample
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Notes Section */}
                 <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
                   <div className="flex items-start justify-between">
@@ -1046,55 +1143,8 @@ export default function OrderDetailPage() {
                   </div>
                 )}
 
-                {/* Sample Section - Shows when sample requested (Manufacturer Only) */}
-                {isManufacturer && product.requires_sample && (
-                  <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Sample Information</p>
-                    <div className="grid grid-cols-3 gap-3 mb-3">
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Sample Fee</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Sample ETA</label>
-                        <input
-                          type="date"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Status</label>
-                        <select className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900">
-                          <option value="">Select status</option>
-                          <option value="waiting_client">Waiting on Client</option>
-                          <option value="in_production">In Production</option>
-                          <option value="in_transit">In Transit</option>
-                          <option value="delivered">Sample Delivered</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600">Sample Media</span>
-                      <button 
-                        onClick={() => {
-                          setSelectedProductForUpload(product.id);
-                          setIsSampleUpload(true);
-                          fileInputRef.current?.click();
-                        }}
-                        className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700">
-                        Upload Sample
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bulk Order Section (Manufacturer Only) */}
-                {isManufacturer && (
+                {/* Bulk Order Section (Manufacturer Only) - Only show if needed */}
+                {isManufacturer && !product.sample_required && (
                   <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <p className="text-sm font-medium text-gray-700 mb-2">Bulk Order Information</p>
                     <div className="grid grid-cols-3 gap-3">
@@ -1104,7 +1154,8 @@ export default function OrderDetailPage() {
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          value={product.shipping_air_price || ''}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
                         />
                       </div>
                       <div>
@@ -1113,7 +1164,8 @@ export default function OrderDetailPage() {
                           type="number"
                           step="0.01"
                           placeholder="0.00"
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          value={product.shipping_boat_price || ''}
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
                         />
                       </div>
                       <div>
@@ -1121,6 +1173,7 @@ export default function OrderDetailPage() {
                         <input
                           type="text"
                           placeholder="e.g., 15-20 days"
+                          value={product.production_time || ''}
                           className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
                         />
                       </div>

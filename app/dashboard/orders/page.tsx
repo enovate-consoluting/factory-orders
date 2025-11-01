@@ -295,7 +295,14 @@ export default function OrdersPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-gray-900 text-lg">
-                        {order.order_number}
+                        {order.status === 'draft' ? (
+                          <>
+                            <span className="text-gray-500">DRAFT - </span>
+                            {order.order_name || order.order_number}
+                          </>
+                        ) : (
+                          order.order_number
+                        )}
                       </h3>
                       <OrderStatusBadge status={order.status as any} />
                     </div>
@@ -355,15 +362,18 @@ export default function OrdersPage() {
                       )}
                     </button>
                   )}
-                  <Link
-                    href={`/dashboard/orders/${order.id}`}
-                    className="flex items-center gap-1 px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
-                    title="View Order"
-                  >
-                    <Eye className="w-5 h-5" />
-                    <span className="text-sm">View</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
+                  {/* Only show View button for non-draft orders */}
+                  {order.status !== 'draft' && (
+                    <Link
+                      href={`/dashboard/orders/${order.id}`}
+                      className="flex items-center gap-1 px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors font-medium"
+                      title="View Order"
+                    >
+                      <Eye className="w-5 h-5" />
+                      <span className="text-sm">View</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>

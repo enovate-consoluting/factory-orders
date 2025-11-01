@@ -17,10 +17,12 @@ export default function LoginPage() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    // Check for session expired message
     if (searchParams.get('message') === 'session_expired') {
       setMessage('Your session has expired. Please login again.');
     }
 
+    // Check if user opted to be remembered
     const savedEmail = localStorage.getItem('rememberedEmail');
     if (savedEmail) {
       setEmail(savedEmail);
@@ -35,9 +37,14 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Sign in with Supabase Auth
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email,
-        password
+        password,
+        options: {
+          // Extend session if remember me is checked
+          persistSession: rememberMe,
+        }
       });
 
       if (signInError) {
@@ -47,6 +54,14 @@ export default function LoginPage() {
       }
 
       if (authData.user) {
+        // Store email if remember me is checked
+        if (rememberMe) {
+          localStorage.setItem('rememberedEmail', email);
+        } else {
+          localStorage.removeItem('rememberedEmail');
+        }
+
+        // Get user from database
         const { data: userData, error: userError } = await supabase
           .from('users')
           .select('*')
@@ -60,14 +75,12 @@ export default function LoginPage() {
           return;
         }
 
-        if (rememberMe) {
-          localStorage.setItem('rememberedEmail', email);
-        } else {
-          localStorage.removeItem('rememberedEmail');
-        }
-
+        // Store user data for dashboard
         localStorage.setItem('user', JSON.stringify(userData));
-        router.push('/dashboard');
+        
+        // Redirect to dashboard or requested page
+        const redirectTo = searchParams.get('redirectTo') || '/dashboard';
+        router.push(redirectTo);
       }
     } catch (err) {
       setError('An error occurred during authentication');
@@ -110,6 +123,7 @@ export default function LoginPage() {
           <p className="text-gray-600">Factory Order Management System</p>
         </div>
 
+        {/* Session expired or success message */}
         {message && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-700">{message}</p>
@@ -118,12 +132,10 @@ export default function LoginPage() {
 
         <form onSubmit={handleAuth} className="space-y-6">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Email Address
             </label>
             <input
-              id="email"
-              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -131,18 +143,15 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50 disabled:bg-gray-50"
               placeholder="Enter your email"
-              autoComplete="email"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Password
             </label>
             <div className="relative">
               <input
-                id="password"
-                name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -150,7 +159,6 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full px-4 py-3 pr-12 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all disabled:opacity-50 disabled:bg-gray-50"
                 placeholder="Enter your password"
-                autoComplete="current-password"
               />
               <button
                 type="button"
@@ -167,11 +175,10 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Remember Me checkbox */}
           <div className="flex items-center justify-between">
-            <label htmlFor="remember" className="flex items-center">
+            <label className="flex items-center">
               <input
-                id="remember"
-                name="remember"
                 type="checkbox"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}

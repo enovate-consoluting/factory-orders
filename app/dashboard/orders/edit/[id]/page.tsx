@@ -1,1050 +1,1410 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-// Icon components using inline SVGs
-const TrashIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-)
+import { supabase } from '@/lib/supabase'
+import { ArrowLeft, Plus, Minus, Trash2, Package, AlertCircle, ShoppingCart, Upload, X, CreditCard, Calendar } from 'lucide-react'
 
-const PlusIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-  </svg>
-)
-
-const XMarkIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-)
-
-const ArrowLeftIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-  </svg>
-)
-
-const CheckIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-  </svg>
-)
-
-const ExclamationTriangleIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-  </svg>
-)
-
-type Client = {
-  id: string
-  name: string
-  email: string
-}
-
-type Manufacturer = {
-  id: string
-  name: string
-  email: string
-}
-
-type Product = {
+interface Product {
   id: string
   title: string
-  description: string
+  description?: string
+  variants?: Array<{
+    type: string
+    options: string[]
+  }>
 }
 
-type VariantType = {
-  id: string
-  name: string
+interface OrderProduct {
+  product: Product
+  productOrderNumber: string
+  productDescription: string
+  sampleNotes: string
+  standardPrice: string
+  bulkPrice: string
+  sampleRequired: boolean
+  sampleFee: string
+  sampleETA: string
+  sampleStatus: string
+  shippingAirPrice: string
+  shippingBoatPrice: string
+  productionTime: string
+  items: Array<{
+    variantCombo: string
+    quantity: number
+    notes: string
+  }>
+  mediaFiles: File[]
+  sampleMediaFiles: File[]
+  // Track existing files from database
+  existingMedia?: Array<{
+    id: string
+    file_url: string
+    file_type: string
+    original_filename?: string
+  }>
+  existingSampleMedia?: Array<{
+    id: string
+    file_url: string
+    file_type: string
+    original_filename?: string
+  }>
 }
 
-type VariantOption = {
-  id: string
-  type_id: string
-  value: string
-}
+const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
 
-type ProductVariant = {
-  id: string
-  product_id: string
-  variant_option_id: string
-}
-
-type SelectedProduct = {
-  productId: string
-  variantCombos: {
-    [combo: string]: {
-      quantity: number
-      notes: string
-    }
-  }
-  referenceMedia: File[]
-  existingMediaIds?: string[]
-}
-
-type ExistingMedia = {
-  id: string
-  file_url: string
-  file_type: string
-}
-
-export default function EditDraftPage() {
+export default function EditOrderPage() {
   const router = useRouter()
   const params = useParams()
   const orderId = params.id as string
   
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [completing, setCompleting] = useState(false)
-  const [order, setOrder] = useState<any>(null)
   
-  // Form data
+  // Order data - matching create order structure
+  const [orderData, setOrderData] = useState<any>(null)
   const [orderName, setOrderName] = useState('')
-  const [selectedClientId, setSelectedClientId] = useState('')
-  const [selectedManufacturerId, setSelectedManufacturerId] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
+  const [selectedClient, setSelectedClient] = useState('')
+  const [selectedManufacturer, setSelectedManufacturer] = useState('')
+  const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
   
-  // Data from database
-  const [clients, setClients] = useState<Client[]>([])
-  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [variantTypes, setVariantTypes] = useState<VariantType[]>([])
-  const [variantOptions, setVariantOptions] = useState<VariantOption[]>([])
-  const [productVariants, setProductVariants] = useState<ProductVariant[]>([])
+  // Modal for adding products
+  const [showAddProduct, setShowAddProduct] = useState(false)
+  const [productSearch, setProductSearch] = useState('')
   
-  // Selected products for order
-  const [selectedProducts, setSelectedProducts] = useState<{ [key: string]: SelectedProduct }>({})
-  const [existingMedia, setExistingMedia] = useState<{ [productId: string]: ExistingMedia[] }>({})
+  // Quick fill - same as create order
+  const [quickFillQuantity, setQuickFillQuantity] = useState('')
   
-  const [showProductPicker, setShowProductPicker] = useState(false)
+  // Notification state - same as create order
+  const [notification, setNotification] = useState<{
+    show: boolean
+    type: 'success' | 'error' | 'info'
+    message: string
+  }>({
+    show: false,
+    type: 'success',
+    message: ''
+  })
   
-  // Media viewer state
-  const [viewingMedia, setViewingMedia] = useState<{ files: (File | ExistingMedia)[]; index: number; title: string } | null>(null)
-  
-  // Notification state
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const showNotification = (type: 'success' | 'error' | 'info', message: string) => {
+    setNotification({ show: true, type, message })
+    setTimeout(() => {
+      setNotification(prev => ({ ...prev, show: false }))
+    }, 3000)
+  }
 
   useEffect(() => {
     if (orderId) {
-      loadData()
-      loadExistingOrder()
+      fetchOrderData()
+      fetchAllProducts()
     }
   }, [orderId])
-  
-  useEffect(() => {
-    // Auto-hide notification after 4 seconds
-    if (notification) {
-      const timer = setTimeout(() => {
-        setNotification(null)
-      }, 4000)
-      return () => clearTimeout(timer)
-    }
-  }, [notification])
 
-  const loadData = async () => {
-    const [clientsRes, manufacturersRes, productsRes, typesRes, optionsRes, productVariantsRes] = await Promise.all([
-      supabase.from('clients').select('*').order('name'),
-      supabase.from('manufacturers').select('*').order('name'),
-      supabase.from('products').select('*').order('title'),
-      supabase.from('variant_types').select('*').order('name'),
-      supabase.from('variant_options').select('*').order('value'),
-      supabase.from('product_variants').select('*')
-    ])
-    
-    setClients(clientsRes.data || [])
-    setManufacturers(manufacturersRes.data || [])
-    setProducts(productsRes.data || [])
-    setVariantTypes(typesRes.data || [])
-    setVariantOptions(optionsRes.data || [])
-    setProductVariants(productVariantsRes.data || [])
-  }
-
-  const loadExistingOrder = async () => {
-    setLoading(true)
+  const fetchAllProducts = async () => {
+    console.log('=== FETCH ALL PRODUCTS STARTED ===')
     
     try {
-      // Load order details
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
+      // Check database schema
+      const { data: productsTest } = await supabase
+        .from('products')
         .select('*')
-        .eq('id', orderId)
-        .single()
+        .limit(1)
       
-      if (orderError) throw orderError
-      if (!orderData) throw new Error('Order not found')
+      const hasDescription = productsTest && productsTest[0] && 'description' in productsTest[0]
+      const productsColumns = hasDescription ? 'id, title, description' : 'id, title'
       
-      setOrder(orderData)
-      setOrderName(orderData.order_number.replace('DRAFT-', ''))
-      setSelectedClientId(orderData.client_id || '')
-      setSelectedManufacturerId(orderData.manufacturer_id || '')
-      
-      // Load client email
-      if (orderData.client_id) {
-        const { data: clientData } = await supabase
-          .from('clients')
-          .select('email')
-          .eq('id', orderData.client_id)
-          .single()
+      // Try full query with variants
+      const { data: products, error } = await supabase
+        .from('products')
+        .select(`
+          ${productsColumns},
+          product_variants(
+            variant_option_id,
+            variant_options(
+              id,
+              value,
+              type_id,
+              variant_types(
+                id,
+                name
+              )
+            )
+          )
+        `)
+        .order('title')
+
+      if (error) {
+        console.error('Full query error:', JSON.stringify(error, null, 2))
         
-        if (clientData) {
-          setClientEmail(clientData.email)
+        // Fallback to simple query
+        const { data: simpleProducts } = await supabase
+          .from('products')
+          .select(productsColumns)
+          .order('title')
+        
+        if (simpleProducts) {
+          const processedSimple = simpleProducts.map((p: any) => ({
+            id: p.id,
+            title: p.title || 'Unnamed Product',
+            description: hasDescription ? (p.description || '') : '',
+            variants: []
+          }))
+          setAllProducts(processedSimple)
+          return
         }
       }
-      
-      // Load order products and items
-      const { data: orderProducts } = await supabase
-        .from('order_products')
-        .select('*')
-        .eq('order_id', orderId)
-      
-      if (orderProducts && orderProducts.length > 0) {
-        const loadedProducts: { [key: string]: SelectedProduct } = {}
-        const loadedMedia: { [productId: string]: ExistingMedia[] } = {}
-        
-        for (const orderProduct of orderProducts) {
-          // Load items for this product
-          const { data: items } = await supabase
-            .from('order_items')
-            .select('*')
-            .eq('order_product_id', orderProduct.id)
+
+      if (products) {
+        const processedProducts = products.map((product: any) => {
+          const variantsByType: any = {}
           
-          // Load media for this product
-          const { data: media } = await supabase
-            .from('order_media')
-            .select('*')
-            .eq('order_product_id', orderProduct.id)
-            .eq('is_sample', false)
-          
-          if (media && media.length > 0) {
-            loadedMedia[orderProduct.product_id] = media
-          }
-          
-          // Build variant combos
-          const variantCombos: { [combo: string]: { quantity: number; notes: string } } = {}
-          
-          if (items && items.length > 0) {
-            items.forEach(item => {
-              variantCombos[item.variant_combo] = {
-                quantity: item.quantity || 0,
-                notes: item.notes || ''
+          if (product.product_variants && Array.isArray(product.product_variants)) {
+            product.product_variants.forEach((pv: any) => {
+              const typeName = pv.variant_options?.variant_types?.name
+              const value = pv.variant_options?.value
+              
+              if (typeName && value) {
+                if (!variantsByType[typeName]) {
+                  variantsByType[typeName] = []
+                }
+                variantsByType[typeName].push(value)
               }
             })
           }
-          
-          loadedProducts[orderProduct.product_id] = {
-            productId: orderProduct.product_id,
-            variantCombos,
-            referenceMedia: [],
-            existingMediaIds: media?.map(m => m.id) || []
+
+          return {
+            id: product.id,
+            title: product.title || 'Unnamed Product',
+            description: hasDescription ? (product.description || '') : '',
+            variants: Object.entries(variantsByType).map(([type, options]) => ({
+              type,
+              options: options as string[]
+            }))
           }
-        }
+        })
         
-        setSelectedProducts(loadedProducts)
-        setExistingMedia(loadedMedia)
+        setAllProducts(processedProducts)
       }
       
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Fetch products error:', error)
+      setAllProducts([])
+    }
+  }
+
+  const fetchOrderData = async () => {
+    console.log('=== FETCH ORDER DATA STARTED ===')
+    
+    try {
+      // Fetch the order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          clients (id, name),
+          manufacturers (id, name)
+        `)
+        .eq('id', orderId)
+        .single()
+
+      if (orderError) throw orderError
+
+      if (!order) {
+        showNotification('error', 'Order not found')
+        router.push('/dashboard/orders')
+        return
+      }
+
+      // Only draft orders can be edited
+      if (order.status !== 'draft') {
+        showNotification('error', 'Only draft orders can be edited')
+        router.push('/dashboard/orders')
+        return
+      }
+
+      setOrderData(order)
+      setOrderName(order.order_name || '')
+      setSelectedClient(order.client_id)
+      setSelectedManufacturer(order.manufacturer_id)
+
+      // Fetch order products
+      const { data: orderProds, error: prodsError } = await supabase
+        .from('order_products')
+        .select(`
+          *,
+          products (id, title)
+        `)
+        .eq('order_id', orderId)
+
+      if (prodsError) {
+        console.error('Error fetching order products:', JSON.stringify(prodsError, null, 2))
+        showNotification('error', 'Failed to load order products')
+        setLoading(false)
+        return
+      }
+
+      console.log(`Found ${orderProds?.length || 0} order products`)
+
+      // Load each product's details
+      const processedOrderProducts: OrderProduct[] = []
+      
+      if (!orderProds || orderProds.length === 0) {
+        setOrderProducts([])
+        setLoading(false)
+        return
+      }
+      
+      for (const op of orderProds) {
+        // Get full product details with variants
+        const { data: product } = await supabase
+          .from('products')
+          .select(`
+            id, 
+            title,
+            product_variants(
+              variant_option_id,
+              variant_options(
+                id,
+                value,
+                type_id,
+                variant_types(
+                  id,
+                  name
+                )
+              )
+            )
+          `)
+          .eq('id', op.product_id)
+          .single()
+
+        // Get the items for this order product
+        const { data: items } = await supabase
+          .from('order_items')
+          .select('*')
+          .eq('order_product_id', op.id)
+
+        // Get existing media files for this order product
+        const { data: existingMediaFiles } = await supabase
+          .from('order_media')
+          .select('id, file_url, file_type, original_filename')
+          .eq('order_product_id', op.id)
+        
+        console.log(`Found ${existingMediaFiles?.length || 0} existing media files for product`)
+        
+        // Separate reference media from sample media based on file URL pattern
+        const existingRefMedia = existingMediaFiles?.filter(m => 
+          m.file_url.includes('/ref-') || !m.file_url.includes('/sample-')
+        ) || []
+        
+        const existingSampleMedia = existingMediaFiles?.filter(m => 
+          m.file_url.includes('/sample-')
+        ) || []
+
+        // Process variants
+        let processedVariants: any[] = []
+        if (product && product.product_variants) {
+          const variantsByType: any = {}
+          product.product_variants.forEach((pv: any) => {
+            const typeName = pv.variant_options?.variant_types?.name
+            const value = pv.variant_options?.value
+            
+            if (typeName && value) {
+              if (!variantsByType[typeName]) {
+                variantsByType[typeName] = []
+              }
+              variantsByType[typeName].push(value)
+            }
+          })
+          
+          processedVariants = Object.entries(variantsByType).map(([type, options]) => ({
+            type,
+            options: options as string[]
+          }))
+        }
+
+        // If no items exist, generate them from variants
+        let productItems = items || []
+        if (productItems.length === 0 && processedVariants.length > 0) {
+          const variantCombos: string[] = []
+          const generateCombos = (index: number, current: string[]) => {
+            if (index === processedVariants.length) {
+              variantCombos.push(current.join(' / '))
+              return
+            }
+            
+            processedVariants[index].options.forEach((option: string) => {
+              generateCombos(index + 1, [...current, option])
+            })
+          }
+          
+          generateCombos(0, [])
+          
+          productItems = variantCombos.map(combo => ({
+            variant_combo: combo,
+            quantity: 0,
+            notes: ''
+          }))
+        } else if (productItems.length === 0) {
+          productItems = [{
+            variant_combo: 'No Variants',
+            quantity: 0,
+            notes: ''
+          }]
+        }
+
+        processedOrderProducts.push({
+          product: {
+            id: op.product_id,
+            title: product?.title || op.products?.title || 'Unknown Product',
+            description: op.description || '',
+            variants: processedVariants
+          },
+          productOrderNumber: op.product_order_number || `PRD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+          productDescription: op.description || '',
+          sampleNotes: op.sample_notes || '',
+          standardPrice: op.standard_price || '',
+          bulkPrice: op.bulk_price || '',
+          sampleRequired: op.sample_required || false,
+          sampleFee: op.sample_fee || '',
+          sampleETA: op.sample_eta || '',
+          sampleStatus: op.sample_status || 'pending',
+          shippingAirPrice: op.shipping_air_price || '',
+          shippingBoatPrice: op.shipping_boat_price || '',
+          productionTime: op.production_time || '',
+          items: productItems.map((item: any) => ({
+            variantCombo: item.variant_combo,
+            quantity: item.quantity || 0,
+            notes: item.notes || ''
+          })),
+          mediaFiles: [], // New files to upload
+          sampleMediaFiles: [], // New sample files to upload
+          existingMedia: existingRefMedia, // Existing reference media
+          existingSampleMedia: existingSampleMedia // Existing sample media
+        })
+      }
+
+      console.log(`Successfully processed ${processedOrderProducts.length} products`)
+      setOrderProducts(processedOrderProducts)
+      setLoading(false)
+      
+    } catch (error: any) {
       console.error('Error loading order:', error)
-      setNotification({ message: 'Error loading draft order', type: 'error' })
-      router.push('/dashboard/orders')
-    } finally {
+      showNotification('error', `Failed to load order: ${error.message || 'Unknown error'}`)
       setLoading(false)
     }
   }
 
-  const handleClientChange = (clientId: string) => {
-    setSelectedClientId(clientId)
-    const client = clients.find(c => c.id === clientId)
-    if (client) {
-      setClientEmail(client.email)
+  const handleAddProductClick = async () => {
+    setShowAddProduct(true)
+    if (allProducts.length === 0) {
+      await fetchAllProducts()
     }
   }
 
-  const addProduct = (productId: string) => {
-    if (selectedProducts[productId]) return // Already added
-    
-    const product = products.find(p => p.id === productId)
-    if (!product) return
-    
-    // Get variants for this product
-    const productVariantIds = productVariants
-      .filter(pv => pv.product_id === productId)
-      .map(pv => pv.variant_option_id)
-    
-    if (productVariantIds.length === 0) {
-      setNotification({ message: 'This product has no variants configured. Please add variants first.', type: 'error' })
-      return
-    }
-    
-    // Group variants by type
-    const variantsByType: { [typeId: string]: string[] } = {}
-    
-    productVariantIds.forEach(optionId => {
-      const option = variantOptions.find(vo => vo.id === optionId)
-      if (option) {
-        if (!variantsByType[option.type_id]) {
-          variantsByType[option.type_id] = []
+  const addProductToOrder = (product: Product) => {
+    // Generate variant combinations
+    const variantCombos: string[] = []
+    if (product.variants && product.variants.length > 0) {
+      const generateCombos = (index: number, current: string[]) => {
+        if (index === product.variants!.length) {
+          variantCombos.push(current.join(' / '))
+          return
         }
-        variantsByType[option.type_id].push(optionId)
+        
+        product.variants![index].options.forEach(option => {
+          generateCombos(index + 1, [...current, option])
+        })
       }
-    })
-    
-    // Generate all combinations
-    const typesArray = Object.entries(variantsByType)
-    const combinations = generateCombinations(typesArray)
-    
-    const variantCombos: { [combo: string]: { quantity: number; notes: string } } = {}
-    combinations.forEach(combo => {
-      variantCombos[combo] = { quantity: 0, notes: '' }
-    })
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        productId,
-        variantCombos,
-        referenceMedia: []
-      }
-    })
-    
-    setShowProductPicker(false)
-  }
-
-  const generateCombinations = (typesArray: [string, string[]][]): string[] => {
-    if (typesArray.length === 0) return ['']
-    
-    const [first, ...rest] = typesArray
-    const restCombinations = generateCombinations(rest)
-    
-    const result: string[] = []
-    first[1].forEach(optionId => {
-      restCombinations.forEach(restCombo => {
-        result.push(restCombo ? `${optionId},${restCombo}` : optionId)
-      })
-    })
-    
-    return result
-  }
-
-  const removeProduct = async (productId: string) => {
-    // If this product exists in the database, delete it
-    const { data: existingProduct } = await supabase
-      .from('order_products')
-      .select('id')
-      .eq('order_id', orderId)
-      .eq('product_id', productId)
-      .single()
-    
-    if (existingProduct) {
-      // Delete items first
-      await supabase
-        .from('order_items')
-        .delete()
-        .eq('order_product_id', existingProduct.id)
       
-      // Delete media
-      await supabase
-        .from('order_media')
-        .delete()
-        .eq('order_product_id', existingProduct.id)
-      
-      // Delete product
-      await supabase
-        .from('order_products')
-        .delete()
-        .eq('id', existingProduct.id)
+      generateCombos(0, [])
+    } else {
+      variantCombos.push('No Variants')
     }
-    
-    const newSelected = { ...selectedProducts }
-    delete newSelected[productId]
-    setSelectedProducts(newSelected)
-    
-    const newMedia = { ...existingMedia }
-    delete newMedia[productId]
-    setExistingMedia(newMedia)
-    
-    setNotification({ message: 'Product removed', type: 'success' })
+
+    const newOrderProduct: OrderProduct = {
+      product: product,
+      productOrderNumber: `PRD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`,
+      productDescription: '',
+      sampleNotes: '',
+      standardPrice: '',
+      bulkPrice: '',
+      sampleRequired: false,
+      sampleFee: '',
+      sampleETA: '',
+      sampleStatus: 'pending',
+      shippingAirPrice: '',
+      shippingBoatPrice: '',
+      productionTime: '',
+      items: variantCombos.map(combo => ({
+        variantCombo: combo,
+        quantity: 0,
+        notes: ''
+      })),
+      mediaFiles: [],
+      sampleMediaFiles: []
+    }
+
+    setOrderProducts(prev => [...prev, newOrderProduct])
+    // DON'T close the modal - let user add more products
+    // setShowAddProduct(false)
+    showNotification('success', `${product.title} added to order`)
   }
 
-  const updateQuantity = (productId: string, combo: string, quantity: number) => {
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        variantCombos: {
-          ...selectedProducts[productId].variantCombos,
-          [combo]: {
-            ...selectedProducts[productId].variantCombos[combo],
-            quantity
-          }
+  const updateProductField = (productIndex: number, field: string, value: any) => {
+    setOrderProducts(prev => prev.map((op, idx) => 
+      idx === productIndex ? { ...op, [field]: value } : op
+    ))
+  }
+
+  const updateVariantQuantity = (productIndex: number, itemIndex: number, quantity: string) => {
+    const qty = parseInt(quantity) || 0
+    setOrderProducts(prev => prev.map((op, idx) => {
+      if (idx === productIndex) {
+        const newItems = [...op.items]
+        newItems[itemIndex] = { ...newItems[itemIndex], quantity: qty }
+        return { ...op, items: newItems }
+      }
+      return op
+    }))
+  }
+
+  const updateVariantNotes = (productIndex: number, itemIndex: number, notes: string) => {
+    setOrderProducts(prev => prev.map((op, idx) => {
+      if (idx === productIndex) {
+        const newItems = [...op.items]
+        newItems[itemIndex] = { ...newItems[itemIndex], notes }
+        return { ...op, items: newItems }
+      }
+      return op
+    }))
+  }
+
+  const handleQuickFill = () => {
+    const totalQty = parseInt(quickFillQuantity)
+    if (!isNaN(totalQty) && totalQty > 0) {
+      setOrderProducts(prev => prev.map(op => {
+        const variantCount = op.items.length
+        const qtyPerVariant = Math.floor(totalQty / variantCount)
+        
+        return {
+          ...op,
+          items: op.items.map(item => ({
+            ...item,
+            quantity: qtyPerVariant
+          }))
         }
-      }
-    })
+      }))
+    }
   }
 
-  const quickFillQuantity = (productId: string, quantity: number) => {
-    const product = selectedProducts[productId]
-    const updatedCombos = { ...product.variantCombos }
-    
-    Object.keys(updatedCombos).forEach(combo => {
-      updatedCombos[combo] = {
-        ...updatedCombos[combo],
-        quantity
-      }
-    })
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...product,
-        variantCombos: updatedCombos
-      }
-    })
-  }
-
-  const updateNotes = (productId: string, combo: string, notes: string) => {
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        variantCombos: {
-          ...selectedProducts[productId].variantCombos,
-          [combo]: {
-            ...selectedProducts[productId].variantCombos[combo],
-            notes
-          }
-        }
-      }
-    })
-  }
-
-  const handleMediaUpload = (productId: string, files: FileList | null) => {
+  const handleFileUpload = (productIndex: number, files: FileList | null) => {
     if (!files) return
     
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'video/mp4', 'video/quicktime']
-    const validFiles = Array.from(files).filter(file => allowedTypes.includes(file.type))
-    
-    if (validFiles.length === 0) {
-      setNotification({ message: 'Please upload only JPG, PNG, MP4, or MOV files', type: 'error' })
-      return
-    }
-    
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        referenceMedia: [...selectedProducts[productId].referenceMedia, ...validFiles]
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+    const newFiles = Array.from(files).filter(file => {
+      if (file.size > MAX_FILE_SIZE) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+        return false
       }
+      return true
     })
     
-    setNotification({ message: `Added ${validFiles.length} file${validFiles.length > 1 ? 's' : ''}`, type: 'success' })
-  }
-
-  const removeMedia = (productId: string, index: number) => {
-    const updatedMedia = selectedProducts[productId].referenceMedia.filter((_, i) => i !== index)
-    setSelectedProducts({
-      ...selectedProducts,
-      [productId]: {
-        ...selectedProducts[productId],
-        referenceMedia: updatedMedia
-      }
-    })
-    setNotification({ message: 'File removed', type: 'success' })
-  }
-
-  const deleteExistingMedia = async (productId: string, mediaId: string) => {
-    try {
-      const { error } = await supabase
-        .from('order_media')
-        .delete()
-        .eq('id', mediaId)
-      
-      if (error) throw error
-      
-      const newMedia = { ...existingMedia }
-      newMedia[productId] = newMedia[productId].filter(m => m.id !== mediaId)
-      setExistingMedia(newMedia)
-      
-      setNotification({ message: 'File deleted', type: 'success' })
-    } catch (error) {
-      console.error('Error deleting media:', error)
-      setNotification({ message: 'Error deleting file', type: 'error' })
+    if (newFiles.length > 0) {
+      setOrderProducts(prev => prev.map((op, idx) => 
+        idx === productIndex 
+          ? { ...op, mediaFiles: [...op.mediaFiles, ...newFiles] }
+          : op
+      ))
     }
   }
 
-  const getVariantComboDisplay = (combo: string) => {
-    const optionIds = combo.split(',')
-    return optionIds.map(id => {
-      const option = variantOptions.find(vo => vo.id === id)
-      return option?.value || ''
-    }).join(' / ')
-  }
-
-  const updateDraft = async () => {
-    if (!orderName) {
-      setNotification({ message: 'Please enter an order name', type: 'error' })
-      return
-    }
+  const handleSampleFileUpload = (productIndex: number, files: FileList | null) => {
+    if (!files) return
     
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+    const newFiles = Array.from(files).filter(file => {
+      if (file.size > MAX_FILE_SIZE) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+        return false
+      }
+      return true
+    })
+    
+    if (newFiles.length > 0) {
+      setOrderProducts(prev => prev.map((op, idx) => 
+        idx === productIndex 
+          ? { ...op, sampleMediaFiles: [...op.sampleMediaFiles, ...newFiles] }
+          : op
+      ))
+    }
+  }
+
+  const removeFile = (productIndex: number, fileIndex: number) => {
+    setOrderProducts(prev => prev.map((op, idx) => {
+      if (idx === productIndex) {
+        const newFiles = op.mediaFiles.filter((_, i) => i !== fileIndex)
+        return { ...op, mediaFiles: newFiles }
+      }
+      return op
+    }))
+  }
+
+  const removeSampleFile = (productIndex: number, fileIndex: number) => {
+    setOrderProducts(prev => prev.map((op, idx) => {
+      if (idx === productIndex) {
+        const newFiles = op.sampleMediaFiles.filter((_, i) => i !== fileIndex)
+        return { ...op, sampleMediaFiles: newFiles }
+      }
+      return op
+    }))
+  }
+
+  const handleSaveOrder = async (isDraft: boolean) => {
     setSaving(true)
     
     try {
+      const userData = localStorage.getItem('user')
+      const user = userData ? JSON.parse(userData) : null
+      
+      // Check for sample notes
+      let hasSampleRequest = false
+      for (const orderProduct of orderProducts) {
+        if (orderProduct.sampleNotes && orderProduct.sampleNotes.trim() !== '') {
+          hasSampleRequest = true
+          break
+        }
+      }
+
+      // Determine status and order number
+      let orderStatus = 'draft'
+      let newOrderNumber = orderData.order_number
+      
+      if (!isDraft) {
+        if (orderData.status === 'draft') {
+          // Generate new order number with client prefix
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('name')
+            .eq('id', selectedClient || orderData.client_id)
+            .single()
+          
+          const clientPrefix = clientData?.name?.substring(0, 3).toUpperCase() || 'ORD'
+          newOrderNumber = `${clientPrefix}-${Date.now().toString(36).toUpperCase()}`
+        }
+        
+        // Set status based on sample notes
+        orderStatus = hasSampleRequest ? 'submitted_for_sample' : 'submitted_to_manufacturer'
+      }
+
       // Update order
       const { error: updateError } = await supabase
         .from('orders')
         .update({
-          client_id: selectedClientId || clients[0]?.id,
-          manufacturer_id: selectedManufacturerId || manufacturers[0]?.id,
+          order_number: newOrderNumber,
+          order_name: orderName,
+          client_id: selectedClient,
+          manufacturer_id: selectedManufacturer,
+          status: orderStatus,
+          updated_at: new Date().toISOString()
         })
         .eq('id', orderId)
-      
+
       if (updateError) throw updateError
+
+      // IMPORTANT: Delete ALL existing order products first
+      // But we need to handle media files properly
+      console.log('Deleting all existing order products...')
       
-      // Update products and items
-      for (const [productId, productData] of Object.entries(selectedProducts)) {
-        // Check if this product already exists
-        const { data: existingProduct } = await supabase
+      // First, get all existing order_product_ids to clean up media
+      const { data: existingProducts } = await supabase
+        .from('order_products')
+        .select('id')
+        .eq('order_id', orderId)
+      
+      if (existingProducts && existingProducts.length > 0) {
+        const productIds = existingProducts.map(p => p.id)
+        
+        // Delete all media files associated with these products
+        console.log('Deleting existing media files...')
+        await supabase
+          .from('order_media')
+          .delete()
+          .in('order_product_id', productIds)
+      }
+      
+      // Now delete the order products
+      const { error: deleteError } = await supabase
+        .from('order_products')
+        .delete()
+        .eq('order_id', orderId)
+        
+      if (deleteError) {
+        console.error('Error deleting existing products:', deleteError)
+        throw deleteError
+      }
+
+      console.log('All existing products deleted. Now saving current products...')
+
+      // Save new order products
+      for (const orderProduct of orderProducts) {
+        // Build the insert data with description
+        const insertData = {
+          order_id: orderId,
+          product_id: orderProduct.product.id,
+          product_order_number: orderProduct.productOrderNumber,
+          description: orderProduct.productDescription || '', // Save the description!
+          sample_notes: orderProduct.sampleNotes || null,
+          sample_required: !!orderProduct.sampleNotes
+        }
+        
+        console.log('Attempting to save product with data:', insertData)
+        
+        const { data: productData, error: productError } = await supabase
           .from('order_products')
-          .select('id')
-          .eq('order_id', orderId)
-          .eq('product_id', productId)
+          .insert(insertData)
+          .select()
           .single()
+
+        if (productError) {
+          console.error('Error saving product:', productError)
+          console.error('Insert data that failed:', insertData)
+          console.error('Error details:', JSON.stringify(productError, null, 2))
+          
+          showNotification('error', `Failed to save product ${orderProduct.product.title}: ${productError.message}`)
+          throw productError
+        }
+
+        console.log('Product saved successfully with ID:', productData.id)
         
-        let orderProductId: string
-        
-        if (existingProduct) {
-          orderProductId = existingProduct.id
+        // Re-associate existing media files with the new product record
+        if (orderProduct.existingMedia && orderProduct.existingMedia.length > 0) {
+          console.log(`Re-associating ${orderProduct.existingMedia.length} existing reference media files...`)
           
-          // Update existing items
-          for (const [combo, data] of Object.entries(productData.variantCombos)) {
-            const { data: existingItem } = await supabase
-              .from('order_items')
-              .select('id')
-              .eq('order_product_id', orderProductId)
-              .eq('variant_combo', combo)
-              .single()
-            
-            if (existingItem) {
-              // Update existing
-              await supabase
-                .from('order_items')
-                .update({
-                  quantity: data.quantity || 0,
-                  notes: data.notes || null
-                })
-                .eq('id', existingItem.id)
-            } else {
-              // Insert new
-              await supabase
-                .from('order_items')
-                .insert([{
-                  order_product_id: orderProductId,
-                  variant_combo: combo,
-                  quantity: data.quantity || 0,
-                  notes: data.notes || null,
-                  admin_status: 'pending',
-                  manufacturer_status: 'pending'
-                }])
-            }
-          }
-        } else {
-          // Create new product
-          const productOrderNumber = `${order.order_number}-P${Date.now().toString().slice(-4)}`
-          
-          const { data: newProduct, error: productError } = await supabase
-            .from('order_products')
-            .insert([{
-              order_id: orderId,
-              product_id: productId,
-              product_order_number: productOrderNumber
-            }])
-            .select()
-            .single()
-          
-          if (productError) throw productError
-          orderProductId = newProduct.id
-          
-          // Insert items
-          const items = Object.entries(productData.variantCombos)
-            .map(([combo, data]) => ({
-              order_product_id: orderProductId,
-              variant_combo: combo,
-              quantity: data.quantity || 0,
-              notes: data.notes || null,
-              admin_status: 'pending',
-              manufacturer_status: 'pending'
-            }))
-          
-          if (items.length > 0) {
-            await supabase.from('order_items').insert(items)
+          for (const media of orderProduct.existingMedia) {
+            // Insert a new media record pointing to the existing file
+            await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: productData.id,
+                file_url: media.file_url,
+                file_type: media.file_type,
+                original_filename: media.original_filename,
+                uploaded_by: user?.id
+              })
           }
         }
         
-        // Upload new media
-        if (productData.referenceMedia.length > 0) {
-          const userEmail = localStorage.getItem('userEmail')
-          const { data: userData } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', userEmail)
-            .single()
+        // Re-associate existing sample media files
+        if (orderProduct.existingSampleMedia && orderProduct.existingSampleMedia.length > 0) {
+          console.log(`Re-associating ${orderProduct.existingSampleMedia.length} existing sample media files...`)
           
-          for (const file of productData.referenceMedia) {
+          for (const media of orderProduct.existingSampleMedia) {
+            await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: productData.id,
+                file_url: media.file_url,
+                file_type: media.file_type,
+                original_filename: media.original_filename,
+                uploaded_by: user?.id
+              })
+          }
+        }
+
+        // Save ALL items (not just ones with quantity > 0)
+        // This ensures all variants are available when editing later
+        const itemsToSave = orderProduct.items.map(item => ({
+          order_product_id: productData.id,
+          variant_combo: item.variantCombo,
+          quantity: item.quantity || 0,
+          notes: item.notes || '',
+          admin_status: 'pending',
+          manufacturer_status: 'pending'
+        }))
+
+        if (itemsToSave.length > 0) {
+          const { error: itemsError } = await supabase
+            .from('order_items')
+            .insert(itemsToSave)
+            
+          if (itemsError) {
+            console.error('Error saving items:', itemsError)
+            console.error('Items data:', itemsToSave)
+          }
+        }
+
+        // Upload media files if any
+        for (const file of orderProduct.mediaFiles) {
+          try {
             const fileExt = file.name.split('.').pop()
-            const fileName = `${orderId}/${orderProductId}/ref-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-            
-            const { data: uploadData, error: uploadError } = await supabase.storage
+            const fileName = `ref-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+            const filePath = `${orderId}/${productData.id}/${fileName}`
+
+            const { error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(fileName, file)
-            
-            if (!uploadError && uploadData) {
-              const { data: urlData } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(fileName)
-              
-              await supabase.from('order_media').insert([{
-                order_product_id: orderProductId,
-                file_url: urlData.publicUrl,
-                file_type: file.type.startsWith('image') ? 'image' : 'video',
-                uploaded_by: userData?.id || null,
-                is_sample: false
-              }])
+              .upload(filePath, file)
+
+            if (uploadError) {
+              console.error('Error uploading file:', uploadError)
+              if (uploadError.message?.includes('exceeded the maximum allowed size')) {
+                showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
+              } else {
+                showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
+              }
+              continue
             }
+
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath)
+
+            await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: productData.id,
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                uploaded_by: user?.id,
+                original_filename: file.name // Save the original filename
+              })
+          } catch (mediaError) {
+            console.error('Error with media:', mediaError)
+          }
+        }
+
+        // Upload sample media files
+        for (const file of orderProduct.sampleMediaFiles) {
+          try {
+            const fileExt = file.name.split('.').pop()
+            const fileName = `sample-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+            const filePath = `${orderId}/${productData.id}/${fileName}`
+
+            const { error: uploadError } = await supabase.storage
+              .from('order-media')
+              .upload(filePath, file)
+
+            if (uploadError) {
+              console.error('Error uploading sample file:', uploadError)
+              if (uploadError.message?.includes('exceeded the maximum allowed size')) {
+                showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
+              } else {
+                showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
+              }
+              continue
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath)
+
+            await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: productData.id,
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                uploaded_by: user?.id,
+                original_filename: file.name // Save the original filename
+              })
+          } catch (mediaError) {
+            console.error('Error with sample media:', mediaError)
           }
         }
       }
+
+      showNotification('success', `Order ${orderData.order_number} updated successfully!`)
       
-      setNotification({ message: 'Draft updated successfully!', type: 'success' })
       setTimeout(() => {
-        router.push(`/dashboard/orders`)
+        router.push('/dashboard/orders')
       }, 1500)
       
-    } catch (error: any) {
-      console.error('Error updating draft:', error)
-      setNotification({ message: error?.message || 'Error updating draft', type: 'error' })
-    } finally {
+    } catch (error) {
+      console.error('Error updating order:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Error updating order'
+      showNotification('error', errorMessage)
       setSaving(false)
     }
   }
 
-  const completeOrder = async () => {
-    if (!orderName || !selectedClientId || !selectedManufacturerId) {
-      setNotification({ message: 'Please fill in all required fields', type: 'error' })
-      return
-    }
-    
-    if (Object.keys(selectedProducts).length === 0) {
-      setNotification({ message: 'Please add at least one product', type: 'error' })
-      return
-    }
-    
-    // Check if any products have quantities
-    const hasQuantities = Object.values(selectedProducts).some(product => 
-      Object.values(product.variantCombos).some(combo => combo.quantity > 0)
-    )
-    
-    if (!hasQuantities) {
-      setNotification({ message: 'Please add quantities to at least one variant', type: 'error' })
-      return
-    }
-    
-    setCompleting(true)
-    
-    try {
-      // Generate proper order number
-      const orderNumber = `ORD-${Date.now().toString().slice(-6)}`
-      
-      // Update order status and number
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          order_number: orderNumber,
-          status: 'draft', // Ready to submit status
-          client_id: selectedClientId,
-          manufacturer_id: selectedManufacturerId,
-        })
-        .eq('id', orderId)
-      
-      if (updateError) throw updateError
-      
-      setNotification({ message: 'Order completed and ready to submit!', type: 'success' })
-      setTimeout(() => {
-        router.push(`/dashboard/orders/${orderId}`)
-      }, 1500)
-      
-    } catch (error: any) {
-      console.error('Error completing order:', error)
-      setNotification({ message: error?.message || 'Error completing order', type: 'error' })
-    } finally {
-      setCompleting(false)
-    }
-  }
-
-  if (loading && products.length === 0) {
+  if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading draft...</div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-lg">Loading order...</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Notification Toast */}
-        {notification && (
-          <div className={`fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-50 animate-slide-in`}>
-            <div className={`flex items-center gap-3 px-4 sm:px-6 py-4 rounded-lg shadow-xl border backdrop-blur-sm transition-all duration-300 ${
-              notification.type === 'success' 
-                ? 'bg-green-50 border-green-200 text-green-800' 
-                : 'bg-red-50 border-red-200 text-red-800'
-            }`}>
-              <div className="flex items-center gap-3 flex-1">
-                {notification.type === 'success' ? (
-                  <CheckIcon className="w-5 h-5 flex-shrink-0" />
-                ) : (
-                  <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm sm:text-base">{notification.message}</p>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Notification Toast */}
+      {notification.show && (
+        <div className={`
+          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
+        `}>
+          <div className={`
+            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success' 
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+              : notification.type === 'error'
+              ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
+              : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
+            }
+          `}>
+            <div className="flex items-center space-x-3">
+              {notification.type === 'success' && (
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </div>
+              )}
+              {notification.type === 'error' && (
+                <div className="flex-shrink-0">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              )}
+              <div className="flex-1">
+                <p className="font-semibold text-white">
+                  {notification.message}
+                </p>
               </div>
-              <button
-                onClick={() => setNotification(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
-              >
-                <XMarkIcon className="w-5 h-5" />
-              </button>
             </div>
-          </div>
-        )}
-
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.push('/dashboard/orders')}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <ArrowLeftIcon className="w-5 h-5 text-gray-600" />
-              </button>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Edit Draft Order</h1>
-            </div>
-            <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm font-medium rounded-full self-start sm:self-auto">
-              DRAFT
-            </span>
           </div>
         </div>
+      )}
 
-        {/* Order Details */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Order Details</h2>
+      {/* Header */}
+      <div className="mb-6">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Orders
+        </button>
+        
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-gray-900">Edit Order</h1>
+          <button
+            onClick={handleAddProductClick}
+            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 flex items-center gap-2"
+          >
+            <ShoppingCart className="w-4 h-4" />
+            Add Product
+          </button>
+        </div>
+      </div>
+
+      {/* Order Summary Info */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+        <div className="border-b border-gray-200 pb-3 mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">{orderName}</h3>
+          <p className="text-sm text-gray-500 mt-1">Order details and configuration</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Client</p>
+              <p className="text-sm text-gray-600">{orderData?.clients?.name}</p>
+            </div>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Order Name *
-              </label>
-              <input
-                type="text"
-                value={orderName}
-                onChange={(e) => setOrderName(e.target.value)}
-                placeholder="e.g., October Drop"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+          <div className="flex items-start space-x-3">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
             </div>
-            
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Client *
-              </label>
-              <select
-                value={selectedClientId}
-                onChange={(e) => handleClientChange(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select client...</option>
-                {clients.map(client => (
-                  <option key={client.id} value={client.id}>{client.name}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Client Email
-              </label>
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="client@example.com"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Manufacturer *
-              </label>
-              <select
-                value={selectedManufacturerId}
-                onChange={(e) => setSelectedManufacturerId(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select manufacturer...</option>
-                {manufacturers.map(mfr => (
-                  <option key={mfr.id} value={mfr.id}>{mfr.name}</option>
-                ))}
-              </select>
+              <p className="text-sm font-medium text-gray-900">Manufacturer</p>
+              <p className="text-sm text-gray-600">{orderData?.manufacturers?.name}</p>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Products Section */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6 mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Products</h2>
+      {/* Quick Fill Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-blue-600" />
+            <span className="text-sm font-medium text-blue-900">Quick Fill Quantities</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              value={quickFillQuantity}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value === '' || parseInt(value) >= 0) {
+                  setQuickFillQuantity(value)
+                }
+              }}
+              placeholder="Total quantity"
+              className="w-40 px-3 py-2 border border-blue-300 rounded-lg text-gray-900 placeholder-gray-500"
+              min="0"
+            />
             <button
-              onClick={() => setShowProductPicker(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition text-sm sm:text-base"
+              onClick={handleQuickFill}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
-              <PlusIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Product</span>
-              <span className="sm:hidden">Add</span>
+              Distribute
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Products */}
+      {orderProducts.map((orderProduct, productIndex) => (
+        <div key={productIndex} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          {/* Product Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Package className="w-5 h-5 mr-2 text-blue-600" />
+                {orderProduct.product.title}
+                {orderProducts.filter(op => op.product.id === orderProduct.product.id).length > 1 && (
+                  <span className="ml-2 text-sm text-gray-500">
+                    (Instance {orderProducts.filter(op => op.product.id === orderProduct.product.id).indexOf(orderProduct) + 1} of {orderProducts.filter(op => op.product.id === orderProduct.product.id).length})
+                  </span>
+                )}
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Product Order Number: {orderProduct.productOrderNumber}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                if (orderProducts.length === 1) {
+                  showNotification('error', 'Cannot remove the last product. Add another product first.')
+                  return
+                }
+                const updatedProducts = orderProducts.filter((_, index) => index !== productIndex)
+                setOrderProducts(updatedProducts)
+                showNotification('info', `${orderProduct.product.title} removed from order`)
+              }}
+              className="p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all group"
+              title="Remove this product from order"
+            >
+              <Trash2 className="w-5 h-5" />
             </button>
           </div>
 
-          {Object.keys(selectedProducts).length === 0 && (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-              <p className="text-gray-500">No products added yet</p>
-              <button
-                onClick={() => setShowProductPicker(true)}
-                className="mt-4 text-blue-600 hover:text-blue-700 font-medium"
-              >
-                Add your first product
-              </button>
-            </div>
-          )}
+          {/* Product Description */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Product Description
+            </label>
+            <input
+              type="text"
+              value={orderProduct.productDescription}
+              onChange={(e) => updateProductField(productIndex, 'productDescription', e.target.value)}
+              placeholder="Enter brief product description..."
+              className={inputClassName}
+            />
+          </div>
 
-          {Object.entries(selectedProducts).map(([productId, productData]) => {
-            const product = products.find(p => p.id === productId)
-            if (!product) return null
-            
-            return (
-              <div key={productId} className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900">{product.title}</h3>
-                    {product.description && (
-                      <p className="text-sm text-gray-600 mt-1">{product.description}</p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => removeProduct(productId)}
-                    className="self-start sm:self-auto p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition"
-                    title="Remove product"
-                  >
-                    <TrashIcon className="w-5 h-5" />
-                  </button>
-                </div>
+          {/* EXACT Sample Request Section from Create Order */}
+          <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-6">
+            <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Sample Request
+            </h4>
 
-                {/* Quick Fill */}
-                <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
-                  <span className="text-sm text-gray-600">Quick fill:</span>
+            {/* Fields that will be filled by manufacturer - display only */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div className="opacity-60">
+                <label className="block text-xs font-medium text-amber-800 mb-1">
+                  Sample Fee
+                </label>
+                <div className="relative">
+                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
                   <input
-                    type="number"
-                    placeholder="Quantity"
-                    className="w-full sm:w-32 px-3 py-1.5 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        const value = parseInt((e.target as HTMLInputElement).value)
-                        if (!isNaN(value)) {
-                          quickFillQuantity(productId, value)
-                          ;(e.target as HTMLInputElement).value = ''
-                        }
-                      }
-                    }}
+                    type="text"
+                    placeholder="Set by manufacturer"
+                    disabled
+                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
                   />
-                  <span className="text-xs text-gray-500">Press Enter to apply to all</span>
                 </div>
+              </div>
 
-                {/* Reference Media Upload */}
-                <div className="mb-4 p-4 bg-white rounded-lg border border-gray-200">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    📸 Reference Media
-                  </label>
-                  
-                  {/* Existing Media */}
-                  {existingMedia[productId] && existingMedia[productId].length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-xs text-gray-500 mb-2">Existing files:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {existingMedia[productId].map((media) => (
-                          <div key={media.id} className="relative bg-gray-100 rounded-lg px-3 py-2 pr-8 text-xs text-gray-700">
-                            <a href={media.file_url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600">
-                              {media.file_type === 'image' ? '🖼️' : '🎥'} View
-                            </a>
-                            <button
-                              onClick={() => deleteExistingMedia(productId, media.id)}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-red-500 hover:text-red-700"
-                            >
-                              <XMarkIcon className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
+              <div className="opacity-60">
+                <label className="block text-xs font-medium text-amber-800 mb-1">
+                  Sample ETA
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
+                  <input
+                    type="text"
+                    placeholder="Set by manufacturer"
+                    disabled
+                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
+                  />
+                </div>
+              </div>
+
+              <div className="opacity-60">
+                <label className="block text-xs font-medium text-amber-800 mb-1">
+                  Status
+                </label>
+                <input
+                  type="text"
+                  value="Pending"
+                  disabled
+                  className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
+                />
+              </div>
+            </div>
+
+            {/* Sample Tech Pack Upload */}
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-amber-800 mb-1">
+                Technical Pack / Sample Media
+              </label>
+              
+              {/* Show existing sample files */}
+              {orderProduct.existingSampleMedia && orderProduct.existingSampleMedia.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs text-amber-700 mb-1">Existing files:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {orderProduct.existingSampleMedia.map((media) => (
+                      <div key={media.id} className="flex items-center gap-1 bg-amber-100 px-2 py-1 rounded text-xs">
+                        <a 
+                          href={media.file_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-amber-800 hover:text-amber-900 underline"
+                        >
+                          {media.file_type === 'image' ? '📷' : '📄'} {media.original_filename || media.file_url.split('/').pop()?.substring(0, 20)}...
+                        </a>
                       </div>
-                    </div>
-                  )}
-                  
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload new files */}
+              <div className="flex items-center gap-2">
+                <label className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 cursor-pointer flex items-center text-sm">
+                  <Upload className="w-4 h-4 mr-1" />
+                  Upload Tech Pack
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/jpg,video/mp4,video/quicktime"
                     multiple
-                    onChange={(e) => handleMediaUpload(productId, e.target.files)}
-                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                    accept="image/*,video/*,.pdf"
+                    onChange={(e) => handleSampleFileUpload(productIndex, e.target.files)}
+                    className="hidden"
                   />
-                  <p className="text-xs text-gray-500 mt-1">JPG, PNG, MP4, or MOV files</p>
-                  
-                  {/* New uploaded files */}
-                  {productData.referenceMedia.length > 0 && (
-                    <div className="mt-3">
-                      <p className="text-xs text-gray-500 mb-2">New files to upload:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {productData.referenceMedia.map((file, index) => (
-                          <div key={index} className="relative bg-blue-50 rounded-lg px-3 py-2 pr-8 text-xs text-blue-700">
-                            <span className="truncate max-w-[150px] inline-block">{file.name}</span>
-                            <button
-                              onClick={() => removeMedia(productId, index)}
-                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-red-500 hover:text-red-700"
-                            >
-                              <XMarkIcon className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Variant Rows */}
-                <div className="space-y-2">
-                  {Object.entries(productData.variantCombos).map(([combo, data]) => (
-                    <div key={combo} className="flex flex-col sm:grid sm:grid-cols-12 gap-2 sm:gap-3 sm:items-center bg-white p-3 rounded-lg border border-gray-200">
-                      <div className="sm:col-span-4 text-gray-700 text-sm font-medium">
-                        {getVariantComboDisplay(combo)}
-                      </div>
-                      <div className="sm:col-span-2">
-                        <input
-                          type="number"
-                          value={data.quantity || ''}
-                          onChange={(e) => updateQuantity(productId, combo, parseInt(e.target.value) || 0)}
-                          placeholder="Qty"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="sm:col-span-6">
-                        <input
-                          type="text"
-                          value={data.notes}
-                          onChange={(e) => updateNotes(productId, combo, e.target.value)}
-                          placeholder="Notes (optional)"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
+                </label>
+                {orderProduct.sampleMediaFiles.length > 0 && (
+                  <span className="text-xs text-amber-700">
+                    {orderProduct.sampleMediaFiles.length} new file(s)
+                  </span>
+                )}
+              </div>
+              
+              {/* Show newly added files */}
+              {orderProduct.sampleMediaFiles.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {orderProduct.sampleMediaFiles.map((file, fileIndex) => (
+                    <div key={fileIndex} className="flex items-center gap-1 bg-amber-100 px-2 py-1 rounded text-xs">
+                      <span className="text-amber-800">📎 {file.name}</span>
+                      <button
+                        onClick={() => removeSampleFile(productIndex, fileIndex)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </div>
                   ))}
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )}
+            </div>
 
-        {/* Submit Buttons */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row justify-between gap-4">
-            <button
-              onClick={updateDraft}
-              disabled={saving || completing}
-              className={`w-full sm:w-auto px-6 py-3 font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                saving 
-                  ? 'bg-blue-600 text-white' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-            >
-              {saving ? 'Saving...' : 'Update Draft'}
-            </button>
-            
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => router.push('/dashboard/orders')}
-                className="w-full sm:w-auto px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition order-2 sm:order-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={completeOrder}
-                disabled={saving || completing}
-                className={`w-full sm:w-auto px-6 py-3 font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed order-1 sm:order-2 ${
-                  completing 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-              >
-                {completing ? 'Completing...' : 'Complete Order'}
-              </button>
+            {/* Sample Notes */}
+            <div>
+              <label className="block text-xs font-medium text-amber-800 mb-1">
+                Sample Notes / Instructions
+              </label>
+              <textarea
+                value={orderProduct.sampleNotes}
+                onChange={(e) => updateProductField(productIndex, 'sampleNotes', e.target.value)}
+                placeholder="Add notes about the sample request, special instructions, materials, colors, etc..."
+                rows={3}
+                className="w-full px-3 py-2 border border-amber-300 rounded-lg text-gray-900 text-sm"
+              />
             </div>
           </div>
-        </div>
 
-        {/* Product Picker Modal */}
-        {showProductPicker && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Select Product</h2>
+          {/* Bulk Order Section - Separated */}
+          <div className="border border-gray-300 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+              <Package className="w-4 h-4 mr-2" />
+              Bulk Order Details
+            </h4>
+
+            {/* Reference Media Upload */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reference Media
+              </label>
               
-              <div className="space-y-2 overflow-y-auto flex-1">
-                {products.map(product => (
-                  <button
-                    key={product.id}
-                    onClick={() => addProduct(product.id)}
-                    disabled={!!selectedProducts[product.id]}
-                    className={`w-full text-left px-4 py-3 rounded-lg transition ${
-                      selectedProducts[product.id]
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-gray-50 hover:bg-gray-100 text-gray-900 border border-gray-200'
-                    }`}
-                  >
-                    <div className="font-semibold">{product.title}</div>
-                    {product.description && (
-                      <div className="text-sm text-gray-600 mt-1">{product.description}</div>
-                    )}
-                    {selectedProducts[product.id] && (
-                      <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                        <CheckIcon className="w-3 h-3" />
-                        Already added
+              {/* Show existing reference files */}
+              {orderProduct.existingMedia && orderProduct.existingMedia.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs text-gray-600 mb-1">Existing files:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {orderProduct.existingMedia.map((media) => (
+                      <div key={media.id} className="bg-gray-100 px-3 py-1 rounded-lg">
+                        <a 
+                          href={media.file_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:text-blue-800 underline"
+                        >
+                          {media.file_type === 'image' ? '📷' : '📄'} {media.original_filename || media.file_url.split('/').pop()?.substring(0, 20)}...
+                        </a>
                       </div>
-                    )}
-                  </button>
-                ))}
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload new files */}
+              <div className="flex items-center gap-4">
+                <label className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 cursor-pointer flex items-center">
+                  <Upload className="w-4 h-4 mr-2" />
+                  Upload Files
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,video/*"
+                    onChange={(e) => handleFileUpload(productIndex, e.target.files)}
+                    className="hidden"
+                  />
+                </label>
+                {orderProduct.mediaFiles.length > 0 && (
+                  <span className="text-sm text-gray-600">
+                    {orderProduct.mediaFiles.length} new file(s) selected
+                  </span>
+                )}
               </div>
+              
+              {/* Show newly added files */}
+              {orderProduct.mediaFiles.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {orderProduct.mediaFiles.map((file, fileIndex) => (
+                    <div key={fileIndex} className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg">
+                      <span className="text-sm text-gray-700">📎 {file.name}</span>
+                      <button
+                        onClick={() => removeFile(productIndex, fileIndex)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
+            {/* Variants Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '26%'}}>Variant</th>
+                    <th className="text-left py-2 pl-5 pr-4 text-sm font-medium text-gray-700" style={{width: '10%'}}>Quantity</th>
+                    <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '64%'}}>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orderProduct.items.map((item, itemIndex) => (
+                    <tr key={itemIndex} className="border-b border-gray-100">
+                      <td className="py-2 px-4 text-sm text-gray-900">{item.variantCombo}</td>
+                      <td className="py-2 pl-5 pr-4">
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateVariantQuantity(productIndex, itemIndex, e.target.value)}
+                          min="0"
+                          className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-center text-gray-900"
+                        />
+                      </td>
+                      <td className="py-2 px-4">
+                        <input
+                          type="text"
+                          value={item.notes || ''}
+                          onChange={(e) => updateVariantNotes(productIndex, itemIndex, e.target.value)}
+                          placeholder="Optional notes..."
+                          className="w-full px-2 py-1 border border-gray-300 rounded-lg text-gray-900"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      {/* Action Buttons */}
+      <div className="flex justify-between mt-8">
+        <div>
+          {/* Empty div for spacing */}
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleSaveOrder(true)}
+            disabled={saving}
+            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {saving && (
+              <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
+            {saving ? 'Saving...' : 'Save as Draft'}
+          </button>
+          <button
+            onClick={() => handleSaveOrder(false)}
+            disabled={saving}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {saving && (
+              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            )}
+            {saving ? 'Submitting...' : 'Submit Order'}
+          </button>
+        </div>
+      </div>
+
+      {/* Add Product Modal */}
+      {showAddProduct && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[60vh] overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Select Products to Add</h2>
+                <p className="text-sm text-gray-500 mt-1">Click products to add them to the order</p>
+              </div>
               <button
-                onClick={() => setShowProductPicker(false)}
-                className="mt-4 w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-lg transition"
+                onClick={() => {
+                  setShowAddProduct(false)
+                  setProductSearch('')
+                }}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
               >
-                Close
+                ×
+              </button>
+            </div>
+            
+            {/* Search Bar */}
+            <div className="mb-4">
+              <input
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="Search products by name..."
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+              />
+            </div>
+            
+            {/* Products Grid */}
+            <div className="overflow-y-auto max-h-[35vh]">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {allProducts.length === 0 && (
+                  <div className="col-span-2 text-center py-8 text-gray-500">
+                    <p className="mb-2">No products available</p>
+                    <p className="text-sm">Please check the Products section or database connection</p>
+                  </div>
+                )}
+                
+                {allProducts
+                  .filter(p => 
+                    p.title.toLowerCase().includes(productSearch.toLowerCase())
+                  )
+                  .map(product => {
+                    const instanceCount = orderProducts.filter(op => op.product.id === product.id).length
+                    return (
+                      <div
+                        key={product.id}
+                        onClick={() => addProductToOrder(product)}
+                        className={`border rounded-lg p-3 transition-all cursor-pointer select-none ${
+                          instanceCount > 0 
+                            ? 'border-blue-300 bg-blue-50' 
+                            : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
+                        }`}
+                      >
+                        <div className="relative">
+                          <div className="mb-2">
+                            <h3 className="font-semibold text-gray-900 text-sm">
+                              {product.title}
+                              {instanceCount > 0 && (
+                                <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                                  {instanceCount} in order
+                                </span>
+                              )}
+                            </h3>
+                            {product.description && (
+                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{product.description}</p>
+                            )}
+                          </div>
+                          <div className="pt-2 border-t border-gray-200">
+                            <span className="text-xs text-gray-500">
+                              {instanceCount > 0 ? 'Add another instance' : 'Click to add'}
+                              {product.variants && product.variants.length > 0 && (
+                                <span className="block text-xs text-gray-400 mt-1">
+                                  {product.variants.map(v => `${v.type}: ${v.options.length}`).join(', ')}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+              </div>
+              
+              {allProducts.length > 0 && allProducts.filter(p => 
+                p.title.toLowerCase().includes(productSearch.toLowerCase())
+              ).length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No products match your search
+                </div>
+              )}
+            </div>
+            
+            {/* Done Button */}
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowAddProduct(false)
+                  setProductSearch('')
+                }}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Done Adding Products
               </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
