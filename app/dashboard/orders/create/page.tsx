@@ -227,7 +227,7 @@ export default function CreateOrderPage() {
               return
             }
             
-            product.variants![index].options.forEach(option: string) => {
+            product.variants![index].options.forEach((option: string) => {
               generateCombos(index + 1, [...current, option])
             })
           }
