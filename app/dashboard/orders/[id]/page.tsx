@@ -1,1752 +1,910 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { 
-  ArrowLeft, 
-  Package, 
-  Calendar, 
-  User, 
-  Building,
-  Mail,
-  FileText,
-  Image as ImageIcon,
-  Download,
-  X,
-  Check,
-  AlertCircle,
-  Clock,
-  Lock,
-  Unlock,
-  ChevronRight,
-  ChevronLeft,
-  Send,
-  RotateCcw,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Edit,
-  MessageSquare,
-  ZoomIn,
-  History,
-  FileImage,
-  Play,
-  Eye,
-  Upload,
-  Plus,
-  Save,
-  ExternalLink,
-  File,
-  Bell
-} from 'lucide-react';
-import { notify } from '@/app/hooks/useUINotification';
-import { OrderStatusBadge } from '@/app/components/StatusBadge';
-import { getPermissions, type RolePermissions } from '@/app/lib/permissions';
+import { use, useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { useOrderData } from './hooks/useOrderData';
+import { getUserRole, usePermissions } from './hooks/usePermissions';
+import { OrderHeader } from './components/shared/OrderHeader';
+import { StatusBadge } from './components/shared/StatusBadge';
+import { AdminProductCard } from './components/admin/AdminProductCard';
+import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
+import { HistoryModal } from './components/modals/HistoryModal';
+import { RouteModal } from './components/modals/RouteModal';
+import { supabase } from '@/lib/supabase';
+import { Building, Mail, Package, AlertCircle, Send, Save, Loader2 } from 'lucide-react';
+import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
-// Updated interface to include order_name
-interface OrderDetail {
-  id: string;
-  order_number: string;
-  order_name: string;  // Added order_name field
-  status: string;
-  created_at: string;
-  updated_at: string;
-  created_by: string;
-  client: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  manufacturer: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  creator?: {
-    name: string;
-    email: string;
-  };
-}
-
-interface OrderProduct {
-  id: string;
-  product_order_number: string;
-  product_status?: string;
-  is_locked?: boolean;
-  requires_sample?: boolean;
-  requires_client_approval?: boolean;
-  admin_notes?: string;
-  description?: string;  // Description is at order_product level, not product level
-  product_description?: string;  // Added for the product description from create order
-  sample_required?: boolean;
-  sample_fee?: number;
-  sample_eta?: string;
-  sample_status?: string;
-  sample_notes?: string;
-  shipping_air_price?: number;
-  shipping_boat_price?: number;
-  production_time?: string;
-  product: {
-    id: string;
-    title: string;
-  };
-}
-
-interface OrderItem {
-  id: string;
-  variant_combo: string;
-  quantity: number;
-  notes: string;
-  admin_status: string;
-  manufacturer_status: string;
-  standard_price: number;
-  bulk_price: number;
-}
-
-interface MediaFile {
-  id: string;
-  file_url: string;
-  file_type: string;
-  uploaded_by: string;
-  created_at: string;
-}
-
-interface AuditLogEntry {
-  id: string;
-  user_name: string;
-  action_type: string;
-  target_type: string;
-  target_id: string;
-  old_value: string;
-  new_value: string;
-  timestamp: string;
-}
-
-export default function OrderDetailPage() {
-  const params = useParams();
+export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const supabase = createClientComponentClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { id } = use(params);
   
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([]);
-  const [orderItems, setOrderItems] = useState<Record<string, OrderItem[]>>({});
-  const [mediaFiles, setMediaFiles] = useState<Record<string, MediaFile[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [processingProduct, setProcessingProduct] = useState<string | null>(null);
-  const [routingProduct, setRoutingProduct] = useState<OrderProduct | null>(null);
-  const [routingNotes, setRoutingNotes] = useState('');
-  const [selectedRoutingAction, setSelectedRoutingAction] = useState<string | null>(null);
-  const [auditHistory, setAuditHistory] = useState<Record<string, AuditLogEntry[]>>({});
-  const [showHistory, setShowHistory] = useState<string | null>(null);
-  const [uploadingMedia, setUploadingMedia] = useState<string | null>(null);
-  const [editingNotes, setEditingNotes] = useState<string | null>(null);
-  const [tempNotes, setTempNotes] = useState('');
-  const [selectedProductForUpload, setSelectedProductForUpload] = useState<string | null>(null);
+  const { order, loading, error, refetch } = useOrderData(id);
+  const permissions = usePermissions();
+  const userRole = getUserRole();
+  
+  // UPDATED: Calculate total amount with CLIENT prices for everyone except manufacturers
+  const calculateOrderTotal = () => {
+    if (!order?.order_products) return 0;
+    
+    let total = 0;
+    const isManufacturer = userRole === 'manufacturer';
+    
+    order.order_products.forEach((product: any) => {
+      // Get total quantity for this product
+      const totalQty = product.order_items?.reduce((sum: number, item: any) => 
+        sum + (item.quantity || 0), 0) || 0;
+      
+      // IMPORTANT: Use different prices based on role
+      let productPrice = 0;
+      let sampleFee = 0;
+      let shippingPrice = 0;
+      
+      if (isManufacturer) {
+        // Manufacturers see their original prices (no markup)
+        productPrice = parseFloat(product.product_price || 0);
+        sampleFee = parseFloat(product.sample_fee || 0);
+        
+        if (product.selected_shipping_method === 'air') {
+          shippingPrice = parseFloat(product.shipping_air_price || 0);
+        } else if (product.selected_shipping_method === 'boat') {
+          shippingPrice = parseFloat(product.shipping_boat_price || 0);
+        }
+      } else {
+        // Admin/Super Admin see CLIENT prices (with markup)
+        // Use client prices if available, fallback to regular prices
+        productPrice = parseFloat(product.client_product_price || product.product_price || 0);
+        sampleFee = parseFloat(product.client_sample_fee || product.sample_fee || 0);
+        
+        if (product.selected_shipping_method === 'air') {
+          shippingPrice = parseFloat(product.client_shipping_air_price || product.shipping_air_price || 0);
+        } else if (product.selected_shipping_method === 'boat') {
+          shippingPrice = parseFloat(product.client_shipping_boat_price || product.shipping_boat_price || 0);
+        }
+      }
+      
+      // Calculate totals
+      total += productPrice * totalQty;
+      total += sampleFee;
+      total += shippingPrice;
+    });
+    
+    return total;
+  };
+  
+  const totalAmount = calculateOrderTotal();
+  const [workflowUpdating, setWorkflowUpdating] = useState(false);
+  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
-  const [isSampleUpload, setIsSampleUpload] = useState(false);
   
-  // Media viewer states
-  const [viewingMedia, setViewingMedia] = useState<MediaFile[] | null>(null);
-  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  // History Modal State
+  const [historyModal, setHistoryModal] = useState({
+    isOpen: false,
+    productId: '',
+    productName: ''
+  });
+
+  // Route Modal State for individual products
+  const [routeModal, setRouteModal] = useState<{
+    isOpen: boolean;
+    product: any;
+  }>({
+    isOpen: false,
+    product: null
+  });
+
+  // NEW: Master Route Modal State for Save All & Route
+  const [masterRouteModal, setMasterRouteModal] = useState({
+    isOpen: false,
+    isSaving: false
+  });
+
+  // NEW: Track dirty state for manufacturer cards
+  const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      const user = JSON.parse(userData);
-      setCurrentUser(user);
-    }
-    
-    // Load viewed history counts from localStorage
-    const viewed = localStorage.getItem(`viewedHistory_${params.id}`);
-    if (viewed) {
-      setViewedHistory(JSON.parse(viewed));
-    }
-    
-    fetchOrderDetails();
-  }, [params.id]);
-
-  const fetchOrderDetails = async () => {
-    try {
-      // Fetch order details with creator info - now includes order_name
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          client:clients(id, name, email),
-          manufacturer:manufacturers(id, name, email),
-          creator:users(name, email)
-        `)
-        .eq('id', params.id)
-        .single();
-
-      if (orderError) throw orderError;
-      
-      // If creator is not populated, try to get it from the created_by field
-      if (!orderData.creator && orderData.created_by) {
-        const { data: creatorData } = await supabase
-          .from('users')
-          .select('name, email')
-          .eq('id', orderData.created_by)
-          .single();
-        
-        if (creatorData) {
-          orderData.creator = creatorData;
-        }
-      }
-      
-      // If still no creator info, use current user as fallback for display
-      if (!orderData.creator) {
-        const userData = localStorage.getItem('user');
-        if (userData) {
-          const user = JSON.parse(userData);
-          orderData.creator = {
-            name: user.name || user.email || 'Admin User',
-            email: user.email
-          };
-        }
-      }
-      
-      setOrder(orderData);
-
-      // Fetch order products - including sample fields
-      const { data: productsData, error: productsError } = await supabase
-        .from('order_products')
-        .select(`
-          *,
-          product:products(id, title)
-        `)
-        .eq('order_id', params.id)
-        .order('created_at');
-
-      if (productsError) throw productsError;
-      
-      // Set default values for missing fields
-      const productsWithDefaults = (productsData || []).map(p => ({
-        ...p,
-        product_status: p.product_status || 'pending',
-        is_locked: p.is_locked || false,
-        requires_sample: p.requires_sample || false,
-        requires_client_approval: p.requires_client_approval || false,
-        admin_notes: p.admin_notes || '',
-        description: p.description || '',  // Ensure description has a default value
-        product_description: p.product_description || '',  // Include product_description
-        sample_required: p.sample_required || false,
-        sample_fee: p.sample_fee || null,
-        sample_eta: p.sample_eta || '',
-        sample_status: p.sample_status || 'pending',
-        sample_notes: p.sample_notes || '',
-        shipping_air_price: p.shipping_air_price || null,
-        shipping_boat_price: p.shipping_boat_price || null,
-        production_time: p.production_time || ''
-      }));
-      
-      setOrderProducts(productsWithDefaults);
-
-      // Fetch items, media, and audit history for each product
-      const itemsMap: Record<string, OrderItem[]> = {};
-      const mediaMap: Record<string, MediaFile[]> = {};
-      const historyMap: Record<string, AuditLogEntry[]> = {};
-
-      for (const product of productsData || []) {
-        // Fetch items
-        const { data: itemsData } = await supabase
-          .from('order_items')
-          .select('*')
-          .eq('order_product_id', product.id)
-          .order('variant_combo');
-
-        itemsMap[product.id] = itemsData || [];
-
-        // Fetch media
-        const { data: mediaData } = await supabase
-          .from('order_media')
-          .select('*')
-          .eq('order_product_id', product.id)
-          .order('created_at', { ascending: false });
-
-        mediaMap[product.id] = mediaData || [];
-
-        // Fetch audit history
-        const { data: historyData } = await supabase
-          .from('audit_log')
-          .select('*')
-          .eq('target_id', product.id)
-          .eq('target_type', 'order_product')
-          .order('timestamp', { ascending: false });
-
-        historyMap[product.id] = historyData || [];
-      }
-
-      setOrderItems(itemsMap);
-      setMediaFiles(mediaMap);
-      setAuditHistory(historyMap);
-    } catch (error) {
-      console.error('Error fetching order details:', error);
-      notify.error('Failed to load order details');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const canRouteProduct = (product: OrderProduct) => {
-    // Admin can route when product is pending, revision_requested, or when manufacturer sends back
-    const routableStatuses = ['pending', 'revision_requested', 'pending_admin_review'];
-    return routableStatuses.includes(product.product_status || 'pending');
-  };
-
-  const handleToggleLock = async (product: OrderProduct) => {
-    setProcessingProduct(product.id);
-    
-    try {
-      const newLockStatus = !product.is_locked;
-      const newProductStatus = newLockStatus ? 'in_production' : 'pending';
-
-      const { data: updateData, error } = await supabase
-        .from('order_products')
-        .update({ 
-          is_locked: newLockStatus,
-          product_status: newProductStatus
-        })
-        .eq('id', product.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Lock toggle error:', error);
-        throw new Error(error.message || 'Failed to update lock status');
-      }
-
-      // Update local state
-      setOrderProducts(prev => 
-        prev.map(p => 
-          p.id === product.id 
-            ? { ...p, is_locked: newLockStatus, product_status: newProductStatus }
-            : p
-        )
-      );
-
-      // Log action with current user info
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: currentUser?.id || crypto.randomUUID(),
-          user_name: currentUser?.name || currentUser?.email || 'Admin User',
-          action_type: newLockStatus ? 'product_locked' : 'product_unlocked',
-          target_type: 'order_product',
-          target_id: product.id,
-          old_value: product.product_status || 'pending',
-          new_value: newProductStatus,
-          timestamp: new Date().toISOString()
-        });
-
-      // Refresh audit history
-      fetchOrderDetails();
-
-      notify.success(
-        newLockStatus 
-          ? `${product.product.title} locked for production`
-          : `${product.product.title} unlocked and set to pending`
-      );
-    } catch (error: any) {
-      console.error('Error toggling lock:', error);
-      notify.error(error.message || 'Failed to update product lock status');
-    } finally {
-      setProcessingProduct(null);
-    }
-  };
-
-  // FIXED: Notes saving with proper state management - clears notes after saving to history
-  const handleSaveNotes = async (productId: string) => {
-    try {
-      // First, clear the admin_notes field (set to empty string)
-      const { error } = await supabase
-        .from('order_products')
-        .update({ admin_notes: '' })  // Clear the notes field
-        .eq('id', productId);
-
-      if (error) throw error;
-
-      // Log the note content to history (if there's content to save)
-      if (tempNotes.trim()) {
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: currentUser?.id || crypto.randomUUID(),
-            user_name: currentUser?.name || currentUser?.email || 'Admin User',
-            action_type: 'note_added',
-            target_type: 'order_product',
-            target_id: productId,
-            new_value: tempNotes,
-            timestamp: new Date().toISOString()
-          });
-      }
-
-      // Update local state to clear the notes
-      setOrderProducts(prev => 
-        prev.map(p => 
-          p.id === productId 
-            ? { ...p, admin_notes: '' }  // Clear notes in local state
-            : p
-        )
-      );
-      
-      // Clear editing state
-      setEditingNotes(null);
-      setTempNotes('');
-      
-      notify.success('Note added to history');
-      
-      // Refresh to update history
-      setTimeout(() => {
-        fetchOrderDetails();
-      }, 100);
-    } catch (error) {
-      console.error('Error saving notes:', error);
-      notify.error('Failed to save notes');
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, productId: string, isSampleUpload: boolean = false) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploadingMedia(productId);
-
-    try {
-      for (const file of files) {
-        // Upload to Supabase Storage
-        const timestamp = Date.now();
-        const randomStr = Math.random().toString(36).substring(7);
-        // Add 'sample-' prefix if it's a sample upload
-        const filePrefix = isSampleUpload ? 'sample-' : 'ref-';
-        const fileName = `${filePrefix}${timestamp}-${randomStr}-${file.name}`;
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('order-media')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('order-media')
-          .getPublicUrl(fileName);
-
-        // Determine file type
-        let fileType = 'document';
-        if (file.type.startsWith('image/')) {
-          fileType = isSampleUpload ? 'sample_image' : 'image';
-        } else if (file.type.startsWith('video/')) {
-          fileType = isSampleUpload ? 'sample_video' : 'video';
-        } else if (file.type === 'application/pdf') {
-          fileType = isSampleUpload ? 'sample_pdf' : 'pdf';
-        }
-
-        // Save to database
-        const { error: dbError } = await supabase
-          .from('order_media')
-          .insert({
-            order_product_id: productId,
-            file_url: publicUrl,
-            file_type: fileType,
-            uploaded_by: currentUser?.id || crypto.randomUUID()
-          });
-
-        if (dbError) throw dbError;
-      }
-
-      notify.success(`${files.length} ${isSampleUpload ? 'sample' : 'file'}(s) uploaded successfully`);
-      fetchOrderDetails(); // Refresh to show new media
-    } catch (error) {
-      console.error('Error uploading files:', error);
-      notify.error('Failed to upload files');
-    } finally {
-      setUploadingMedia(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleRouteProduct = async () => {
-    if (!routingProduct || !order || !selectedRoutingAction) {
-      notify.error('Please select a routing action');
+    if (!userData) {
+      router.push('/');
       return;
     }
     
-    setProcessingProduct(routingProduct.id);
+    // Get manufacturer ID if user is a manufacturer
+    if (userRole === 'manufacturer') {
+      fetchManufacturerId(JSON.parse(userData));
+    }
     
+    // Load viewed history from localStorage
+    const viewed = localStorage.getItem(`viewedHistory_${id}`);
+    if (viewed) {
+      setViewedHistory(JSON.parse(viewed));
+    }
+  }, [router, userRole, id]);
+
+  const fetchManufacturerId = async (user: any) => {
     try {
-      // Build updates based on selected action
-      let updates: any = {};
-      let newOrderStatus = order.status;
-      
-      switch (selectedRoutingAction) {
-        case 'send_to_production':
-          updates.product_status = 'in_production';
-          updates.is_locked = true;
-          break;
-          
-        case 'request_sample':
-          updates.requires_sample = true;
-          updates.product_status = 'sample_requested';
-          newOrderStatus = 'submitted_for_sample';
-          break;
-          
-        case 'send_for_approval':
-          updates.requires_client_approval = true;
-          updates.product_status = 'pending_client_approval';
-          newOrderStatus = 'submitted_to_client';
-          break;
-          
-        case 'send_back_to_manufacturer':
-          updates.product_status = 'revision_requested';
-          newOrderStatus = 'submitted_to_manufacturer';
-          break;
-          
-        case 'send_back_to_admin':
-          // Manufacturer sending back to admin for review
-          updates.product_status = 'revision_requested';  // Use existing valid status
-          newOrderStatus = 'pending';
-          break;
-      }
-
-      // Update the product
-      const { data: updateData, error: productError } = await supabase
-        .from('order_products')
-        .update(updates)
-        .eq('id', routingProduct.id)
-        .select()
+      const { data, error } = await supabase
+        .from('manufacturers')
+        .select('id')
+        .eq('email', user.email)
         .single();
-
-      if (productError) {
-        throw new Error(`Failed to update product: ${productError.message}`);
-      }
-
-      // Update order status if needed
-      if (newOrderStatus !== order.status) {
-        const { data: orderData, error: orderError } = await supabase
-          .from('orders')
-          .update({ status: newOrderStatus })
-          .eq('id', order.id)
-          .select()
-          .single();
-
-        if (orderError) {
-          notify.warning('Product routed but order status update failed');
-        } else {
-          setOrder(prev => prev ? { ...prev, status: newOrderStatus } : null);
-        }
-      }
-
-      // Add routing action to audit log with current user info
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: currentUser?.id || crypto.randomUUID(),
-          user_name: currentUser?.name || currentUser?.email || 'Admin User',
-          action_type: `product_routed_${selectedRoutingAction}`,
-          target_type: 'order_product',
-          target_id: routingProduct.id,
-          old_value: routingProduct.product_status || 'pending',
-          new_value: updates.product_status,
-          timestamp: new Date().toISOString()
-        });
-
-      // Add note if provided
-      if (routingNotes) {
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: currentUser?.id || crypto.randomUUID(),
-            user_name: currentUser?.name || currentUser?.email || 'Admin User',
-            action_type: 'routing_note',
-            target_type: 'order_product',
-            target_id: routingProduct.id,
-            new_value: routingNotes,
-            timestamp: new Date().toISOString()
-          });
-      }
-
-      // Update local state
-      setOrderProducts(prev => 
-        prev.map(p => 
-          p.id === routingProduct.id 
-            ? { ...p, ...updates }
-            : p
-        )
-      );
-
-      // Refresh audit history
-      fetchOrderDetails();
-
-      notify.success(`Product routed successfully`);
-      setRoutingProduct(null);
-      setRoutingNotes('');
-      setSelectedRoutingAction(null);
       
-      // Navigate back to orders list after successful routing
-      setTimeout(() => {
-        router.push('/dashboard/orders');
-      }, 1000);
-    } catch (error: any) {
-      console.error('Error routing product:', error);
-      notify.error(error.message || 'Failed to route product');
-    } finally {
-      setProcessingProduct(null);
+      if (data && !error) {
+        setManufacturerId(data.id);
+      }
+    } catch (err) {
+      console.error('Error fetching manufacturer ID:', err);
     }
   };
 
-  const handleDeleteMedia = async (fileId: string, productId: string, fileName: string) => {
-    if (!confirm('Are you sure you want to delete this file?')) return;
+  const handleStatusChange = async (newStatus: string) => {
+    if (!order) return;
     
     try {
-      // Delete from database
       const { error } = await supabase
-        .from('order_media')
-        .delete()
-        .eq('id', fileId);
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', order.id);
+
+      if (error) throw error;
+      
+      // Log to audit
+      await supabase
+        .from('audit_log')
+        .insert({
+          user_id: JSON.parse(localStorage.getItem('user') || '{}').id || crypto.randomUUID(),
+          user_name: JSON.parse(localStorage.getItem('user') || '{}').name || 'Admin User',
+          action_type: 'order_status_changed',
+          target_type: 'order',
+          target_id: order.id,
+          old_value: order.status,
+          new_value: newStatus,
+          timestamp: new Date().toISOString()
+        });
+
+      refetch();
+    } catch (error) {
+      console.error('Error updating status:', error);
+    }
+  };
+
+  const handleTogglePaid = async (isPaid: boolean) => {
+    if (!order) return;
+    
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_paid: isPaid })
+        .eq('id', order.id);
 
       if (error) throw error;
 
-      // Log deletion in audit
       await supabase
         .from('audit_log')
         .insert({
-          user_id: currentUser?.id || crypto.randomUUID(),
-          user_name: currentUser?.name || currentUser?.email || 'User',
-          action_type: 'media_deleted',
-          target_type: 'order_product',
-          target_id: productId,
-          old_value: fileName,
+          user_id: JSON.parse(localStorage.getItem('user') || '{}').id || crypto.randomUUID(),
+          user_name: JSON.parse(localStorage.getItem('user') || '{}').name || 'Admin User',
+          action_type: isPaid ? 'order_marked_paid' : 'order_marked_unpaid',
+          target_type: 'order',
+          target_id: order.id,
+          old_value: order.is_paid ? 'paid' : 'unpaid',
+          new_value: isPaid ? 'paid' : 'unpaid',
           timestamp: new Date().toISOString()
         });
 
-      notify.success('File deleted successfully');
-      fetchOrderDetails(); // Refresh to update media list
+      refetch();
     } catch (error) {
-      console.error('Error deleting file:', error);
-      notify.error('Failed to delete file');
+      console.error('Error updating payment status:', error);
     }
   };
 
-  const openMediaViewer = (media: MediaFile[], index: number) => {
-    console.log('Opening media viewer:', media[index]);
-    setViewingMedia(media);
-    setCurrentMediaIndex(index);
-  };
-
-  const closeMediaViewer = () => {
-    setViewingMedia(null);
-    setCurrentMediaIndex(0);
-  };
-
-  const navigateMedia = (direction: 'prev' | 'next') => {
-    if (!viewingMedia) return;
+  const handleViewHistory = (productId: string, productName: string) => {
+    setHistoryModal({
+      isOpen: true,
+      productId,
+      productName
+    });
     
-    if (direction === 'prev') {
-      setCurrentMediaIndex((prev) => (prev > 0 ? prev - 1 : viewingMedia.length - 1));
-    } else {
-      setCurrentMediaIndex((prev) => (prev < viewingMedia.length - 1 ? prev + 1 : 0));
-    }
-  };
-
-  const handleViewHistory = (productId: string) => {
-    setShowHistory(showHistory === productId ? null : productId);
-    
-    // Mark history as viewed
-    const historyCount = auditHistory[productId]?.length || 0;
+    // Update viewed history count
+    const historyCount = getHistoryCount(productId);
     const newViewed = { ...viewedHistory, [productId]: historyCount };
     setViewedHistory(newViewed);
-    localStorage.setItem(`viewedHistory_${params.id}`, JSON.stringify(newViewed));
+    localStorage.setItem(`viewedHistory_${id}`, JSON.stringify(newViewed));
   };
 
-  const hasNewHistory = (productId: string) => {
-    const currentCount = auditHistory[productId]?.length || 0;
+  const handleRouteProduct = (product: any) => {
+    setRouteModal({
+      isOpen: true,
+      product
+    });
+  };
+
+  // NEW: Handle Save All & Route
+  const handleSaveAllAndRoute = async () => {
+    setMasterRouteModal({
+      isOpen: true,
+      isSaving: false
+    });
+  };
+
+  // NEW: Handle Master Route (when route is selected in modal)
+  const handleMasterRoute = async (selectedRoute: string, notes?: string) => {
+    setMasterRouteModal(prev => ({ ...prev, isSaving: true }));
+    
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const visibleProducts = getVisibleProducts();
+      const isManufacturer = userRole === 'manufacturer';
+      
+      // Step 1: Save all pending changes in manufacturer cards (if manufacturer)
+      if (isManufacturer) {
+        console.log('Saving all pending changes...');
+        for (const [productId, cardRef] of manufacturerCardRefs.current) {
+          if (cardRef && cardRef.saveAll) {
+            console.log(`Saving changes for product ${productId}`);
+            await cardRef.saveAll();
+          }
+        }
+      }
+      // Note: Admin cards don't have pending changes to save
+      
+      // Step 2: Apply the selected route to ALL visible products
+      console.log(`Applying route "${selectedRoute}" to all products...`);
+      
+      for (const product of visibleProducts) {
+        let updates: any = {};
+        
+        if (isManufacturer) {
+          // MANUFACTURER ROUTING
+          switch (selectedRoute) {
+            case 'send_to_admin':
+              updates.product_status = 'pending_admin';
+              updates.routed_to = 'admin';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              break;
+              
+            case 'in_production':
+              updates.product_status = 'in_production';
+              updates.routed_to = 'manufacturer';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              updates.is_locked = true;
+              break;
+              
+            case 'shipped':
+              updates.product_status = 'shipped';
+              updates.routed_to = 'admin';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              updates.shipped_date = new Date().toISOString();
+              break;
+          }
+        } else {
+          // ADMIN ROUTING
+          switch (selectedRoute) {
+            case 'approve_for_production':
+              updates.product_status = 'approved_for_production';
+              updates.routed_to = 'manufacturer';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              updates.is_locked = false;
+              break;
+              
+            case 'request_sample':
+              updates.sample_required = true;
+              updates.product_status = 'sample_requested';
+              updates.routed_to = 'manufacturer';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              break;
+              
+            case 'send_for_approval':
+              updates.requires_client_approval = true;
+              updates.product_status = 'pending_client_approval';
+              updates.routed_to = 'admin'; // Stays with admin
+              break;
+              
+            case 'send_back_to_manufacturer':
+              updates.product_status = 'revision_requested';
+              updates.routed_to = 'manufacturer';
+              updates.routed_at = new Date().toISOString();
+              updates.routed_by = user.id || null;
+              break;
+          }
+        }
+        
+        // Add notes if provided
+        if (notes) {
+          const timestamp = new Date().toLocaleDateString();
+          const userIdentifier = isManufacturer ? 'Manufacturer' : 'Admin';
+          updates.manufacturer_notes = product.manufacturer_notes 
+            ? `${product.manufacturer_notes}\n\n[${timestamp} - ${userIdentifier}] ${notes}`
+            : `[${timestamp} - ${userIdentifier}] ${notes}`;
+        }
+        
+        // Update product
+        await supabase
+          .from('order_products')
+          .update(updates)
+          .eq('id', product.id);
+        
+        // Log to audit
+        await supabase
+          .from('audit_log')
+          .insert({
+            user_id: user.id || crypto.randomUUID(),
+            user_name: user.name || user.email || (isManufacturer ? 'Manufacturer' : 'Admin'),
+            action_type: `product_routed_${selectedRoute}`,
+            target_type: 'order_product',
+            target_id: product.id,
+            old_value: `${product.product_status || 'pending'} / routed_to: ${product.routed_to || (isManufacturer ? 'manufacturer' : 'admin')}`,
+            new_value: `${updates.product_status} / routed_to: ${updates.routed_to}`,
+            timestamp: new Date().toISOString()
+          });
+      }
+      
+      // Create notifications
+      if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
+        // Manufacturer notifying admin
+        const { data: orderData } = await supabase
+          .from('orders')
+          .select('created_by, order_number')
+          .eq('id', order.id)
+          .single();
+        
+        if (orderData?.created_by) {
+          let message = '';
+          if (selectedRoute === 'send_to_admin') {
+            message = `Manufacturer has sent ${visibleProducts.length} products for review - Order ${orderData.order_number}`;
+          } else if (selectedRoute === 'shipped') {
+            message = `${visibleProducts.length} products have been shipped - Order ${orderData.order_number}`;
+          }
+          
+          await supabase
+            .from('notifications')
+            .insert({
+              user_id: orderData.created_by,
+              type: selectedRoute === 'shipped' ? 'products_shipped' : 'manufacturer_update',
+              message: message,
+              is_read: false,
+              created_at: new Date().toISOString()
+            });
+        }
+      } else if (!isManufacturer && (selectedRoute === 'approve_for_production' || selectedRoute === 'request_sample' || selectedRoute === 'send_back_to_manufacturer')) {
+        // Admin notifying manufacturer - need to find manufacturer user
+        const { data: manufacturerUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('role', 'manufacturer');
+        
+        if (manufacturerUsers && manufacturerUsers.length > 0) {
+          let message = '';
+          if (selectedRoute === 'approve_for_production') {
+            message = `Admin has approved ${visibleProducts.length} products for production - Order ${order.order_number}`;
+          } else if (selectedRoute === 'request_sample') {
+            message = `Admin has requested samples for ${visibleProducts.length} products - Order ${order.order_number}`;
+          } else if (selectedRoute === 'send_back_to_manufacturer') {
+            message = `Admin has requested revisions for ${visibleProducts.length} products - Order ${order.order_number}`;
+          }
+          
+          // Notify all manufacturer users
+          for (const mfgUser of manufacturerUsers) {
+            await supabase
+              .from('notifications')
+              .insert({
+                user_id: mfgUser.id,
+                type: 'admin_update',
+                message: message,
+                is_read: false,
+                created_at: new Date().toISOString()
+              });
+          }
+        }
+      }
+      
+      console.log('All products routed successfully');
+      
+      // Close modal and refresh
+      setMasterRouteModal({ isOpen: false, isSaving: false });
+      await refetch();
+      
+    } catch (error) {
+      console.error('Error in master route:', error);
+      alert('An error occurred. Please try again.');
+      setMasterRouteModal(prev => ({ ...prev, isSaving: false }));
+    }
+  };
+
+  // Helper function to get history count for a product
+  const getHistoryCount = (productId: string): number => {
+    const product = order?.order_products?.find((p: any) => p.id === productId);
+    return product?.audit_log?.length || 0;
+  };
+
+  // Helper function to check if product has new history
+  const hasNewHistory = (productId: string): boolean => {
+    const currentCount = getHistoryCount(productId);
     const viewedCount = viewedHistory[productId] || 0;
     return currentCount > viewedCount;
   };
 
-  const getProductStatusIcon = (status: string) => {
-    const normalizedStatus = status || 'pending';
-    switch (normalizedStatus) {
-      case 'completed':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'in_production':
-        return <Package className="w-5 h-5 text-blue-500" />;
-      case 'sample_requested':
-        return <AlertCircle className="w-5 h-5 text-yellow-500" />;
-      case 'revision_requested':
-        return <RotateCcw className="w-5 h-5 text-orange-500" />;
-      case 'pending_client_approval':
-        return <Clock className="w-5 h-5 text-purple-500" />;
-      case 'rejected':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      default:
-        return <Clock className="w-5 h-5 text-gray-500" />;
+  // Filter products based on who they're routed to
+  const getVisibleProducts = () => {
+    if (!order?.order_products) return [];
+    
+    const isManufacturer = userRole === 'manufacturer';
+    
+    const filteredProducts = order.order_products.filter((product: any) => {
+      // Always show products that are in_production or completed to everyone
+      if (product.product_status === 'in_production' || product.product_status === 'completed') {
+        return true;
+      }
+      
+      // If routed_to is not set, default to admin
+      const routedTo = product.routed_to || 'admin';
+      
+      // For manufacturer, show products routed to manufacturer
+      if (isManufacturer) {
+        return routedTo === 'manufacturer';
+      }
+      
+      // For admin/others, show products routed to admin
+      return routedTo === 'admin';
+    });
+    
+    // SORT: Put shipped products at the top for admins
+    if (!isManufacturer) {
+      return filteredProducts.sort((a: any, b: any) => {
+        // Shipped products come first
+        if (a.product_status === 'shipped' && b.product_status !== 'shipped') return -1;
+        if (a.product_status !== 'shipped' && b.product_status === 'shipped') return 1;
+        
+        // Then in_transit products
+        if (a.product_status === 'in_transit' && b.product_status !== 'in_transit') return -1;
+        if (a.product_status !== 'in_transit' && b.product_status === 'in_transit') return 1;
+        
+        // Then completed products
+        if (a.product_status === 'completed' && b.product_status !== 'completed') return -1;
+        if (a.product_status !== 'completed' && b.product_status === 'completed') return 1;
+        
+        // Then everything else in original order
+        return 0;
+      });
     }
-  };
-
-  const getProductStatusBadge = (status: string) => {
-    const normalizedStatus = status || 'pending';
-    const statusColors: Record<string, string> = {
-      pending: 'bg-gray-100 text-gray-700',
-      in_production: 'bg-blue-100 text-blue-700',
-      sample_requested: 'bg-yellow-100 text-yellow-700',
-      pending_client_approval: 'bg-purple-100 text-purple-700',
-      revision_requested: 'bg-orange-100 text-orange-700',
-      completed: 'bg-green-100 text-green-700',
-      rejected: 'bg-red-100 text-red-700'
-    };
-
-    // Custom display names - WORKING VERSION
-    const displayText = normalizedStatus === 'pending' ? 'Pending Admin' :
-                       normalizedStatus === 'in_production' ? 'In Production' :
-                       normalizedStatus === 'sample_requested' ? 'Sample Requested' :
-                       normalizedStatus === 'pending_client_approval' ? 'Pending Client Approval' :
-                       normalizedStatus === 'revision_requested' ? 'Revision Requested' :
-                       normalizedStatus === 'completed' ? 'Completed' :
-                       normalizedStatus === 'rejected' ? 'Rejected' :
-                       normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-    return (
-      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[normalizedStatus] || statusColors.pending}`}>
-        {displayText}
-      </span>
-    );
-  };
-
-  const formatActionType = (action: string) => {
-    const actionLabels: Record<string, string> = {
-      'product_routed_send_to_production': 'Sent to Production',
-      'product_routed_request_sample': 'Sample Requested',
-      'product_routed_send_for_approval': 'Sent for Client Approval',
-      'product_routed_send_back_to_manufacturer': 'Sent Back to Manufacturer',
-      'product_locked': 'Product Locked',
-      'product_unlocked': 'Product Unlocked',
-      'routing_note': 'Routing Note',
-      'note_added': 'Note Added'
-    };
-    return actionLabels[action] || action;
-  };
-
-  // Helper to get media type
-  const getMediaType = (file: MediaFile): 'image' | 'video' | 'pdf' | 'document' => {
-    // First check the file_type from database
-    if (file.file_type === 'pdf') return 'pdf';
-    if (file.file_type === 'image') return 'image';
-    if (file.file_type === 'video') return 'video';
     
-    // Fallback to checking URL extension
-    const url = file.file_url.toLowerCase();
-    if (url.includes('.pdf')) return 'pdf';
-    if (url.includes('.jpg') || url.includes('.jpeg') || url.includes('.png') || url.includes('.gif') || url.includes('.webp')) return 'image';
-    if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('.avi')) return 'video';
-    
-    return 'document';
+    return filteredProducts;
   };
+
+  // Get counts for different product locations
+  const getProductCounts = () => {
+    if (!order?.order_products) {
+      return { total: 0, withAdmin: 0, withManufacturer: 0, inProduction: 0, completed: 0, visible: 0 };
+    }
+    
+    const products = order.order_products;
+    const visibleProducts = getVisibleProducts();
+    
+    return {
+      total: products.length,
+      withAdmin: products.filter((p: any) => (p.routed_to === 'admin' || !p.routed_to) && p.product_status !== 'completed' && p.product_status !== 'in_production').length,
+      withManufacturer: products.filter((p: any) => p.routed_to === 'manufacturer' && p.product_status !== 'in_production' && p.product_status !== 'completed').length,
+      inProduction: products.filter((p: any) => p.product_status === 'in_production').length,
+      completed: products.filter((p: any) => p.product_status === 'completed').length,
+      visible: visibleProducts.length
+    };
+  };
+
+  // Calculate if all products are paid
+  const allProductsPaid = order?.order_products?.length > 0 && 
+    order.order_products.every((p: any) => p.payment_status === 'paid');
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
-  if (!order) {
+  if (error || !order) {
     return (
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700">Order not found</p>
+          <p className="text-red-700">{error || 'Order not found'}</p>
         </div>
       </div>
     );
   }
 
-  // Get permissions from the centralized permissions system
-  const permissions: RolePermissions = getPermissions(currentUser?.role);
-  
-  // Legacy role checks (kept for backward compatibility if needed)
-  const isSuperAdmin = currentUser?.role === 'super_admin';
-  const isAdmin = currentUser?.role === 'admin' || isSuperAdmin;
-  const isOrderApprover = currentUser?.role === 'order_approver';
-  const isManufacturer = currentUser?.role === 'manufacturer';
-  const isClient = currentUser?.role === 'client';
-  const isOrderCreator = currentUser?.role === 'order_creator';
-
-  // Get display name for creator
-  const creatorName = order.creator 
-    ? (order.creator.name || order.creator.email)
-    : (currentUser?.name || currentUser?.email || 'Admin User');
+  const visibleProducts = getVisibleProducts();
+  const productCounts = getProductCounts();
+  const isManufacturer = userRole === 'manufacturer';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*,video/*,.pdf,.doc,.docx"
-        className="hidden"
-        onChange={(e) => {
-          if (selectedProductForUpload) {
-            handleFileUpload(e, selectedProductForUpload, isSampleUpload);
-          }
-        }}
+    <div className="min-h-screen bg-gray-100 overflow-x-hidden">
+      {/* Order Header with fixed order number formatting and paid badge */}
+      <OrderHeader 
+        order={order} 
+        totalAmount={totalAmount}
+        onEditDraft={() => router.push(`/dashboard/orders/edit/${order.id}`)}
+        onStatusChange={handleStatusChange}
+        onTogglePaid={handleTogglePaid}
+        allProductsPaid={allProductsPaid}
       />
 
-      {/* FIXED: Header now shows order_name */}
-      <div className="flex items-center gap-4 mb-6">
-        <button
-          onClick={() => router.back()}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-gray-600" />
-        </button>
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-gray-900">
-              {order.order_name || order.order_number}
-            </h1>
-            {getProductStatusBadge(order.status)}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
+        {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
+        {userRole !== 'manufacturer' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Building className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-500">Client</p>
+                  <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Mail className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{order.client?.email}</span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Building className="w-5 h-5 text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-500">Manufacturer</p>
+                  <p className="font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Mail className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{order.manufacturer?.email}</span>
+              </div>
+            </div>
           </div>
-          <p className="text-sm text-gray-500 mt-1">Order #{order.order_number}</p>
-          <div className="flex items-center gap-2 mt-2 text-sm text-gray-600">
-            <Calendar className="w-4 h-4" />
-            <span>Created {new Date(order.created_at).toLocaleDateString()}</span>
-            <span className="text-gray-400">by:</span>
-            <span className="font-medium text-gray-900">{creatorName}</span>
+        )}
+
+        {/* Product Location Summary */}
+        {productCounts.total > 0 && (
+          <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-gray-700">Product Distribution</h3>
+              <div className="flex items-center gap-3 text-xs">
+                {productCounts.withAdmin > 0 && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
+                    {productCounts.withAdmin} with Admin
+                  </span>
+                )}
+                {productCounts.withManufacturer > 0 && (
+                  <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded">
+                    {productCounts.withManufacturer} with Manufacturer
+                  </span>
+                )}
+                {productCounts.inProduction > 0 && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                    {productCounts.inProduction} in Production
+                  </span>
+                )}
+                {productCounts.completed > 0 && (
+                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
+                    {productCounts.completed} Completed
+                  </span>
+                )}
+              </div>
+            </div>
+            {visibleProducts.length < productCounts.total && (
+              <p className="text-xs text-gray-500 mt-2">
+                <AlertCircle className="w-3 h-3 inline mr-1" />
+                Showing {visibleProducts.length} of {productCounts.total} products 
+                {isManufacturer ? ' (products with admin are hidden)' : ' (products with manufacturer are hidden)'}
+              </p>
+            )}
           </div>
+        )}
+
+        {/* Products Section */}
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+              {isManufacturer ? 'Your Products' : 'Products Requiring Action'}
+            </h2>
+            
+            {/* HIDDEN FOR ADMIN/SUPER_ADMIN - ONLY SHOW FOR MANUFACTURER */}
+            {userRole === 'manufacturer' && visibleProducts.length > 0 && (
+              <button
+                onClick={handleSaveAllAndRoute}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 font-medium"
+              >
+                <Save className="w-4 h-4" />
+                <span className="hidden sm:inline">Save All & Route</span>
+                <span className="sm:hidden">Save & Route</span>
+              </button>
+            )}
+          </div>
+          
+          {/* Show message when no products are visible */}
+          {visibleProducts.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
+              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">
+                {isManufacturer 
+                  ? 'No products are currently routed to you. Products will appear here when admin sends them to you.'
+                  : 'No products currently need your attention. Products will appear here when manufacturer routes them to you.'}
+              </p>
+              {productCounts.total > 0 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Total products in order: {productCounts.total}
+                </p>
+              )}
+            </div>
+          ) : (
+            // Show only visible products based on routing
+            visibleProducts.map((product: any) => {
+              // Get items and media for this product
+              const items = product.order_items || [];
+              const media = product.order_media || [];
+              const productName = product.description || product.product?.title || 'Product';
+              
+              // Render different cards based on user role
+              if (isManufacturer) {
+                return (
+                  <ManufacturerProductCard
+                    key={product.id}
+                    ref={(ref: any) => {
+                      if (ref) {
+                        manufacturerCardRefs.current.set(product.id, ref);
+                      }
+                    }}
+                    product={product}
+                    items={items}
+                    media={media}
+                    orderStatus={order.workflow_status || order.status}
+                    onUpdate={refetch}
+                    onRoute={handleRouteProduct}
+                    onViewHistory={(productId) => handleViewHistory(productId, productName)}
+                    hasNewHistory={hasNewHistory(product.id)}
+                    manufacturerId={manufacturerId}
+                  />
+                );
+              }
+              
+              // Admin, Super Admin, and others see AdminProductCard
+              return (
+                <AdminProductCard
+                  key={product.id}
+                  product={product}
+                  items={items}
+                  media={media}
+                  orderStatus={order.workflow_status || order.status}
+                  onUpdate={refetch}
+                  onRoute={handleRouteProduct}
+                  onViewHistory={(productId) => handleViewHistory(productId, productName)}
+                  hasNewHistory={hasNewHistory(product.id)}
+                />
+              );
+            })
+          )}
         </div>
       </div>
 
-      {/* Order Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        {/* Client Card */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Building className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Client</p>
-              <p className="font-semibold text-gray-900">{order.client.name}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Mail className="w-4 h-4" />
-            <span>{order.client.email}</span>
-          </div>
-        </div>
+      {/* Route Modal for individual products - FIXED TypeScript error */}
+      <RouteModal
+        isOpen={routeModal.isOpen}
+        onClose={() => setRouteModal({ isOpen: false, product: null })}
+        product={routeModal.product}
+        onUpdate={refetch}
+        userRole={userRole || undefined}
+      />
 
-        {/* Manufacturer Card */}
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <Building className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Manufacturer</p>
-              <p className="font-semibold text-gray-900">{order.manufacturer.name}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <Mail className="w-4 h-4" />
-            <span>{order.manufacturer.email}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Products */}
-      <div className="space-y-6">
-        <h2 className="text-xl font-semibold text-gray-900">Order Products</h2>
-        
-        {orderProducts.map((product) => {
-          const items = orderItems[product.id] || [];
-          const media = mediaFiles[product.id] || [];
-          const history = auditHistory[product.id] || [];
-          const hasNotes = items.some(item => item.notes);
-          const canRoute = canRouteProduct(product);
-          const hasNew = hasNewHistory(product.id);
-
-          // Check if status is routable
-          const shouldDisableRoute = 
-            (product.product_status !== 'pending' && 
-             product.product_status !== 'revision_requested' && 
-             product.product_status !== 'pending_admin_review');
-
-          return (
-            <div key={product.id} className="bg-white rounded-lg border overflow-hidden">
-              {/* Product Header */}
-              <div className="p-4 bg-gray-50 border-b">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    {getProductStatusIcon(product.product_status || 'pending')}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="font-semibold text-lg text-gray-900">
-                          {product.product.title}
-                        </h3>
-                        {getProductStatusBadge(product.product_status || 'pending')}
-                        {/* Inline Pricing for Manufacturers */}
-                        {isManufacturer && (
-                          <div className="flex items-center gap-2 ml-4">
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-600">Standard:</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-gray-600">Bulk:</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-20 px-2 py-0.5 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-500 mt-1">{product.product_description || product.description || ''}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Product Order: {product.product_order_number}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleViewHistory(product.id)}
-                      className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
-                    >
-                      <History className="w-4 h-4" />
-                      History
-                      {hasNew && (
-                        <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                      )}
-                    </button>
-                    {/* Show Manufacturer Send button when routed to them */}
-                    {isManufacturer && (
-                     product.product_status === 'sample_requested' ||
-                     product.product_status === 'pending_client_approval' ||
-                     (product.product_status === 'revision_requested' && order.status === 'submitted_to_manufacturer')) && (
-                      <button
-                        onClick={() => {
-                          setRoutingProduct(product);
-                          setSelectedRoutingAction(null);
-                        }}
-                        className="px-3 py-1.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm font-medium flex items-center gap-2"
-                      >
-                        <Send className="w-4 h-4" />
-                        Send
-                      </button>
-                    )}
-                    {/* Show status when in production */}
-                    {product.product_status === 'in_production' && (
-                      <span className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium">
-                        In Production
-                      </span>
-                    )}
-                    {/* Show Admin Route button only when it's admin's turn */}
-                    {permissions.canRouteProducts && 
-                     (product.product_status === 'pending' || 
-                      (product.product_status === 'revision_requested' && order.status === 'pending')) && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setRoutingProduct(product);
-                            setSelectedRoutingAction(null);
-                          }}
-                          className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                        >
-                          Route Product
-                        </button>
-                        {permissions.canLockProducts && (
-                          <button
-                            onClick={() => handleToggleLock(product)}
-                            disabled={processingProduct === product.id}
-                            className={`p-2 rounded-lg transition-colors ${
-                              product.is_locked 
-                                ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                : 'bg-green-50 text-green-600 hover:bg-green-100'
-                            } disabled:opacity-50`}
-                            title={product.is_locked ? 'Unlock for editing' : 'Lock for production'}
-                          >
-                            {processingProduct === product.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : product.is_locked ? (
-                              <Lock className="w-4 h-4" />
-                            ) : (
-                              <Unlock className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* ENHANCED: Sample Request Section - Always visible when sample_notes or sample_required exists */}
-                {(product.sample_notes || product.sample_required) && (
-                  <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-sm font-medium text-amber-900 mb-2 flex items-center">
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      Sample Request Information
-                    </p>
-                    
-                    {/* Show sample notes from create order */}
-                    {product.sample_notes && (
-                      <div className="mb-3">
-                        <p className="text-xs text-amber-700 font-medium mb-1">Sample Instructions:</p>
-                        <p className="text-sm text-amber-800 bg-white p-2 rounded border border-amber-300">
-                          {product.sample_notes}
-                        </p>
-                      </div>
-                    )}
-                    
-                    {/* Fields for manufacturer to fill */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-amber-700 font-medium">Sample Fee</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Enter fee"
-                          value={product.sample_fee || ''}
-                          disabled={!isManufacturer}
-                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 placeholder-gray-400 disabled:bg-amber-50 disabled:text-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-amber-700 font-medium">Sample ETA</label>
-                        <input
-                          type="date"
-                          value={product.sample_eta || ''}
-                          disabled={!isManufacturer}
-                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 disabled:bg-amber-50 disabled:text-gray-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-amber-700 font-medium">Status</label>
-                        <select 
-                          value={product.sample_status || 'pending'}
-                          disabled={!isManufacturer}
-                          className="w-full px-2 py-1 border border-amber-300 rounded text-sm text-gray-900 disabled:bg-amber-50 disabled:text-gray-500"
-                        >
-                          <option value="pending">Pending</option>
-                          <option value="in_review">In Review</option>
-                          <option value="approved">Approved</option>
-                          <option value="ready_for_production">Ready for Production</option>
-                          <option value="in_production">Sample in Production</option>
-                        </select>
-                      </div>
-                    </div>
-                    
-                    {/* Sample Media Upload for Manufacturer */}
-                    {isManufacturer && (
-                      <div className="mt-3 flex items-center justify-between">
-                        <span className="text-xs text-amber-700">Sample Media</span>
-                        <button 
-                          onClick={() => {
-                            setSelectedProductForUpload(product.id);
-                            setIsSampleUpload(true);
-                            fileInputRef.current?.click();
-                          }}
-                          className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700">
-                          Upload Sample
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Notes Section */}
-                <div className="mt-3 p-3 bg-white rounded-lg border border-gray-200">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-700 mb-1">Notes:</p>
-                      {editingNotes === product.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={tempNotes}
-                            onChange={(e) => setTempNotes(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            rows={3}
-                            placeholder="Add notes to history..."
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleSaveNotes(product.id)}
-                              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-                            >
-                              <Save className="w-3 h-3 inline mr-1" />
-                              Add to History
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingNotes(null);
-                                setTempNotes('');
-                              }}
-                              className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start justify-between">
-                          <p className="text-sm text-gray-600">
-                            {product.admin_notes || 'Click edit to add notes to history'}
-                          </p>
-                          {permissions.canAddNotes && (
-                            <button
-                              onClick={() => {
-                                setEditingNotes(product.id);
-                                setTempNotes('');  // Always start with empty field
-                              }}
-                              className="ml-2 p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Display variant notes if any */}
-                {hasNotes && (
-                  <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                    <div className="flex items-start gap-2">
-                      <MessageSquare className="w-4 h-4 text-yellow-600 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-medium text-yellow-800 mb-1">Variant Notes:</p>
-                        <div className="space-y-1">
-                          {items.filter(item => item.notes).map(item => (
-                            <p key={item.id} className="text-yellow-700">
-                              <span className="font-medium">{item.variant_combo}:</span> {item.notes}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bulk Order Section (Manufacturer Only) - Only show if needed */}
-                {isManufacturer && !product.sample_required && (
-                  <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Bulk Order Information</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Shipping (Air)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={product.shipping_air_price || ''}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Shipping (Boat)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={product.shipping_boat_price || ''}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 font-medium">Production Time</label>
-                        <input
-                          type="text"
-                          placeholder="e.g., 15-20 days"
-                          value={product.production_time || ''}
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* History Panel */}
-                {showHistory === product.id && (
-                  <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 max-h-60 overflow-y-auto">
-                    <div className="text-sm">
-                      <p className="font-medium text-blue-900 mb-2 flex items-center gap-2">
-                        <History className="w-4 h-4" />
-                        History & Notes
-                        {hasNew && (
-                          <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">New</span>
-                        )}
-                      </p>
-                      {history.length > 0 ? (
-                        <div className="space-y-2">
-                          {history.map((entry, index) => (
-                            <div key={entry.id} className={`bg-white p-2 rounded border ${index === 0 && hasNew ? 'border-red-300' : 'border-blue-100'}`}>
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <p className="font-medium text-gray-900">
-                                    {formatActionType(entry.action_type)}
-                                  </p>
-                                  {(entry.action_type === 'routing_note' || entry.action_type === 'note_added') && entry.new_value && (
-                                    <p className="text-gray-600 mt-1">{entry.new_value}</p>
-                                  )}
-                                  {entry.old_value && entry.new_value && entry.action_type !== 'routing_note' && entry.action_type !== 'note_added' && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      {entry.old_value} → {entry.new_value}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="text-xs text-gray-500 text-right">
-                                  <p>{entry.user_name}</p>
-                                  <p>{new Date(entry.timestamp).toLocaleString()}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-gray-500">No history available</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Product Content */}
-              <div className="p-4">
-                {/* Variants Table - Simplified without pricing */}
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Variants</h4>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Variant</th>
-                          <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Quantity</th>
-                          {items.some(item => item.notes) && (
-                            <th className="text-left py-2 px-3 text-sm font-medium text-gray-700">Notes</th>
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item, index) => (
-                          <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                            <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
-                            <td className="py-2 px-3 text-sm font-medium text-gray-900">{item.quantity}</td>
-                            {items.some(i => i.notes) && (
-                              <td className="py-2 px-3 text-sm text-gray-600">{item.notes || '-'}</td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Media Files */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-gray-700">Media Files</h4>
-                    <button
-                      onClick={() => {
-                        setSelectedProductForUpload(product.id);
-                        setIsSampleUpload(false);
-                        fileInputRef.current?.click();
-                      }}
-                      disabled={uploadingMedia === product.id}
-                      className="flex items-center gap-2 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50"
-                    >
-                      {uploadingMedia === product.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Upload className="w-4 h-4" />
-                      )}
-                      Upload Media
-                    </button>
-                  </div>
-                  
-                  {/* Separate regular media and sample media */}
-                  {(() => {
-                    const regularMedia = media.filter(f => !f.file_type?.startsWith('sample'));
-                    const sampleMedia = media.filter(f => f.file_type?.startsWith('sample'));
-                    
-                    return (
-                      <div className="space-y-4">
-                        {/* Regular Media */}
-                        {regularMedia.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-2">Reference Media</p>
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                              {regularMedia.map((file, index) => {
-                                const mediaType = getMediaType(file);
-                                
-                                return (
-                                  <div
-                                    key={file.id}
-                                    onClick={() => openMediaViewer(regularMedia, index)}
-                                    className="relative group aspect-square rounded-lg border overflow-hidden bg-gray-50 hover:ring-2 hover:ring-blue-500 transition-all cursor-pointer"
-                                  >
-                                    {/* Delete button */}
-                                    {(permissions.canDeleteMedia || isManufacturer) && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteMedia(file.id, product.id, file.file_url);
-                                        }}
-                                        className="absolute top-1 right-1 z-10 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                    {/* Same media display logic */}
-                                    {mediaType === 'image' || file.file_type === 'sample_image' ? (
-                                      <img
-                                        src={file.file_url}
-                                        alt="Media"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : mediaType === 'video' ? (
-                                      <div className="flex items-center justify-center h-full bg-gray-900">
-                                        <Play className="w-8 h-8 text-white" />
-                                      </div>
-                                    ) : mediaType === 'pdf' ? (
-                                      <div className="flex items-center justify-center h-full bg-red-50">
-                                        <File className="w-8 h-8 text-red-600" />
-                                        <span className="absolute bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-0.5">PDF</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-center h-full">
-                                        <FileText className="w-6 h-6 text-gray-400" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                      <Eye className="w-5 h-5 text-white" />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Sample Media */}
-                        {sampleMedia.length > 0 && (
-                          <div>
-                            <p className="text-xs text-amber-600 font-medium mb-2">Sample Media</p>
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                              {sampleMedia.map((file, index) => {
-                                const mediaType = getMediaType(file);
-                                
-                                return (
-                                  <div
-                                    key={file.id}
-                                    onClick={() => openMediaViewer(sampleMedia, index)}
-                                    className="relative group aspect-square rounded-lg border-2 border-amber-300 overflow-hidden bg-amber-50 hover:ring-2 hover:ring-amber-500 transition-all cursor-pointer"
-                                  >
-                                    {/* Delete button */}
-                                    {(permissions.canDeleteMedia || isManufacturer) && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteMedia(file.id, product.id, file.file_url);
-                                        }}
-                                        className="absolute top-1 right-1 z-10 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    )}
-                                    {mediaType === 'image' || file.file_type === 'sample_image' ? (
-                                      <img
-                                        src={file.file_url}
-                                        alt="Sample"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : mediaType === 'video' || file.file_type === 'sample_video' ? (
-                                      <div className="flex items-center justify-center h-full bg-gray-900">
-                                        <Play className="w-8 h-8 text-white" />
-                                      </div>
-                                    ) : mediaType === 'pdf' || file.file_type === 'sample_pdf' ? (
-                                      <div className="flex items-center justify-center h-full bg-red-50">
-                                        <File className="w-8 h-8 text-red-600" />
-                                        <span className="absolute bottom-0 left-0 right-0 bg-red-600 text-white text-xs py-0.5">PDF</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-center h-full">
-                                        <FileText className="w-6 h-6 text-gray-400" />
-                                      </div>
-                                    )}
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
-                                      <Eye className="w-5 h-5 text-white" />
-                                    </div>
-                                    <span className="absolute top-1 left-1 bg-amber-500 text-white text-xs px-1 rounded">Sample</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {media.length === 0 && (
-                          <p className="text-sm text-gray-500">No media files uploaded</p>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Routing Modal */}
-      {routingProduct && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  {isManufacturer ? 'Send to Admin for Review' : 'Route Product'}
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">{routingProduct.product.title}</p>
-              </div>
-              <button
-                onClick={() => {
-                  setRoutingProduct(null);
-                  setRoutingNotes('');
-                  setSelectedRoutingAction(null);
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Routing Options */}
-            {isManufacturer ? (
-              // Manufacturer gets two options
-              <div className="grid grid-cols-1 gap-4 mb-6">
-                <button
-                  onClick={() => setSelectedRoutingAction('send_back_to_admin')}
-                  className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                    selectedRoutingAction === 'send_back_to_admin'
-                      ? 'border-orange-500 bg-orange-50'
-                      : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                      selectedRoutingAction === 'send_back_to_admin'
-                        ? 'bg-orange-200'
-                        : 'bg-orange-100 group-hover:bg-orange-200'
-                    }`}>
-                      <Send className="w-5 h-5 text-orange-600 rotate-180" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">Send to Admin</h3>
-                      <p className="text-sm text-gray-500">Need clarification or review</p>
-                    </div>
-                  </div>
-                </button>
-                
-                <button
-                  onClick={() => setSelectedRoutingAction('send_to_production')}
-                  className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                    selectedRoutingAction === 'send_to_production'
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                      selectedRoutingAction === 'send_to_production'
-                        ? 'bg-green-200'
-                        : 'bg-green-100 group-hover:bg-green-200'
-                    }`}>
-                      <Package className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900">Send to Production</h3>
-                      <p className="text-sm text-gray-500">Ready to start manufacturing</p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            ) : (
-              // Admin routing options
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <button
-                onClick={() => setSelectedRoutingAction('send_to_production')}
-                className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                  selectedRoutingAction === 'send_to_production'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-500 hover:bg-blue-50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                    selectedRoutingAction === 'send_to_production'
-                      ? 'bg-blue-200'
-                      : 'bg-blue-100 group-hover:bg-blue-200'
-                  }`}>
-                    <Send className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Direct to Production</h3>
-                </div>
-                <p className="text-sm text-gray-500">Send directly to production line</p>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoutingAction('request_sample')}
-                className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                  selectedRoutingAction === 'request_sample'
-                    ? 'border-yellow-500 bg-yellow-50'
-                    : 'border-gray-200 hover:border-yellow-500 hover:bg-yellow-50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                    selectedRoutingAction === 'request_sample'
-                      ? 'bg-yellow-200'
-                      : 'bg-yellow-100 group-hover:bg-yellow-200'
-                  }`}>
-                    <Package className="w-5 h-5 text-yellow-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Request Sample First</h3>
-                </div>
-                <p className="text-sm text-gray-500">Request sample before production</p>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoutingAction('send_for_approval')}
-                className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                  selectedRoutingAction === 'send_for_approval'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-200 hover:border-purple-500 hover:bg-purple-50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                    selectedRoutingAction === 'send_for_approval'
-                      ? 'bg-purple-200'
-                      : 'bg-purple-100 group-hover:bg-purple-200'
-                  }`}>
-                    <CheckCircle className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Send to Client</h3>
-                </div>
-                <p className="text-sm text-gray-500">Send for client approval</p>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoutingAction('send_back_to_manufacturer')}
-                className={`p-4 border-2 rounded-lg transition-all text-left group ${
-                  selectedRoutingAction === 'send_back_to_manufacturer'
-                    ? 'border-orange-500 bg-orange-50'
-                    : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-colors ${
-                    selectedRoutingAction === 'send_back_to_manufacturer'
-                      ? 'bg-orange-200'
-                      : 'bg-orange-100 group-hover:bg-orange-200'
-                  }`}>
-                    <RotateCcw className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900">Back to Manufacturer</h3>
-                </div>
-                <p className="text-sm text-gray-500">Request revisions from manufacturer</p>
-              </button>
-            </div>
-            )}  {/* End of admin/manufacturer conditional */}
-
-            {/* Routing Notes */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Routing Notes (Optional)
-              </label>
-              <textarea
-                value={routingNotes}
-                onChange={(e) => setRoutingNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                rows={3}
-                placeholder="Add any notes or instructions..."
-              />
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  setRoutingProduct(null);
-                  setRoutingNotes('');
-                  setSelectedRoutingAction(null);
-                }}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRouteProduct}
-                disabled={!selectedRoutingAction || processingProduct === routingProduct.id}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {processingProduct === routingProduct.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Routing...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Submit Routing
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* NEW: Master Route Modal for Save All & Route */}
+      {masterRouteModal.isOpen && (
+        <MasterRouteModal
+          isOpen={masterRouteModal.isOpen}
+          isSaving={masterRouteModal.isSaving}
+          onClose={() => setMasterRouteModal({ isOpen: false, isSaving: false })}
+          onRoute={handleMasterRoute}
+          productCount={visibleProducts.length}
+        />
       )}
 
-      {/* FIXED: Media Viewer Modal with Better PDF Support */}
-      {viewingMedia && viewingMedia[currentMediaIndex] && (
-        <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-50 p-4">
-          {/* Close button */}
-          <button
-            onClick={closeMediaViewer}
-            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors z-10"
-          >
-            <X className="w-6 h-6 text-white" />
-          </button>
+      {/* History Modal */}
+      <HistoryModal
+        isOpen={historyModal.isOpen}
+        onClose={() => setHistoryModal({ isOpen: false, productId: '', productName: '' })}
+        productId={historyModal.productId}
+        productName={historyModal.productName}
+      />
+    </div>
+  );
+}
 
-          {/* Navigation buttons - Only show if more than 1 file */}
-          {viewingMedia.length > 1 && (
+// NEW: Master Route Modal Component
+function MasterRouteModal({ 
+  isOpen, 
+  isSaving,
+  onClose, 
+  onRoute,
+  productCount 
+}: { 
+  isOpen: boolean;
+  isSaving: boolean;
+  onClose: () => void;
+  onRoute: (route: string, notes?: string) => void;
+  productCount: number;
+}) {
+  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
+  const [notes, setNotes] = useState('');
+  const userRole = getUserRole(); // Get user role to show correct options
+
+  if (!isOpen) return null;
+
+  const handleSubmit = () => {
+    if (!selectedRoute) return;
+    onRoute(selectedRoute, notes);
+  };
+
+  const isManufacturer = userRole === 'manufacturer';
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          Save All & Route {productCount} Products
+        </h2>
+        <p className="text-sm text-gray-500 mb-6">
+          This will save all pending changes and route all {productCount} products
+        </p>
+
+        {/* Route Options - Different for Manufacturer vs Admin */}
+        <div className="space-y-3 mb-6">
+          {isManufacturer ? (
+            // MANUFACTURER OPTIONS
             <>
               <button
-                onClick={() => navigateMedia('prev')}
-                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                onClick={() => setSelectedRoute('send_to_admin')}
+                disabled={isSaving}
+                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                  selectedRoute === 'send_to_admin'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-blue-500 hover:bg-blue-50'
+                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <ChevronLeft className="w-6 h-6 text-white" />
+                <div className="flex items-center gap-3">
+                  <Send className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Send to Admin</h3>
+                    <p className="text-xs text-gray-500">Send all products to admin for review</p>
+                  </div>
+                </div>
               </button>
+
               <button
-                onClick={() => navigateMedia('next')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                onClick={() => setSelectedRoute('in_production')}
+                disabled={isSaving}
+                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                  selectedRoute === 'in_production'
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
+                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                <ChevronRight className="w-6 h-6 text-white" />
+                <div className="flex items-center gap-3">
+                  <Package className="w-5 h-5 text-green-600" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Mark In Production</h3>
+                    <p className="text-xs text-gray-500">Mark all products as in production</p>
+                  </div>
+                </div>
+              </button>
+            </>
+          ) : (
+            // ADMIN OPTIONS
+            <>
+              <button
+                onClick={() => setSelectedRoute('approve_for_production')}
+                disabled={isSaving}
+                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                  selectedRoute === 'approve_for_production'
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
+                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <Package className="w-5 h-5 text-green-600" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Approve for Production</h3>
+                    <p className="text-xs text-gray-500">Send all to manufacturer for production</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedRoute('request_sample')}
+                disabled={isSaving}
+                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                  selectedRoute === 'request_sample'
+                    ? 'border-yellow-500 bg-yellow-50'
+                    : 'border-gray-200 hover:border-yellow-500 hover:bg-yellow-50'
+                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Request Samples</h3>
+                    <p className="text-xs text-gray-500">Request samples for all products</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setSelectedRoute('send_back_to_manufacturer')}
+                disabled={isSaving}
+                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                  selectedRoute === 'send_back_to_manufacturer'
+                    ? 'border-orange-500 bg-orange-50'
+                    : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
+                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className="flex items-center gap-3">
+                  <Send className="w-5 h-5 text-orange-600" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Back to Manufacturer</h3>
+                    <p className="text-xs text-gray-500">Request revisions from manufacturer</p>
+                  </div>
+                </div>
               </button>
             </>
           )}
-
-          {/* Media content */}
-          <div className="max-w-[90vw] max-h-[90vh] flex flex-col items-center">
-            {(() => {
-              const currentFile = viewingMedia[currentMediaIndex];
-              const mediaType = getMediaType(currentFile);
-
-              if (mediaType === 'pdf') {
-                // For PDFs, we'll use a different approach
-                // Most browsers can't display PDFs from Supabase URLs directly in iframes
-                // So we provide a direct link instead
-                return (
-                  <div className="bg-white rounded-lg p-8 text-center max-w-md">
-                    <File className="w-16 h-16 text-red-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">PDF Document</h3>
-                    <p className="text-gray-600 mb-4">
-                      PDF preview is not available in this viewer. Click below to open the PDF in a new tab.
-                    </p>
-                    <a 
-                      href={currentFile.file_url} 
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <ExternalLink className="w-5 h-5" />
-                      Open PDF in New Tab
-                    </a>
-                    <div className="mt-4 text-sm text-gray-500">
-                      File uploaded: {new Date(currentFile.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                );
-              } else if (mediaType === 'image') {
-                return (
-                  <img
-                    src={currentFile.file_url}
-                    alt="Media preview"
-                    className="max-w-full max-h-[80vh] object-contain rounded-lg"
-                  />
-                );
-              } else if (mediaType === 'video') {
-                return (
-                  <video
-                    src={currentFile.file_url}
-                    controls
-                    autoPlay
-                    className="max-w-full max-h-[80vh] rounded-lg"
-                  >
-                    Your browser does not support the video tag.
-                  </video>
-                );
-              } else {
-                return (
-                  <div className="bg-white p-8 rounded-lg text-center">
-                    <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600 mb-4">Document preview not available</p>
-                    <a 
-                      href={currentFile.file_url} 
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Open in New Tab
-                    </a>
-                  </div>
-                );
-              }
-            })()}
-
-            {/* File info */}
-            <div className="mt-4 text-center">
-              <p className="text-white text-sm">
-                File {currentMediaIndex + 1} of {viewingMedia.length}
-              </p>
-            </div>
-
-            {/* Pagination dots - Only show if more than 1 file */}
-            {viewingMedia.length > 1 && (
-              <div className="mt-4 flex items-center gap-2">
-                {viewingMedia.map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentMediaIndex(index)}
-                    className={`w-2 h-2 rounded-full transition-all ${
-                      index === currentMediaIndex
-                        ? 'bg-white w-8'
-                        : 'bg-white/50 hover:bg-white/75'
-                    }`}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
         </div>
-      )}
+
+        {/* Notes */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Notes (Optional)
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            disabled={isSaving}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            rows={3}
+            placeholder={isManufacturer ? "Add any notes for admin..." : "Add routing instructions..."}
+          />
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            disabled={isSaving}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!selectedRoute || isSaving}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Save All & Route
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

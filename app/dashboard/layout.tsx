@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -17,7 +17,10 @@ import {
   Bell,
   X,
   Mail,
-  Menu
+  Menu,
+  FileText,
+  AlertCircle,
+  DollarSign
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -32,6 +35,19 @@ interface NotificationCount {
   orders: number;
   products: number;
   total: number;
+  // Manufacturer specific
+  samples?: number;
+  production?: number;
+}
+
+interface ManufacturerNotification {
+  id: string;
+  order_id: string;
+  product_id: string;
+  type: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export default function DashboardLayout({
@@ -48,9 +64,12 @@ export default function DashboardLayout({
   const [notificationCounts, setNotificationCounts] = useState<NotificationCount>({ 
     orders: 0, 
     products: 0,
-    total: 0 
+    total: 0,
+    samples: 0,
+    production: 0
   });
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -61,9 +80,14 @@ export default function DashboardLayout({
     
     try {
       const parsedUser = JSON.parse(userData);
+      console.log('Logged in user:', parsedUser); // DEBUG
       setUser(parsedUser);
-      // Load notifications for this user
-      if (parsedUser.id) {
+      
+      // Load notifications based on role
+      if (parsedUser.role === 'manufacturer') {
+        console.log('User is manufacturer, loading manufacturer data...'); // DEBUG
+        loadManufacturerData(parsedUser);
+      } else if (parsedUser.id) {
         loadNotificationCounts(parsedUser.id);
         subscribeToNotifications(parsedUser.id);
       }
@@ -75,10 +99,129 @@ export default function DashboardLayout({
     }
   }, [router]);
 
-  // Load notification counts
+  // Load manufacturer specific data
+  const loadManufacturerData = async (user: User) => {
+    try {
+      console.log('Loading manufacturer data for email:', user.email); // DEBUG
+      
+      // Get manufacturer ID from manufacturers table using email
+      const { data: manufacturer, error: manError } = await supabase
+        .from('manufacturers')
+        .select('id, name, email')
+        .eq('email', user.email)
+        .single();
+      
+      console.log('Manufacturer query result:', manufacturer, 'Error:', manError); // DEBUG
+      
+      if (!manufacturer) {
+        console.error('No manufacturer found for email:', user.email);
+        return;
+      }
+      
+      console.log('Found manufacturer ID:', manufacturer.id); // DEBUG
+      setManufacturerId(manufacturer.id);
+      
+      // Load manufacturer notifications
+      await loadManufacturerNotifications(manufacturer.id);
+      
+      // Subscribe to real-time updates
+      subscribeToManufacturerNotifications(manufacturer.id);
+    } catch (error) {
+      console.error('Error loading manufacturer data:', error);
+    }
+  };
+
+  const loadManufacturerNotifications = async (manufacturerId: string) => {
+    try {
+      console.log('Loading notifications for manufacturer ID:', manufacturerId); // DEBUG
+      
+      const { data: notifs, error } = await supabase
+        .from('manufacturer_notifications')
+        .select('*')
+        .eq('manufacturer_id', manufacturerId)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false });
+
+      console.log('Notifications query result:', notifs, 'Error:', error); // DEBUG
+
+      if (error) {
+        console.error('Error loading manufacturer notifications:', error);
+        return;
+      }
+
+      // Count by type
+      let samples = 0;
+      let production = 0;
+      let orders = 0;
+
+      notifs?.forEach(notif => {
+        if (notif.type === 'sample_requested') samples++;
+        else if (notif.type === 'approved_for_production' || notif.type === 'route_to_production') production++;
+        else if (notif.type === 'new_order' || notif.type === 'status_changed') orders++;
+      });
+
+      console.log('Notification counts - Total:', notifs?.length || 0, 'Samples:', samples, 'Production:', production, 'Orders:', orders); // DEBUG
+
+      setNotifications(notifs || []);
+      setNotificationCounts({
+        orders,
+        products: 0,
+        total: notifs?.length || 0,
+        samples,
+        production
+      });
+    } catch (error) {
+      console.error('Error loading manufacturer notifications:', error);
+    }
+  };
+
+  const subscribeToManufacturerNotifications = (manufacturerId: string) => {
+    console.log('Setting up real-time subscription for manufacturer:', manufacturerId); // DEBUG
+    
+    const channel = supabase
+      .channel(`manufacturer-notifications-${manufacturerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'manufacturer_notifications',
+          filter: `manufacturer_id=eq.${manufacturerId}`,
+        },
+        (payload) => {
+          console.log('New manufacturer notification received:', payload);
+          loadManufacturerNotifications(manufacturerId);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Subscription status:', status); // DEBUG
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setShowMobileMenu(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (showMobileMenu) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showMobileMenu]);
+
   const loadNotificationCounts = async (userId: string) => {
     try {
-      // Get all unread notifications for this user
       const { data: notifs, error } = await supabase
         .from('notifications')
         .select('*')
@@ -91,7 +234,6 @@ export default function DashboardLayout({
         return;
       }
 
-      // Count notifications by type
       let orderCount = 0;
       let productCount = 0;
 
@@ -115,7 +257,6 @@ export default function DashboardLayout({
     }
   };
 
-  // Subscribe to real-time notifications
   const subscribeToNotifications = (userId: string) => {
     const channel = supabase
       .channel(`notifications-${userId}`)
@@ -129,7 +270,6 @@ export default function DashboardLayout({
         },
         (payload) => {
           console.log('New notification received:', payload);
-          // Reload notification counts when new notification arrives
           loadNotificationCounts(userId);
         }
       )
@@ -140,68 +280,67 @@ export default function DashboardLayout({
     };
   };
 
-  // Mark notification as read
   const markAsRead = async (notificationId: string) => {
     try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId);
+      if (user?.role === 'manufacturer' && manufacturerId) {
+        await supabase
+          .from('manufacturer_notifications')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq('id', notificationId);
+        
+        loadManufacturerNotifications(manufacturerId);
+      } else {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notificationId);
 
-      // Reload counts
-      if (user?.id) {
-        loadNotificationCounts(user.id);
+        if (user?.id) {
+          loadNotificationCounts(user.id);
+        }
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
   };
 
-  // Mark all as read
   const markAllAsRead = async () => {
-    if (!user?.id) return;
+    if (user?.role === 'manufacturer' && manufacturerId) {
+      try {
+        await supabase
+          .from('manufacturer_notifications')
+          .update({ is_read: true, read_at: new Date().toISOString() })
+          .eq('manufacturer_id', manufacturerId)
+          .eq('is_read', false);
 
-    try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
+        loadManufacturerNotifications(manufacturerId);
+      } catch (error) {
+        console.error('Error marking all as read:', error);
+      }
+    } else if (user?.id) {
+      try {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('user_id', user.id)
+          .eq('is_read', false);
 
-      // Reload counts
-      loadNotificationCounts(user.id);
-    } catch (error) {
-      console.error('Error marking all as read:', error);
-    }
-  };
-
-  // When pathname changes, check if we should clear notifications
-  useEffect(() => {
-    if (user?.id && pathname) {
-      // If user visits orders page, mark order notifications as read
-      if (pathname.includes('/orders')) {
-        markOrderNotificationsAsRead();
+        loadNotificationCounts(user.id);
+      } catch (error) {
+        console.error('Error marking all as read:', error);
       }
     }
-  }, [pathname, user?.id]);
-
-  const markOrderNotificationsAsRead = async () => {
-    if (!user?.id) return;
-    
-    try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .in('type', ['new_order', 'product_update'])
-        .eq('is_read', false);
-
-      // Reload counts
-      loadNotificationCounts(user.id);
-    } catch (error) {
-      console.error('Error marking order notifications as read:', error);
-    }
   };
+
+  // Auto-mark notifications as read when viewing orders
+  useEffect(() => {
+    if (pathname?.includes('/orders')) {
+      if (user?.role === 'manufacturer' && manufacturerId) {
+        // Don't auto-mark as read for manufacturers - let them click
+        console.log('Manufacturer viewing orders page');
+      }
+    }
+  }, [pathname, user?.id, manufacturerId]);
 
   const handleLogout = () => {
     localStorage.removeItem('user');
@@ -227,15 +366,8 @@ export default function DashboardLayout({
   const menuItems = [
     {
       type: 'section',
-      label: 'MAIN MENU',
-      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'client'],
-    },
-    {
-      href: '/dashboard',
-      label: 'Dashboard',
-      icon: LayoutGrid,
-      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'client'],
-      notificationKey: null,
+      label: 'OPERATIONS',
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer'],
     },
     {
       href: '/dashboard/orders',
@@ -245,11 +377,16 @@ export default function DashboardLayout({
       notificationKey: 'orders',
     },
     {
-      href: '/dashboard/products',
-      label: 'Products',
-      icon: Package,
+      href: '/dashboard/invoices',
+      label: 'Invoices',
+      icon: FileText,
+      roles: ['super_admin', 'admin', 'order_approver'],
+      notificationKey: 'invoices',
+    },
+    {
+      type: 'section',
+      label: 'PRODUCT CONFIG',
       roles: ['super_admin', 'admin'],
-      notificationKey: 'products',
     },
     {
       href: '/dashboard/variants',
@@ -259,16 +396,16 @@ export default function DashboardLayout({
       notificationKey: null,
     },
     {
-      href: '/dashboard/activity',
-      label: 'Activity',
-      icon: Activity,
+      href: '/dashboard/products',
+      label: 'Products',
+      icon: Package,
       roles: ['super_admin', 'admin'],
-      notificationKey: null,
+      notificationKey: 'products',
     },
     {
       type: 'section',
-      label: 'CONFIGURATION',
-      roles: ['super_admin', 'admin', 'client'],
+      label: 'SYSTEM CONFIG',
+      roles: ['super_admin', 'admin'],
     },
     {
       href: '/dashboard/clients',
@@ -295,12 +432,18 @@ export default function DashboardLayout({
       notificationKey: null,
     },
     {
-      href: '/dashboard/review',
-      label: 'Review Orders',
-      icon: ShoppingCart,
-      roles: ['client'],
-      notificationKey: null,
+      type: 'section',
+      label: 'FINANCE',
+      roles: ['super_admin'],
     },
+    {
+      href: '/dashboard/settings/finance',
+      label: 'Finance Settings',
+      icon: DollarSign,
+      roles: ['super_admin'],
+      description: 'Configure margins',
+      notificationKey: null,
+    }
   ];
 
   const visibleMenuItems = menuItems.filter(item =>
@@ -323,6 +466,27 @@ export default function DashboardLayout({
     return roleDisplay[role] || role.replace('_', ' ');
   };
 
+  const getPageTitle = () => {
+    if (pathname === '/dashboard') return 'Dashboard';
+    if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? 'Your Orders' : 'Orders Management';
+    if (pathname.startsWith('/dashboard/orders/create')) return 'Create Order';
+    if (pathname.startsWith('/dashboard/orders/edit')) return 'Edit Order';
+    if (pathname === '/dashboard/invoices') return 'Invoices';
+    if (pathname.startsWith('/dashboard/invoices/create')) return 'Create Invoice';
+    if (pathname === '/dashboard/products') return 'Products';
+    if (pathname === '/dashboard/variants') return 'Variants Configuration';
+    if (pathname === '/dashboard/activity') return 'Activity Log';
+    if (pathname === '/dashboard/clients') return 'Client Management';
+    if (pathname === '/dashboard/manufacturers') return 'Manufacturer Management';
+    if (pathname === '/dashboard/users') return 'User Management';
+    if (pathname === '/dashboard/review') return 'Review Orders';
+    if (pathname === '/dashboard/settings/finance') return 'Finance Settings';
+    if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
+    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit')) return 'Order Details';
+    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return 'Invoice Details';
+    return 'Dashboard';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -332,17 +496,9 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Mobile Menu Button */}
-      <button
-        onClick={() => setShowMobileMenu(true)}
-        className="lg:hidden fixed top-4 left-4 z-40 p-2 bg-white rounded-lg shadow-lg"
-      >
-        <Menu className="w-6 h-6 text-gray-700" />
-      </button>
-
-      {/* Sidebar - Desktop */}
-      <aside className={`hidden lg:flex w-72 bg-white h-screen flex-col border-r border-gray-100`}>
+    <div className="min-h-screen bg-gray-50">
+      {/* Desktop Sidebar */}
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:w-72 lg:bg-white lg:border-r lg:border-gray-100 lg:flex lg:flex-col">
         <SidebarContent
           user={user}
           visibleMenuItems={visibleMenuItems}
@@ -354,128 +510,155 @@ export default function DashboardLayout({
         />
       </aside>
 
-      {/* Sidebar - Mobile Overlay */}
-      {showMobileMenu && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50"
-            onClick={() => setShowMobileMenu(false)}
+      {/* Mobile Sidebar */}
+      <div className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${showMobileMenu ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div 
+          className="absolute inset-0 bg-black bg-opacity-50 transition-opacity"
+          onClick={() => setShowMobileMenu(false)}
+        />
+        <aside className={`absolute left-0 top-0 h-full w-72 bg-white shadow-lg transform transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
+          <SidebarContent
+            user={user}
+            visibleMenuItems={visibleMenuItems}
+            pathname={pathname}
+            notificationCounts={notificationCounts}
+            getInitial={getInitial}
+            formatRole={formatRole}
+            handleLogout={handleLogout}
+            onLinkClick={() => setShowMobileMenu(false)}
           />
-          <aside className="relative w-72 bg-white h-full flex flex-col border-r border-gray-100">
-            <button
-              onClick={() => setShowMobileMenu(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <SidebarContent
-              user={user}
-              visibleMenuItems={visibleMenuItems}
-              pathname={pathname}
-              notificationCounts={notificationCounts}
-              getInitial={getInitial}
-              formatRole={formatRole}
-              handleLogout={handleLogout}
-              onLinkClick={() => setShowMobileMenu(false)}
-            />
-          </aside>
-        </div>
-      )}
+        </aside>
+      </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="lg:pl-72 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="bg-white h-16 border-b border-gray-100 flex items-center justify-between px-6 pl-16 lg:pl-6">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {pathname === '/dashboard' && 'Dashboard'}
-            {pathname === '/dashboard/orders' && 'Orders Management'}
-            {pathname.startsWith('/dashboard/orders/create') && 'Create Order'}
-            {pathname.startsWith('/dashboard/orders/edit') && 'Edit Order'}
-            {pathname === '/dashboard/products' && 'Products'}
-            {pathname === '/dashboard/variants' && 'Variants Configuration'}
-            {pathname === '/dashboard/activity' && 'Activity Log'}
-            {pathname === '/dashboard/clients' && 'Client Management'}
-            {pathname === '/dashboard/manufacturers' && 'Manufacturer Management'}
-            {pathname === '/dashboard/users' && 'User Management'}
-            {pathname === '/dashboard/review' && 'Review Orders'}
-            {(pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit')) && 'Order Details'}
-          </h2>
-
-          {/* Notification Bell */}
-          <div className="relative">
+        <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+          <div className="flex items-center justify-between px-4 lg:px-6 h-16">
+            {/* Mobile Menu Button - left side */}
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              onClick={() => setShowMobileMenu(true)}
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <Bell className="w-5 h-5" />
-              {notificationCounts.total > 0 && (
-                <span className="absolute -top-1 -right-1 bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
-                  {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
-                </span>
-              )}
+              <Menu className="w-6 h-6 text-gray-700" />
             </button>
+            
+            {/* Page Title or Empty space */}
+            <div className="hidden lg:block text-lg font-medium text-gray-900">
+              {getPageTitle()}
+            </div>
 
-            {/* Notification Dropdown */}
-            {showNotifications && (
-              <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-900">Notifications</h3>
-                  <div className="flex items-center gap-2">
-                    {notificationCounts.total > 0 && (
-                      <button
-                        onClick={markAllAsRead}
-                        className="text-xs text-blue-600 hover:text-blue-700"
-                      >
-                        Mark all as read
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setShowNotifications(false)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="max-h-96 overflow-y-auto">
-                  {notifications.length > 0 ? (
-                    notifications.slice(0, 10).map((notif) => (
-                      <div
-                        key={notif.id}
-                        onClick={() => !notif.is_read && markAsRead(notif.id)}
-                        className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                          !notif.is_read ? 'bg-blue-50' : ''
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''} text-gray-900`}>
-                              {notif.message}
+            {/* Notification Bell - right side */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <Bell className="w-5 h-5" />
+                {notificationCounts.total > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold animate-pulse">
+                    {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <>
+                  {/* Click outside to close */}
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setShowNotifications(false)}
+                  />
+                  
+                  <div className="absolute right-0 mt-2 w-full sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                    <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                      <div className="flex items-center gap-2">
+                        {notificationCounts.total > 0 && (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Mark all as read
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowNotifications(false)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="max-h-96 overflow-y-auto">
+                      {/* Manufacturer specific notifications */}
+                      {user?.role === 'manufacturer' && notificationCounts.samples! > 0 && (
+                        <div className="p-3 bg-yellow-50 border-b border-yellow-100">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-yellow-600 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-yellow-800">
+                                {notificationCounts.samples} sample request{notificationCounts.samples! > 1 ? 's' : ''} need attention
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {user?.role === 'manufacturer' && notificationCounts.production! > 0 && (
+                        <div className="p-3 bg-green-50 border-b border-green-100">
+                          <div className="flex items-start gap-2">
+                            <Package className="w-4 h-4 text-green-600 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-green-800">
+                                {notificationCounts.production} order{notificationCounts.production! > 1 ? 's' : ''} approved for production
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {notifications.length > 0 ? (
+                        notifications.slice(0, 10).map((notif) => (
+                          <div
+                            key={notif.id}
+                            onClick={() => !notif.is_read && markAsRead(notif.id)}
+                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
+                              !notif.is_read ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 pr-2">
+                                <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''} text-gray-900`}>
+                                  {notif.message}
+                                </p>
+                              </div>
+                              {!notif.is_read && (
+                                <span className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 mt-1.5" />
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">
+                              {formatNotificationTime(notif.created_at)}
                             </p>
                           </div>
-                          {!notif.is_read && (
-                            <span className="w-2 h-2 bg-blue-600 rounded-full ml-2 mt-1.5" />
-                          )}
+                        ))
+                      ) : (
+                        <div className="p-8 text-center text-gray-500">
+                          No new notifications
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {formatNotificationTime(notif.created_at)}
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-8 text-center text-gray-500">
-                      No notifications
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 p-6 bg-gray-50 overflow-auto">
+        <main className="flex-1 bg-gray-50">
           {children}
         </main>
       </div>
@@ -483,7 +666,7 @@ export default function DashboardLayout({
   );
 }
 
-// Sidebar Content Component (shared between desktop and mobile)
+// Sidebar Content Component
 function SidebarContent({
   user,
   visibleMenuItems,
@@ -503,26 +686,54 @@ function SidebarContent({
   handleLogout: () => void;
   onLinkClick?: () => void;
 }) {
+  // Debug log
+  console.log('SidebarContent - User role:', user?.role, 'Notification counts:', notificationCounts);
+  
   return (
-    <>
+    <div className="flex flex-col h-full">
       {/* Logo Section */}
-      <div className="p-6 border-b border-gray-100">
-        <h1 className="text-2xl font-bold text-gray-900">BirdHaus</h1>
-        <p className="text-sm text-gray-500 mt-1">Order Management</p>
+      <div className="h-16 px-6 border-b border-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-xl font-bold text-gray-900">BirdHaus</h1>
+          <p className="text-xs text-gray-500">Order Management</p>
+        </div>
       </div>
 
       {/* User Profile Section */}
       <div className="px-6 py-4 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+          <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0">
             {getInitial(user?.name || '')}
           </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium text-gray-900">{user?.name}</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
             <p className="text-xs text-gray-500">{formatRole(user?.role || '')}</p>
           </div>
         </div>
       </div>
+
+      {/* Manufacturer Notification Summary - if manufacturer role */}
+      {user?.role === 'manufacturer' && notificationCounts.total > 0 && (
+        <div className="mx-4 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Bell className="w-4 h-4 text-yellow-600" />
+            <span className="text-sm font-medium text-yellow-800">
+              You have {notificationCounts.total} new notification{notificationCounts.total > 1 ? 's' : ''}
+            </span>
+          </div>
+          <div className="space-y-1 text-xs text-yellow-700">
+            {notificationCounts.samples! > 0 && (
+              <div>• {notificationCounts.samples} sample request{notificationCounts.samples! > 1 ? 's' : ''}</div>
+            )}
+            {notificationCounts.production! > 0 && (
+              <div>• {notificationCounts.production} approved for production</div>
+            )}
+            {notificationCounts.orders > 0 && (
+              <div>• {notificationCounts.orders} order update{notificationCounts.orders > 1 ? 's' : ''}</div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
@@ -539,33 +750,38 @@ function SidebarContent({
 
           const Icon = item.icon!;
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
-          const notificationCount = item.notificationKey ? notificationCounts[item.notificationKey as keyof NotificationCount] : 0;
+          
+          // For manufacturers, always show total count on Orders
+          let notificationCount = 0;
+          if (user?.role === 'manufacturer' && item.href === '/dashboard/orders') {
+            notificationCount = notificationCounts.total;
+          } else if (item.notificationKey) {
+            notificationCount = notificationCounts[item.notificationKey as keyof NotificationCount] || 0;
+          }
           
           return (
             <div key={item.href} className="mb-1">
               <Link
                 href={item.href!}
                 onClick={onLinkClick}
-                className={`flex items-center justify-between px-6 py-2.5 text-sm transition-colors relative ${
+                className={`flex items-center justify-between px-6 pl-10 py-2.5 text-sm transition-colors relative ${
                   isActive
                     ? 'text-blue-600 bg-blue-50 border-r-2 border-blue-600'
                     : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-                  <span className="font-medium">{item.label}</span>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <span className="font-medium truncate">{item.label}</span>
                 </div>
                 
-                {/* Notification Badge */}
                 {notificationCount > 0 && (
-                  <span className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs rounded-full px-2 py-0.5 font-semibold">
+                  <span className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white text-xs rounded-full px-2 py-0.5 font-semibold flex-shrink-0 ml-2 animate-pulse">
                     {notificationCount > 99 ? '99+' : notificationCount}
                   </span>
                 )}
               </Link>
               
-              {/* Description text underneath */}
               {item.description && (
                 <p className="px-6 pl-14 py-1 text-xs text-gray-500">
                   {item.description}
@@ -579,15 +795,18 @@ function SidebarContent({
       {/* Logout Section */}
       <div className="p-4 border-t border-gray-100">
         <button
-          onClick={handleLogout}
+          onClick={() => {
+            handleLogout();
+            onLinkClick?.();
+          }}
           className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
         >
-          <div className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center">
+          <div className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-white font-semibold">{getInitial(user?.name || '')}</span>
           </div>
-          <span className="flex-1 text-left font-medium">Logout</span>
+          <span className="flex-1 text-left font-medium truncate">Logout</span>
         </button>
       </div>
-    </>
+    </div>
   );
 }

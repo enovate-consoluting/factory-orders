@@ -81,6 +81,58 @@ export default function CreateOrderPage() {
     }, 3000)
   }
   
+  // ============================================
+  // NOTIFICATION HELPER FUNCTION
+  // ============================================
+  const createManufacturerNotification = async (
+    orderId: string,
+    manufacturerId: string,
+    orderNumber: string,
+    orderStatus: string
+  ) => {
+    try {
+      // Determine notification type and message based on status
+      let notificationType = 'new_order';
+      let message = `New order ${orderNumber} has been assigned to you`;
+      
+      if (orderStatus === 'submitted_for_sample') {
+        notificationType = 'sample_requested';
+        message = `New order ${orderNumber} with sample request`;
+      } else if (orderStatus === 'submitted_to_manufacturer') {
+        notificationType = 'new_order';
+        message = `New order ${orderNumber} submitted for review`;
+      }
+
+      console.log('Creating manufacturer notification:', {
+        manufacturerId,
+        orderId,
+        notificationType,
+        message
+      });
+
+      // Create the notification
+      const { error } = await supabase
+        .from('manufacturer_notifications')
+        .insert({
+          manufacturer_id: manufacturerId,
+          order_id: orderId,
+          product_id: null, // Order-level notification
+          type: notificationType,
+          message: message,
+          is_read: false,
+          created_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('Error creating manufacturer notification:', error);
+      } else {
+        console.log('✅ Manufacturer notification created successfully');
+      }
+    } catch (error) {
+      console.error('Error in createManufacturerNotification:', error);
+    }
+  };
+  
   // Step 1: Basic Info
   const [orderName, setOrderName] = useState('')
   const [clients, setClients] = useState<Client[]>([])
@@ -399,10 +451,25 @@ export default function CreateOrderPage() {
       
       const clientPrefix = clientData?.name?.substring(0, 3).toUpperCase() || 'ORD'
       
-      // Generate order number based on draft or not
+      // Generate order number - Get the next sequential number
+      const { data: lastOrder } = await supabase
+        .from('orders')
+        .select('order_number')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single()
+      
+      let nextNumber = 1200 // Starting number
+      if (lastOrder?.order_number) {
+        const match = lastOrder.order_number.match(/(\d{6})/)
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1
+        }
+      }
+      
       const orderNumber = isDraft 
-        ? `DRAFT-${Date.now().toString(36).toUpperCase()}`
-        : `${clientPrefix}-${orderName.replace(/\s+/g, '-').toUpperCase().substring(0, 50)}`
+        ? `DRAFT-${nextNumber.toString().padStart(6, '0')}`
+        : `${clientPrefix}-${nextNumber.toString().padStart(6, '0')}`
 
       // Check if any product has sample information filled
       let hasSampleRequest = false
@@ -413,23 +480,18 @@ export default function CreateOrderPage() {
         }
       }
 
-      // Determine the correct status based on draft and sample requirements
-      // Using EXACT statuses from database constraint
+      // UPDATED: Use simplified statuses
       let orderStatus = 'draft'
       if (!isDraft) {
-        if (hasSampleRequest) {
-          orderStatus = 'submitted_for_sample'  // Sample requested (valid in DB)
-          console.log('Status: submitted_for_sample (sample notes found)')
-        } else {
-          orderStatus = 'submitted_to_manufacturer'  // Direct to manufacturer (valid in DB)
-          console.log('Status: submitted_to_manufacturer (no sample needed)')
-        }
+        orderStatus = 'in_progress'  // SIMPLIFIED: All non-draft orders are 'in_progress'
+        console.log('Status: in_progress (order submitted)')
       } else {
         console.log('Status: draft (saved as draft)')
       }
       
       console.log('Final order status:', orderStatus)
       console.log('Has sample request:', hasSampleRequest)
+      
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -437,7 +499,7 @@ export default function CreateOrderPage() {
           order_name: orderName || 'New Order',
           client_id: selectedClient,
           manufacturer_id: selectedManufacturer,
-          status: orderStatus,  // Use the status we determined above
+          status: orderStatus,
           created_by: user?.id
         })
         .select()
@@ -452,21 +514,61 @@ export default function CreateOrderPage() {
       console.log('Order ID:', orderData.id)
       console.log('Order Number:', orderNumber)
       
-      // Now save all the products and their items
+      // ============================================
+      // CREATE MANUFACTURER NOTIFICATION
+      // ============================================
+      
+      // Create manufacturer notification if not a draft
+      if (!isDraft && orderData && selectedManufacturer) {
+        console.log('🔔 Creating notification for manufacturer...');
+        await createManufacturerNotification(
+          orderData.id,
+          selectedManufacturer,
+          orderNumber,
+          'sent_to_manufacturer'  // UPDATED: Use new status
+        );
+      } else {
+        console.log('ℹ️ No notification needed (draft or missing data)');
+      }
+      
+      // ============================================
+      
+      // Extract numeric part from order number for product numbers
+      const orderNumeric = orderNumber.includes('-') 
+        ? orderNumber.split('-')[1]
+        : nextNumber.toString().padStart(6, '0')
+      
+      // Now save all the products with proper product numbers
       console.log(`Saving ${orderProducts.length} products...`)
       
       for (const orderProduct of orderProducts) {
         console.log('Saving product:', orderProduct.product.title)
         
-        // Save the order product with description
+        // Generate product code from product title (first 3 letters)
+        const productCode = orderProduct.product.title 
+          ? orderProduct.product.title.substring(0, 3).toUpperCase() 
+          : 'PRD'
+        
+        // Generate description code (first 3 letters)
+        const descCode = orderProduct.productDescription 
+          ? orderProduct.productDescription.substring(0, 3).toUpperCase()
+          : 'GEN'
+        
+        // Create final product number: 001234-SLI-PER
+        const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
+        
+        // UPDATED: Save the order product with new status and routing
         const { data: productData, error: productError } = await supabase
           .from('order_products')
           .insert({
             order_id: orderData.id,
             product_id: orderProduct.product.id,
-            product_order_number: orderProduct.productOrderNumber,
+            product_order_number: finalProductOrderNumber,
             description: orderProduct.productDescription || '',
-            sample_notes: orderProduct.sampleNotes || ''
+            sample_notes: orderProduct.sampleNotes || '',
+            sample_required: orderProduct.sampleRequired || false,
+            product_status: 'sent_to_manufacturer',  // CHANGED: was 'pending'
+            routed_to: 'manufacturer'  // ADDED: route to manufacturer by default
           })
           .select()
           .single()
@@ -477,6 +579,7 @@ export default function CreateOrderPage() {
         }
 
         console.log('Product saved with ID:', productData.id)
+        console.log('Product Order Number:', finalProductOrderNumber)
 
         // Save ALL order items (variants) - not just ones with quantity > 0
         const itemsToSave = orderProduct.items.map((item: any) => ({
@@ -586,7 +689,7 @@ export default function CreateOrderPage() {
                 .insert({
                   order_product_id: productData.id,
                   file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                  file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
                   uploaded_by: user?.id,
                   original_filename: file.name
                 })
@@ -600,6 +703,7 @@ export default function CreateOrderPage() {
       }
       
       console.log('All products and items saved!')
+      console.log('✅ Notification system integration complete!')
       
       // Show success notification
       showNotification('success', `Order ${orderNumber} created successfully!`)
@@ -1058,7 +1162,7 @@ export default function CreateOrderPage() {
                     )}
                   </h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Product Order Number: {orderProduct.productOrderNumber}
+                    Product order number will be assigned after creation
                   </p>
                 </div>
                 {/* Delete Product Button */}
