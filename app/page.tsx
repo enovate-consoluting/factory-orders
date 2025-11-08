@@ -35,66 +35,45 @@ function LoginContent() {
     setLoading(true);
 
     try {
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      // Check users table directly (no Supabase Auth)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.toLowerCase().trim())
+        .single();
 
-      if (signInError) {
+      if (userError || !userData) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
 
-      if (authData.user) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', authData.user.email)
-          .single();
-
-        if (userError || !userData) {
-          setError('User profile not found. Please contact administrator.');
-          await supabase.auth.signOut();
-          setLoading(false);
-          return;
-        }
-
-        if (rememberMe) {
-          localStorage.setItem('rememberedEmail', email);
-        } else {
-          localStorage.removeItem('rememberedEmail');
-        }
-
-        localStorage.setItem('user', JSON.stringify(userData));
-        router.push('/dashboard');
+      // Check password (simple comparison - passwords stored as plain text)
+      if (userData.password !== password) {
+        setError('Invalid email or password');
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      setError('An error occurred during authentication');
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleForgotPassword = async () => {
-    if (!email) {
-      setError('Please enter your email address first');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      });
-
-      if (error) {
-        setError('Failed to send reset email.');
+      // Successful login
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
       } else {
-        setMessage('Password reset instructions sent to your email');
+        localStorage.removeItem('rememberedEmail');
       }
+
+      // Store user session
+      localStorage.setItem('user', JSON.stringify(userData));
+      
+      // Set session expiry (7 days)
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      localStorage.setItem('sessionExpiry', expiryDate.toISOString());
+
+      router.push('/dashboard');
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      console.error('Login error:', err);
+      setError('An error occurred during authentication');
     } finally {
       setLoading(false);
     }
@@ -179,13 +158,6 @@ function LoginContent() {
               />
               <span className="ml-2 text-sm text-gray-700">Remember me</span>
             </label>
-            <button
-              type="button"
-              onClick={handleForgotPassword}
-              className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
-            >
-              Forgot password?
-            </button>
           </div>
 
           {error && (
