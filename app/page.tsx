@@ -105,7 +105,7 @@ function LoginContent() {
       <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent mb-2">
-            BirdHaus
+            BirdHausDev
           </h1>
           <p className="text-gray-600">Factory Order Management System</p>
         </div>
