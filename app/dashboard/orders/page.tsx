@@ -214,26 +214,131 @@ export default function OrdersPage() {
     return false;
   };
 
+  // FIXED: Properly delete order with all related records
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrder(orderId);
       
-      // Delete order (this will cascade delete order_products, order_items, and order_media)
-      const { error } = await supabase
+      // First, get all order_products for this order
+      const { data: orderProducts, error: fetchError } = await supabase
+        .from('order_products')
+        .select('id')
+        .eq('order_id', orderId);
+
+      if (fetchError) {
+        console.error('Error fetching order products:', fetchError);
+        throw fetchError;
+      }
+
+      const productIds = orderProducts?.map(p => p.id) || [];
+
+      // Delete in correct order to avoid foreign key constraints
+      
+      // 1. Delete order_media (files)
+      if (productIds.length > 0) {
+        const { error: mediaError } = await supabase
+          .from('order_media')
+          .delete()
+          .in('order_product_id', productIds);
+        
+        if (mediaError) {
+          console.error('Error deleting media:', mediaError);
+        }
+      }
+
+      // 2. Delete order_items (variants)
+      if (productIds.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .delete()
+          .in('order_product_id', productIds);
+        
+        if (itemsError) {
+          console.error('Error deleting items:', itemsError);
+        }
+      }
+
+      // 3. Delete audit_log entries related to this order
+      const { error: auditError } = await supabase
+        .from('audit_log')
+        .delete()
+        .or(`target_id.eq.${orderId},target_id.in.(${productIds.join(',')})`);
+      
+      if (auditError) {
+        console.error('Error deleting audit logs:', auditError);
+      }
+
+      // 4. Delete notifications
+      const { error: notifError } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('order_id', orderId);
+      
+      if (notifError) {
+        console.error('Error deleting notifications:', notifError);
+      }
+
+      // 5. Try to delete manufacturer_notifications (may not exist)
+      try {
+        await supabase
+          .from('manufacturer_notifications')
+          .delete()
+          .eq('order_id', orderId);
+      } catch (e) {
+        // Table might not exist, continue
+      }
+
+      // 6. Try to delete workflow_log (may not exist)
+      try {
+        await supabase
+          .from('workflow_log')
+          .delete()
+          .eq('order_id', orderId);
+      } catch (e) {
+        // Table might not exist, continue
+      }
+
+      // 7. Delete order_products
+      const { error: productsError } = await supabase
+        .from('order_products')
+        .delete()
+        .eq('order_id', orderId);
+
+      if (productsError) {
+        console.error('Error deleting products:', productsError);
+        throw productsError;
+      }
+
+      // 8. Finally delete the order itself
+      const { error: orderError } = await supabase
         .from('orders')
         .delete()
         .eq('id', orderId);
 
-      if (error) throw error;
+      if (orderError) {
+        console.error('Error deleting order:', orderError);
+        throw orderError;
+      }
 
       // Remove from local state
       setOrders(prev => prev.filter(order => order.id !== orderId));
       setFilteredOrders(prev => prev.filter(order => order.id !== orderId));
       
       setShowDeleteConfirm(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting order:', error);
-      alert('Error deleting order. Please try again.');
+      
+      // Show more specific error message
+      let errorMessage = 'Error deleting order. ';
+      if (error?.message?.includes('foreign key')) {
+        errorMessage += 'There are still related records that need to be deleted first.';
+      } else if (error?.message) {
+        errorMessage += error.message;
+      } else {
+        errorMessage += 'Please try again.';
+      }
+      
+      alert(errorMessage);
     } finally {
       setDeletingOrder(null);
     }
