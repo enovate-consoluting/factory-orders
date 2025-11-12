@@ -129,7 +129,7 @@ export default function OrdersPage() {
         processedOrders = processedOrders.filter(order => {
           // Check if at least one product is routed to manufacturer
           if (order.order_products && order.order_products.length > 0) {
-            return order.order_products.some(product => 
+            return order.order_products.some((product: any) => 
               product.routed_to === 'manufacturer'
             );
           }
