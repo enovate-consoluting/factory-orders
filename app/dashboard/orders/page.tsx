@@ -117,6 +117,9 @@ export default function OrdersPage() {
             query = query.eq('manufacturer_id', manufacturerData.id);
           }
         }
+      } else if (user.role === 'sub_manufacturer') {
+        // Sub manufacturer sees only orders assigned to them
+        query = query.eq('sub_manufacturer_id', user.id);
       } else if (user.role === 'client') {
         const { data: clientData } = await supabase
           .from('clients')

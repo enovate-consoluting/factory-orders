@@ -76,6 +76,7 @@ export interface Order {
   order_number: string;
   client_id: string;
   manufacturer_id: string;
+  sub_manufacturer_id?: string;
   status: OrderStatus;
   created_by: string;
   created_at: string;

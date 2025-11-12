@@ -8,6 +8,7 @@ export interface Order {
   is_paid: boolean;
   client_id: string;
   manufacturer_id: string;
+  sub_manufacturer_id?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -15,6 +16,7 @@ export interface Order {
   manufacturer_accepted: boolean;
   client?: Client;
   manufacturer?: Manufacturer;
+  sub_manufacturer?: User;
   order_products?: OrderProduct[];
 }
 
@@ -81,9 +83,11 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  reset_token?: string;
+  reset_token_expires?: string;
 }
 
-export type UserRole = 'super_admin' | 'admin' | 'order_creator' | 'order_approver' | 'manufacturer' | 'client';
+export type UserRole = 'super_admin' | 'admin' | 'order_creator' | 'order_approver' | 'manufacturer' | 'manufacturer_team_member' | 'sub_manufacturer' | 'client';
 
 export type OrderStatus = 'draft' | 'submitted' | 'pending' | 'in_progress' | 'completed' | 'rejected';
 

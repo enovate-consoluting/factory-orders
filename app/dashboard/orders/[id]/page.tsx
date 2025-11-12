@@ -74,6 +74,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const totalAmount = calculateOrderTotal();
   const [workflowUpdating, setWorkflowUpdating] = useState(false);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
+  const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
+  const [selectedSubManufacturer, setSelectedSubManufacturer] = useState<string>('');
   const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
   
   // History Modal State
@@ -102,6 +104,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
+    // Fetch sub manufacturers for assignment
+    const fetchSubManufacturers = async () => {
+      const userData = localStorage.getItem('user');
+      if (!userData) return;
+      const user = JSON.parse(userData);
+      // Only fetch if manufacturer
+      if (userRole === 'manufacturer') {
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, name, email')
+          .eq('created_by', user.id)
+          .eq('role', 'sub_manufacturer');
+        if (!error && data) setSubManufacturers(data);
+      }
+    };
+    fetchSubManufacturers();
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/');
@@ -432,46 +450,53 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const getVisibleProducts = () => {
     if (!order?.order_products) return [];
     
-    const isManufacturer = userRole === 'manufacturer';
-    
+  const isManufacturer = userRole === 'manufacturer';
+  const isTeamMember = userRole !== null && userRole === 'manufacturer_team_member';
+  const isSubManufacturer = userRole !== null && userRole === 'sub_manufacturer';
+
     const filteredProducts = order.order_products.filter((product: any) => {
       // Always show products that are in_production or completed to everyone
       if (product.product_status === 'in_production' || product.product_status === 'completed') {
         return true;
       }
-      
+
       // If routed_to is not set, default to admin
       const routedTo = product.routed_to || 'admin';
-      
-      // For manufacturer, show products routed to manufacturer
-      if (isManufacturer) {
+
+      // Manufacturer and team members see products routed to manufacturer
+      if (isManufacturer || isTeamMember) {
         return routedTo === 'manufacturer';
       }
-      
+
+      // Sub manufacturer sees products if order is assigned to them
+      if (isSubManufacturer && order.sub_manufacturer_id === JSON.parse(localStorage.getItem('user') || '{}').id) {
+        return true;
+      }
+
       // For admin/others, show products routed to admin
       return routedTo === 'admin';
     });
-    
+
     // SORT: Put shipped products at the top for admins
-    if (!isManufacturer) {
+    if (!(isManufacturer || isTeamMember || isSubManufacturer)) {
       return filteredProducts.sort((a: any, b: any) => {
         // Shipped products come first
         if (a.product_status === 'shipped' && b.product_status !== 'shipped') return -1;
         if (a.product_status !== 'shipped' && b.product_status === 'shipped') return 1;
-        
+
         // Then in_transit products
         if (a.product_status === 'in_transit' && b.product_status !== 'in_transit') return -1;
         if (a.product_status !== 'in_transit' && b.product_status === 'in_transit') return 1;
-        
+
         // Then completed products
         if (a.product_status === 'completed' && b.product_status !== 'completed') return -1;
         if (a.product_status !== 'completed' && b.product_status === 'completed') return 1;
-        
+
         // Then everything else in original order
         return 0;
       });
     }
-    
+
     return filteredProducts;
   };
 
@@ -533,6 +558,43 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
+        {/* Sub Manufacturer Assignment - Only for Manufacturer */}
+        {userRole === 'manufacturer' && (
+          <div className="mb-6">
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 flex flex-col gap-4">
+              <div className="flex items-center gap-3 mb-2">
+                <Building className="w-6 h-6 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Assign Sub Manufacturer</h3>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 items-center">
+                <select
+                  value={selectedSubManufacturer || order.sub_manufacturer_id || ''}
+                  onChange={e => setSelectedSubManufacturer(e.target.value)}
+                  className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+                >
+                  <option value="">None</option>
+                  {subManufacturers.map((sm: any) => (
+                    <option key={sm.id} value={sm.id}>{sm.name} ({sm.email})</option>
+                  ))}
+                </select>
+                <button
+                  className="px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-all"
+                  onClick={async () => {
+                    if (!order.id || !selectedSubManufacturer) return;
+                    const { error } = await supabase
+                      .from('orders')
+                      .update({ sub_manufacturer_id: selectedSubManufacturer })
+                      .eq('id', order.id);
+                    if (!error) {
+                      refetch();
+                    }
+                  }}
+                >Assign</button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">Select a sub manufacturer to assign this order. Assigned sub manufacturer will be able to view and process this order.</p>
+            </div>
+          </div>
+        )}
         {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
         {userRole !== 'manufacturer' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
