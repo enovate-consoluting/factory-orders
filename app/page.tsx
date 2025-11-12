@@ -33,7 +33,7 @@ function LoginContent() {
     setError('');
     setMessage('');
     setLoading(true);
-
+ 
     try {
       // Check users table directly (no Supabase Auth)
       const { data: userData, error: userError } = await supabase
