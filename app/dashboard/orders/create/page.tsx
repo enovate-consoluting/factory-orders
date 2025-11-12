@@ -557,7 +557,7 @@ export default function CreateOrderPage() {
         // Create final product number: 001234-SLI-PER
         const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
         
-        // UPDATED: Save the order product with new status and routing
+        // FIXED: Conditional status and routing based on draft mode
         const { data: productData, error: productError } = await supabase
           .from('order_products')
           .insert({
@@ -567,8 +567,9 @@ export default function CreateOrderPage() {
             description: orderProduct.productDescription || '',
             sample_notes: orderProduct.sampleNotes || '',
             sample_required: orderProduct.sampleRequired || false,
-            product_status: 'sent_to_manufacturer',  // CHANGED: was 'pending'
-            routed_to: 'manufacturer'  // ADDED: route to manufacturer by default
+            // FIXED: Conditional status and routing based on draft mode
+            product_status: isDraft ? 'pending' : 'sent_to_manufacturer',
+            routed_to: isDraft ? 'admin' : 'manufacturer'
           })
           .select()
           .single()
@@ -580,6 +581,8 @@ export default function CreateOrderPage() {
 
         console.log('Product saved with ID:', productData.id)
         console.log('Product Order Number:', finalProductOrderNumber)
+        console.log('Product Status:', isDraft ? 'pending' : 'sent_to_manufacturer')
+        console.log('Routed To:', isDraft ? 'admin' : 'manufacturer')
 
         // Save ALL order items (variants) - not just ones with quantity > 0
         const itemsToSave = orderProduct.items.map((item: any) => ({
@@ -703,10 +706,10 @@ export default function CreateOrderPage() {
       }
       
       console.log('All products and items saved!')
-      console.log('✅ Notification system integration complete!')
+      console.log('✅ Order creation complete!')
       
       // Show success notification
-      showNotification('success', `Order ${orderNumber} created successfully!`)
+      showNotification('success', `Order ${orderNumber} ${isDraft ? 'saved as draft' : 'created'} successfully!`)
       
       // Log that we're about to navigate
       console.log('Navigating to orders list in 1.5 seconds...')
