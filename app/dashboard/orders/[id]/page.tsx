@@ -11,7 +11,7 @@ import { ManufacturerProductCard } from './components/manufacturer/ManufacturerP
 import { HistoryModal } from './components/modals/HistoryModal';
 import { RouteModal } from './components/modals/RouteModal';
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check } from 'lucide-react';
+import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check, ChevronDown } from 'lucide-react';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +30,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   
   // NEW: State for showing all products (super admin only)
   const [showAllProducts, setShowAllProducts] = useState(false);
+  
+  // NEW: State for individual product selection
+  const [selectedProductId, setSelectedProductId] = useState<string>('all');
   
   // UPDATED: Calculate total amount with CLIENT prices for everyone except manufacturers
   const calculateOrderTotal = () => {
@@ -83,8 +86,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const totalAmount = calculateOrderTotal();
   const [workflowUpdating, setWorkflowUpdating] = useState(false);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
-  const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
-  const [selectedSubManufacturer, setSelectedSubManufacturer] = useState<string>('');
   const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
   
   // History Modal State
@@ -113,22 +114,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
   useEffect(() => {
-    // Fetch sub manufacturers for assignment
-    const fetchSubManufacturers = async () => {
-      const userData = localStorage.getItem('user');
-      if (!userData) return;
-      const user = JSON.parse(userData);
-      // Only fetch if manufacturer
-      if (userRole === 'manufacturer') {
-        const { data, error } = await supabase
-          .from('users')
-          .select('id, name, email')
-          .eq('created_by', user.id)
-          .eq('role', 'sub_manufacturer');
-        if (!error && data) setSubManufacturers(data);
-      }
-    };
-    fetchSubManufacturers();
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/');
@@ -534,13 +519,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return currentCount > viewedCount;
   };
 
-  // UPDATED: Filter products based on who they're routed to OR show all for super admin
-  const getVisibleProducts = () => {
+  // Get all products before filtering
+  const getAllProducts = () => {
     if (!order?.order_products) return [];
     
     const isManufacturer = userRole === 'manufacturer';
-    const isTeamMember = userRole !== null && userRole === 'manufacturer_team_member';
-    const isSubManufacturer = userRole !== null && userRole === 'sub_manufacturer';
     const isSuperAdmin = userRole === 'super_admin';
     
     // If super admin and showAllProducts is true, show everything
@@ -548,6 +531,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return order.order_products;
     }
     
+    // Original filtering logic
     const filteredProducts = order.order_products.filter((product: any) => {
       // Always show products that are in_production or completed to everyone
       if (product.product_status === 'in_production' || product.product_status === 'completed') {
@@ -557,23 +541,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       // If routed_to is not set, default to admin
       const routedTo = product.routed_to || 'admin';
       
-      // Manufacturer and team members see products routed to manufacturer
-      if (isManufacturer || isTeamMember) {
+      // For manufacturer, show products routed to manufacturer
+      if (isManufacturer) {
         return routedTo === 'manufacturer';
-      }
-
-      // Sub manufacturer sees products if order is assigned to them
-      if (isSubManufacturer && order.sub_manufacturer_id === JSON.parse(localStorage.getItem('user') || '{}').id) {
-        return true;
       }
       
       // For admin/others, show products routed to admin
       return routedTo === 'admin';
     });
     
+    return filteredProducts;
+  };
+
+  // UPDATED: Filter products based on selection
+  const getVisibleProducts = () => {
+    const allProducts = getAllProducts();
+    
+    // If a specific product is selected, return only that product
+    if (selectedProductId !== 'all') {
+      return allProducts.filter((product: any) => product.id === selectedProductId);
+    }
+    
+    // Otherwise return all products
+    const isManufacturer = userRole === 'manufacturer';
+    
     // SORT: Put shipped products at the top for admins
-    if (!(isManufacturer || isTeamMember || isSubManufacturer)) {
-      return filteredProducts.sort((a: any, b: any) => {
+    if (!isManufacturer) {
+      return allProducts.sort((a: any, b: any) => {
         // Shipped products come first
         if (a.product_status === 'shipped' && b.product_status !== 'shipped') return -1;
         if (a.product_status !== 'shipped' && b.product_status === 'shipped') return 1;
@@ -591,7 +585,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       });
     }
     
-    return filteredProducts;
+    return allProducts;
   };
 
   // Get counts for different product locations
@@ -635,6 +629,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     );
   }
 
+  const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
   const productCounts = getProductCounts();
   const isManufacturer = userRole === 'manufacturer';
@@ -654,43 +649,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
-        {/* Sub Manufacturer Assignment - Only for Manufacturer */}
-        {userRole === 'manufacturer' && (
-          <div className="mb-6">
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-3 mb-2">
-                <Building className="w-6 h-6 text-blue-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Assign Sub Manufacturer</h3>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <select
-                  value={selectedSubManufacturer || order.sub_manufacturer_id || ''}
-                  onChange={e => setSelectedSubManufacturer(e.target.value)}
-                  className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-                >
-                  <option value="">None</option>
-                  {subManufacturers.map((sm: any) => (
-                    <option key={sm.id} value={sm.id}>{sm.name} ({sm.email})</option>
-                  ))}
-                </select>
-                <button
-                  className="px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-all"
-                  onClick={async () => {
-                    if (!order.id || !selectedSubManufacturer) return;
-                    const { error } = await supabase
-                      .from('orders')
-                      .update({ sub_manufacturer_id: selectedSubManufacturer })
-                      .eq('id', order.id);
-                    if (!error) {
-                      refetch();
-                    }
-                  }}
-                >Assign</button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Select a sub manufacturer to assign this order. Assigned sub manufacturer will be able to view and process this order.</p>
-            </div>
-          </div>
-        )}
         {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
         {userRole !== 'manufacturer' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -812,41 +770,68 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
 
-        {/* Product Location Summary */}
+        {/* Product Location Summary with Individual Product Dropdown */}
         {productCounts.total > 0 && (
           <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-700">Product Distribution</h3>
-              <div className="flex items-center gap-3 text-xs">
-                {productCounts.withAdmin > 0 && (
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded">
-                    {productCounts.withAdmin} with Admin
-                  </span>
-                )}
-                {productCounts.withManufacturer > 0 && (
-                  <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded">
-                    {productCounts.withManufacturer} with Manufacturer
-                  </span>
-                )}
-                {productCounts.inProduction > 0 && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                    {productCounts.inProduction} in Production
-                  </span>
-                )}
-                {productCounts.completed > 0 && (
-                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded">
-                    {productCounts.completed} Completed
-                  </span>
-                )}
+              
+              {/* NEW: Individual Product Selection Dropdown */}
+              <div className="flex items-center gap-3">
+                <select
+                  value={selectedProductId}
+                  onChange={(e) => setSelectedProductId(e.target.value)}
+                  className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="all">Show All Products ({allProducts.length})</option>
+                  {allProducts.map((product: any) => (
+                    <option key={product.id} value={product.id}>
+                      {product.product_order_number || 'PRD-0000'} - {product.description || product.product?.title || 'Unnamed Product'}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-            {visibleProducts.length < productCounts.total && !showAllProducts && (
+            
+            {/* Status summary badges */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {productCounts.withAdmin > 0 && (
+                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
+                  {productCounts.withAdmin} with Admin
+                </span>
+              )}
+              {productCounts.withManufacturer > 0 && (
+                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
+                  {productCounts.withManufacturer} with Manufacturer
+                </span>
+              )}
+              {productCounts.inProduction > 0 && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                  {productCounts.inProduction} in Production
+                </span>
+              )}
+              {productCounts.completed > 0 && (
+                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                  {productCounts.completed} Completed
+                </span>
+              )}
+            </div>
+            
+            {selectedProductId !== 'all' && (
+              <p className="text-xs text-blue-600 mt-2">
+                <Eye className="w-3 h-3 inline mr-1" />
+                Viewing single product
+              </p>
+            )}
+            
+            {visibleProducts.length < productCounts.total && !showAllProducts && selectedProductId === 'all' && (
               <p className="text-xs text-gray-500 mt-2">
                 <AlertCircle className="w-3 h-3 inline mr-1" />
                 Showing {visibleProducts.length} of {productCounts.total} products 
                 {isManufacturer ? ' (products with admin are hidden)' : ' (products with manufacturer are hidden)'}
               </p>
             )}
+            
             {isSuperAdmin && showAllProducts && (
               <p className="text-xs text-blue-600 mt-2">
                 <Eye className="w-3 h-3 inline mr-1" />
@@ -860,7 +845,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {isManufacturer ? 'Your Products' : showAllProducts ? 'All Products' : 'Products Requiring Action'}
+              {isManufacturer ? 'Your Products' : showAllProducts ? 'All Products' : selectedProductId !== 'all' ? 'Product Detail' : 'Products Requiring Action'}
             </h2>
             
             <div className="flex items-center gap-3">
@@ -910,9 +895,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
               <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">
-                {isManufacturer 
-                  ? 'No products are currently routed to you. Products will appear here when admin sends them to you.'
-                  : 'No products currently need your attention. Products will appear here when manufacturer routes them to you.'}
+                {selectedProductId !== 'all' 
+                  ? `Product not found or not visible to you.`
+                  : isManufacturer 
+                    ? 'No products are currently routed to you. Products will appear here when admin sends them to you.'
+                    : 'No products currently need your attention. Products will appear here when manufacturer routes them to you.'}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
@@ -951,8 +938,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     onViewHistory={(productId) => handleViewHistory(productId, productName)}
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
-                    // Pass super admin flag to allow editing when viewing all
-                    isSuperAdminView={isSuperAdmin && showAllProducts}
                   />
                 );
               }
