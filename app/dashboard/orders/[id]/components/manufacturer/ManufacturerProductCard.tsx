@@ -22,6 +22,7 @@ interface ManufacturerProductCardProps {
   onViewHistory?: (productId: string) => void;
   hasNewHistory?: boolean;
   manufacturerId?: string | null;
+  isSuperAdminView?: boolean;
 }
 
 // Define the ref type for imperative handle
@@ -39,10 +40,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     onRoute,
     onViewHistory,
     hasNewHistory = false,
-    manufacturerId
+    manufacturerId,
+    isSuperAdminView = false
   }, ref) {
-    const permissions = usePermissions() as any;
-    const userRole = 'manufacturer';
+  const permissions = usePermissions() as any;
+  const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
     
     // COLLAPSIBLE STATE - Each card manages its own state independently
     const [isCollapsed, setIsCollapsed] = useState(
