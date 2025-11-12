@@ -557,6 +557,13 @@ export default function CreateOrderPage() {
         // Create final product number: 001234-SLI-PER
         const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
         
+        // FIXED: Check if product_id exists before saving
+        if (!orderProduct.product.id) {
+          console.error('Product ID is missing for:', orderProduct.product.title)
+          showNotification('error', `Failed to save product ${orderProduct.product.title}: Missing product ID`)
+          continue
+        }
+        
         // FIXED: Conditional status and routing based on draft mode
         const { data: productData, error: productError } = await supabase
           .from('order_products')
@@ -576,6 +583,7 @@ export default function CreateOrderPage() {
 
         if (productError) {
           console.error('Error saving product:', productError)
+          showNotification('error', `Failed to save product ${orderProduct.product.title}: ${productError.message}`)
           continue
         }
 
@@ -608,15 +616,17 @@ export default function CreateOrderPage() {
           }
         }
 
-        // Upload and save media files if any
+        // FIXED: Upload and save media files with display_name
         if (orderProduct.mediaFiles && orderProduct.mediaFiles.length > 0) {
           console.log(`Uploading ${orderProduct.mediaFiles.length} media files...`)
           
+          let bulkFileCounter = 1;
           for (const file of orderProduct.mediaFiles) {
             try {
-              const fileExt = file.name.split('.').pop()
-              const fileName = `ref-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${fileName}`
+              const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
+              // Create display name using product code and sequential number
+              const displayName = `${finalProductOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`
+              const filePath = `${orderData.id}/${productData.id}/${displayName}`
 
               // Upload to Supabase storage
               const { error: uploadError } = await supabase.storage
@@ -638,7 +648,7 @@ export default function CreateOrderPage() {
                 .from('order-media')
                 .getPublicUrl(filePath)
 
-              // Save media record with original filename
+              // Save media record with both original filename and display_name
               await supabase
                 .from('order_media')
                 .insert({
@@ -646,25 +656,29 @@ export default function CreateOrderPage() {
                   file_url: publicUrl,
                   file_type: file.type.startsWith('image/') ? 'image' : 'document',
                   uploaded_by: user?.id,
-                  original_filename: file.name
+                  original_filename: file.name,
+                  display_name: displayName  // ADDED: Save the display name
                 })
 
-              console.log('Media file uploaded:', fileName)
+              console.log('Media file uploaded with display name:', displayName)
+              bulkFileCounter++;
             } catch (mediaError) {
               console.error('Error with media:', mediaError)
             }
           }
         }
 
-        // Upload and save sample media files if any
+        // FIXED: Upload and save sample media files with display_name
         if (orderProduct.sampleMediaFiles && orderProduct.sampleMediaFiles.length > 0) {
           console.log(`Uploading ${orderProduct.sampleMediaFiles.length} sample media files...`)
           
+          let sampleFileCounter = 1;
           for (const file of orderProduct.sampleMediaFiles) {
             try {
-              const fileExt = file.name.split('.').pop()
-              const fileName = `sample-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${fileName}`
+              const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
+              // Create display name using product code and sequential number
+              const displayName = `${finalProductOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`
+              const filePath = `${orderData.id}/${productData.id}/${displayName}`
 
               // Upload to Supabase storage
               const { error: uploadError } = await supabase.storage
@@ -686,7 +700,7 @@ export default function CreateOrderPage() {
                 .from('order-media')
                 .getPublicUrl(filePath)
 
-              // Save media record with original filename
+              // Save media record with both original filename and display_name
               await supabase
                 .from('order_media')
                 .insert({
@@ -694,10 +708,12 @@ export default function CreateOrderPage() {
                   file_url: publicUrl,
                   file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
                   uploaded_by: user?.id,
-                  original_filename: file.name
+                  original_filename: file.name,
+                  display_name: displayName  // ADDED: Save the display name
                 })
 
-              console.log('Sample media file uploaded:', fileName)
+              console.log('Sample media file uploaded with display name:', displayName)
+              sampleFileCounter++;
             } catch (mediaError) {
               console.error('Error with sample media:', mediaError)
             }
@@ -1264,7 +1280,6 @@ export default function CreateOrderPage() {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,video/*,.pdf"
                         onChange={(e) => handleSampleFileUpload(productIndex, e.target.files)}
                         className="hidden"
                       />
@@ -1326,7 +1341,6 @@ export default function CreateOrderPage() {
                       <input
                         type="file"
                         multiple
-                        accept="image/*,video/*"
                         onChange={(e) => handleFileUpload(productIndex, e.target.files)}
                         className="hidden"
                       />
