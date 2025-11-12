@@ -11,7 +11,7 @@ import { ManufacturerProductCard } from './components/manufacturer/ManufacturerP
 import { HistoryModal } from './components/modals/HistoryModal';
 import { RouteModal } from './components/modals/RouteModal';
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, AlertCircle, Send, Save, Loader2 } from 'lucide-react';
+import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check } from 'lucide-react';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -21,6 +21,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
+  
+  // NEW: State for editing client
+  const [isEditingClient, setIsEditingClient] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [availableClients, setAvailableClients] = useState<any[]>([]);
+  const [savingClient, setSavingClient] = useState(false);
+  
+  // NEW: State for showing all products (super admin only)
+  const [showAllProducts, setShowAllProducts] = useState(false);
   
   // UPDATED: Calculate total amount with CLIENT prices for everyone except manufacturers
   const calculateOrderTotal = () => {
@@ -118,6 +127,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     if (viewed) {
       setViewedHistory(JSON.parse(viewed));
     }
+    
+    // NEW: Fetch available clients for editing
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      fetchAvailableClients();
+    }
   }, [router, userRole, id]);
 
   const fetchManufacturerId = async (user: any) => {
@@ -133,6 +147,80 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
     } catch (err) {
       console.error('Error fetching manufacturer ID:', err);
+    }
+  };
+  
+  // NEW: Fetch available clients
+  const fetchAvailableClients = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, email')
+        .order('name');
+      
+      if (data && !error) {
+        setAvailableClients(data);
+      }
+    } catch (err) {
+      console.error('Error fetching clients:', err);
+    }
+  };
+  
+  // NEW: Handle client change
+  const handleClientChange = async () => {
+    if (!selectedClientId || !order) return;
+    
+    setSavingClient(true);
+    try {
+      // Get the new client data
+      const newClient = availableClients.find(c => c.id === selectedClientId);
+      if (!newClient) throw new Error('Client not found');
+      
+      // Generate new order number with new client prefix
+      const clientPrefix = newClient.name.substring(0, 3).toUpperCase();
+      const currentOrderNumber = order.order_number;
+      
+      // Extract the numeric part from current order number (e.g., "001200" from "BUD-001200")
+      const numericPart = currentOrderNumber.includes('-') 
+        ? currentOrderNumber.split('-')[1]
+        : currentOrderNumber.replace(/[^0-9]/g, '');
+      
+      const newOrderNumber = `${clientPrefix}-${numericPart}`;
+      
+      // Update order with new client and order number
+      const { error } = await supabase
+        .from('orders')
+        .update({ 
+          client_id: selectedClientId,
+          order_number: newOrderNumber
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+      
+      // Log to audit
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await supabase
+        .from('audit_log')
+        .insert({
+          user_id: user.id || crypto.randomUUID(),
+          user_name: user.name || user.email || 'Admin User',
+          action_type: 'client_changed',
+          target_type: 'order',
+          target_id: order.id,
+          old_value: `${order.client?.name} (${currentOrderNumber})`,
+          new_value: `${newClient.name} (${newOrderNumber})`,
+          timestamp: new Date().toISOString()
+        });
+
+      // Close edit mode and refresh
+      setIsEditingClient(false);
+      await refetch();
+    } catch (error) {
+      console.error('Error updating client:', error);
+      alert('Error updating client. Please try again.');
+    } finally {
+      setSavingClient(false);
     }
   };
 
@@ -428,11 +516,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return currentCount > viewedCount;
   };
 
-  // Filter products based on who they're routed to
+  // UPDATED: Filter products based on who they're routed to OR show all for super admin
   const getVisibleProducts = () => {
     if (!order?.order_products) return [];
     
     const isManufacturer = userRole === 'manufacturer';
+    const isSuperAdmin = userRole === 'super_admin';
+    
+    // If super admin and showAllProducts is true, show everything
+    if (isSuperAdmin && showAllProducts) {
+      return order.order_products;
+    }
     
     const filteredProducts = order.order_products.filter((product: any) => {
       // Always show products that are in_production or completed to everyone
@@ -519,6 +613,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const visibleProducts = getVisibleProducts();
   const productCounts = getProductCounts();
   const isManufacturer = userRole === 'manufacturer';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = userRole === 'admin';
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
@@ -536,22 +632,106 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
         {userRole !== 'manufacturer' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Building className="w-5 h-5 text-blue-600" />
+            {/* Client Card with Edit Button */}
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow relative">
+              {/* Edit Client Button - For Admin and Super Admin */}
+              {(isAdmin || isSuperAdmin) && !isEditingClient && (
+                <button
+                  onClick={() => {
+                    setIsEditingClient(true);
+                    setSelectedClientId(order.client?.id || '');
+                  }}
+                  className="absolute top-4 right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                  title="Edit Client"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+              )}
+              
+              {isEditingClient ? (
+                // Edit Mode
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-gray-500">Select New Client</p>
+                    <button
+                      onClick={() => {
+                        setIsEditingClient(false);
+                        setSelectedClientId(order.client?.id || '');
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <select
+                    value={selectedClientId}
+                    onChange={(e) => setSelectedClientId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    disabled={savingClient}
+                  >
+                    <option value="">Select a client...</option>
+                    {availableClients.map(client => (
+                      <option key={client.id} value={client.id}>
+                        {client.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setIsEditingClient(false);
+                        setSelectedClientId(order.client?.id || '');
+                      }}
+                      disabled={savingClient}
+                      className="flex-1 px-3 py-1 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClientChange}
+                      disabled={!selectedClientId || selectedClientId === order.client?.id || savingClient}
+                      className="flex-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {savingClient ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {selectedClientId && selectedClientId !== order.client?.id && (
+                    <p className="text-xs text-amber-600">
+                      Note: Order number will change to use new client's prefix
+                    </p>
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-500">Client</p>
-                  <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{order.client?.email}</span>
-              </div>
+              ) : (
+                // View Mode
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-500">Client</p>
+                      <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{order.client?.email}</span>
+                  </div>
+                </>
+              )}
             </div>
 
+            {/* Manufacturer Card */}
             <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -598,11 +778,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 )}
               </div>
             </div>
-            {visibleProducts.length < productCounts.total && (
+            {visibleProducts.length < productCounts.total && !showAllProducts && (
               <p className="text-xs text-gray-500 mt-2">
                 <AlertCircle className="w-3 h-3 inline mr-1" />
                 Showing {visibleProducts.length} of {productCounts.total} products 
                 {isManufacturer ? ' (products with admin are hidden)' : ' (products with manufacturer are hidden)'}
+              </p>
+            )}
+            {isSuperAdmin && showAllProducts && (
+              <p className="text-xs text-blue-600 mt-2">
+                <Eye className="w-3 h-3 inline mr-1" />
+                Showing all {productCounts.total} products (Super Admin view)
               </p>
             )}
           </div>
@@ -612,20 +798,49 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {isManufacturer ? 'Your Products' : 'Products Requiring Action'}
+              {isManufacturer ? 'Your Products' : showAllProducts ? 'All Products' : 'Products Requiring Action'}
             </h2>
             
-            {/* HIDDEN FOR ADMIN/SUPER_ADMIN - ONLY SHOW FOR MANUFACTURER */}
-            {userRole === 'manufacturer' && visibleProducts.length > 0 && (
-              <button
-                onClick={handleSaveAllAndRoute}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 font-medium"
-              >
-                <Save className="w-4 h-4" />
-                <span className="hidden sm:inline">Save All & Route</span>
-                <span className="sm:hidden">Save & Route</span>
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {/* Show All Products Toggle - SUPER ADMIN ONLY */}
+              {isSuperAdmin && productCounts.withManufacturer > 0 && (
+                <button
+                  onClick={() => setShowAllProducts(!showAllProducts)}
+                  className={`px-4 py-2 rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium ${
+                    showAllProducts 
+                      ? 'bg-amber-600 text-white hover:bg-amber-700' 
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                  title={showAllProducts ? 'Hide manufacturer products' : 'Show all products including those with manufacturer'}
+                >
+                  {showAllProducts ? (
+                    <>
+                      <EyeOff className="w-4 h-4" />
+                      <span className="hidden sm:inline">Hide Manufacturer Products</span>
+                      <span className="sm:hidden">Hide</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-4 h-4" />
+                      <span className="hidden sm:inline">Show All Products</span>
+                      <span className="sm:hidden">Show All</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
+              {/* Save All & Route - MANUFACTURER ONLY */}
+              {userRole === 'manufacturer' && visibleProducts.length > 0 && (
+                <button
+                  onClick={handleSaveAllAndRoute}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 font-medium"
+                >
+                  <Save className="w-4 h-4" />
+                  <span className="hidden sm:inline">Save All & Route</span>
+                  <span className="sm:hidden">Save & Route</span>
+                </button>
+              )}
+            </div>
           </div>
           
           {/* Show message when no products are visible */}
@@ -651,8 +866,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
               
-              // Render different cards based on user role
-              if (isManufacturer) {
+              // When super admin is viewing all products, show manufacturer cards for products with manufacturer
+              const shouldShowManufacturerCard = isManufacturer || 
+                (isSuperAdmin && showAllProducts && product.routed_to === 'manufacturer');
+              
+              // Render different cards based on context
+              if (shouldShowManufacturerCard) {
                 return (
                   <ManufacturerProductCard
                     key={product.id}
@@ -670,6 +889,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     onViewHistory={(productId) => handleViewHistory(productId, productName)}
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
+                    // Pass super admin flag to allow editing when viewing all
+                    isSuperAdminView={isSuperAdmin && showAllProducts}
                   />
                 );
               }
