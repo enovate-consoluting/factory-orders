@@ -35,7 +35,7 @@ export default function UsersPage() {
   const [formData, setFormData] = useState({
     email: '',
     name: '',
-    role: 'admin',
+    role: '',
     password: 'password123'
   })
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -49,8 +49,13 @@ export default function UsersPage() {
     if (userData) {
       setCurrentUser(JSON.parse(userData))
     }
-    fetchUsers()
   }, [])
+
+  useEffect(() => {
+    if (currentUser) {
+      fetchUsers()
+    }
+  }, [currentUser])
 
   useEffect(() => {
     if (notification) {
@@ -68,12 +73,25 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .in('role', ['admin', 'super_admin', 'order_creator', 'order_approver'])
-        .order('created_at', { ascending: false })
-
+      let data, error;
+      if (currentUser?.role === 'manufacturer' || currentUser?.role === 'manufacturer_team_member') {
+        // Manufacturer and team members can only view users with created_by set to their own manufacturer id
+        const response = await supabase
+          .from('users')
+          .select('*')
+          .eq('created_by', currentUser.created_by || currentUser.id)
+          .order('created_at', { ascending: false });
+        // Only show users with created_by set (exclude nulls)
+        data = (response.data || []).filter(u => u.created_by === (currentUser.created_by || currentUser.id));
+        error = response.error;
+      } else {
+        const response = await supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false });
+        data = response.data;
+        error = response.error;
+      }
       if (error) {
         console.error('Error fetching users:', error)
       }
@@ -112,16 +130,20 @@ export default function UsersPage() {
         setShowModal(false)
       } else {
         // Create new user via API
+        const payload: any = {
+          email: formData.email,
+          password: formData.password,
+          name: formData.name,
+          role: formData.role,
+          userType: 'admin'
+        };
+        if (currentUser?.role === 'manufacturer') {
+          payload.createdBy = currentUser.id;
+        }
         const response = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            name: formData.name,
-            role: formData.role,
-            userType: 'admin'
-          })
+          body: JSON.stringify(payload)
         })
 
         const result = await response.json()
@@ -220,7 +242,7 @@ export default function UsersPage() {
     setFormData({
       email: '',
       name: '',
-      role: 'admin',
+      role: currentUser?.role === 'manufacturer' ? 'manufacturer_team_member' : 'admin',
       password: 'password123'
     })
     setShowModal(true)
@@ -309,7 +331,7 @@ export default function UsersPage() {
               Manage admin and staff user accounts
             </p>
           </div>
-          {currentUser?.role === 'super_admin' && (
+          {(currentUser?.role === 'super_admin' || currentUser?.role === 'manufacturer') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -325,22 +347,12 @@ export default function UsersPage() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                User
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Role
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
-              {currentUser?.role === 'super_admin' && (
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+              {(currentUser?.role === 'super_admin' || currentUser?.role === 'manufacturer') && (
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               )}
             </tr>
           </thead>
@@ -353,9 +365,7 @@ export default function UsersPage() {
                       <UserIcon className="w-4 h-4 text-gray-600" />
                     </div>
                     <div className="ml-3">
-                      <div className="text-sm font-medium text-gray-900">
-                        {user.name}
-                      </div>
+                      <div className="text-sm font-medium text-gray-900">{user.name}</div>
                       {user.id === currentUser?.id && (
                         <span className="text-xs text-gray-500">(You)</span>
                       )}
@@ -371,10 +381,8 @@ export default function UsersPage() {
                     {formatRole(user.role)}
                   </span>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(user.created_at).toLocaleDateString()}
-                </td>
-                {currentUser?.role === 'super_admin' && (
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(user.created_at).toLocaleDateString()}</td>
+                {(currentUser?.role === 'super_admin' || currentUser?.role === 'manufacturer') && (
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
                       onClick={() => openEditModal(user)}
@@ -450,9 +458,7 @@ export default function UsersPage() {
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                   <input
                     type="text"
                     value={formData.name}
@@ -461,51 +467,52 @@ export default function UsersPage() {
                     required
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => {
                       setFormData({ ...formData, email: e.target.value })
-                      setFormError(null) // Clear error when user types
+                      setFormError(null)
                     }}
                     className={inputClassName}
                     required
                     disabled={!!editingUser}
                   />
                   {editingUser && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Email cannot be changed after creation
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Email cannot be changed after creation</p>
                   )}
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Role
-                  </label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                    className={selectClassName}
-                    required
-                  >
-                    <option value="admin">Admin</option>
-                    <option value="super_admin">Super Admin</option>
-                    <option value="order_creator">Order Creator</option>
-                    <option value="order_approver">Order Approver</option>
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                  {currentUser?.role === 'manufacturer' ? (
+                    <select
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      className={selectClassName}
+                      required
+                    >
+                      <option value="manufacturer_team_member">Team Member</option>
+                      <option value="sub_manufacturer">Sub-Manufacturer</option>
+                    </select>
+                  ) : (
+                    <select
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      className={selectClassName}
+                      required
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="super_admin">Super Admin</option>
+                      <option value="order_creator">Order Creator</option>
+                      <option value="order_approver">Order Approver</option>
+                    </select>
+                  )}
                 </div>
-
                 {!editingUser && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Initial Password
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Initial Password</label>
                     <input
                       type="text"
                       value={formData.password}
@@ -514,9 +521,7 @@ export default function UsersPage() {
                       required
                       minLength={6}
                     />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Minimum 6 characters
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
                   </div>
                 )}
               </div>

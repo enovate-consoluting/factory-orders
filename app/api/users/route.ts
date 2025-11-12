@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { email, password, name, role, userType } = await request.json()
+  const { email, password, name, role, userType, createdBy } = await request.json()
 
     // Validate userType
     if (!userType || !['admin', 'manufacturer', 'client'].includes(userType)) {
@@ -76,14 +76,19 @@ export async function POST(request: Request) {
     console.log('Auth user created:', authData.user.id)
 
     // Step 2: Insert into users table with service role (bypasses RLS)
+    const userInsertData: any = {
+      id: authData.user.id,
+      email,
+      name,
+      role,
+      password
+    };
+    if (createdBy) {
+      userInsertData.created_by = createdBy;
+    }
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
-      .insert({
-        id: authData.user.id,
-        email,
-        name,
-        role
-      })
+      .insert(userInsertData)
       .select()
       .single()
 

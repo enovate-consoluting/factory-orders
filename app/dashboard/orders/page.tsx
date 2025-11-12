@@ -99,6 +99,24 @@ export default function OrdersPage() {
         if (manufacturerData) {
           query = query.eq('manufacturer_id', manufacturerData.id);
         }
+      } else if (user.role === 'manufacturer_team_member') {
+        // Team members see same orders as manufacturer
+        // Find the manufacturer user this team member belongs to
+        const { data: manufacturerUser } = await supabase
+          .from('users')
+          .select('created_by')
+          .eq('id', user.id)
+          .single();
+        if (manufacturerUser?.created_by) {
+          const { data: manufacturerData } = await supabase
+            .from('manufacturers')
+            .select('id')
+            .eq('user_id', manufacturerUser.created_by)
+            .single();
+          if (manufacturerData) {
+            query = query.eq('manufacturer_id', manufacturerData.id);
+          }
+        }
       } else if (user.role === 'client') {
         const { data: clientData } = await supabase
           .from('clients')

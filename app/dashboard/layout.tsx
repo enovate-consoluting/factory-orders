@@ -367,13 +367,13 @@ export default function DashboardLayout({
     {
       type: 'section',
       label: 'OPERATIONS',
-      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer'],
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'manufacturer_team_member', 'sub_manufacturer'],
     },
     {
       href: '/dashboard/orders',
       label: 'Orders',
       icon: ShoppingCart,
-      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer'],
+      roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'sub_manufacturer', 'manufacturer_team_member'],
       notificationKey: 'orders',
     },
     {
@@ -405,7 +405,7 @@ export default function DashboardLayout({
     {
       type: 'section',
       label: 'SYSTEM CONFIG',
-      roles: ['super_admin', 'admin'],
+      roles: ['super_admin', 'admin', 'manufacturer'],
     },
     {
       href: '/dashboard/clients',
@@ -427,7 +427,7 @@ export default function DashboardLayout({
       href: '/dashboard/users',
       label: 'Users',
       icon: UserCheck,
-      roles: ['super_admin'],
+      roles: ['super_admin', 'manufacturer'],
       description: 'Manage system users',
       notificationKey: null,
     },

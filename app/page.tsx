@@ -33,43 +33,46 @@ function LoginContent() {
     setError('');
     setMessage('');
     setLoading(true);
-
+ 
     try {
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (signInError) {
+      // Check users table directly (no Supabase Auth)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.toLowerCase().trim())
+        .single();
+ 
+      if (userError || !userData) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
-
-      if (authData.user) {
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', authData.user.email)
-          .single();
-
-        if (userError || !userData) {
-          setError('User profile not found. Please contact administrator.');
-          await supabase.auth.signOut();
-          setLoading(false);
-          return;
-        }
-
-        if (rememberMe) {
-          localStorage.setItem('rememberedEmail', email);
-        } else {
-          localStorage.removeItem('rememberedEmail');
-        }
-
-        localStorage.setItem('user', JSON.stringify(userData));
-        router.push('/dashboard');
+ 
+      // Check password (simple comparison - passwords stored as plain text)
+      if (userData.password !== password) {
+        setError('Invalid email or password');
+        setLoading(false);
+        return;
       }
+ 
+      // Successful login
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+ 
+      // Store user session
+      localStorage.setItem('user', JSON.stringify(userData));
+     
+      // Set session expiry (7 days)
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      localStorage.setItem('sessionExpiry', expiryDate.toISOString());
+ 
+      router.push('/dashboard');
     } catch (err) {
+      console.error('Login error:', err);
       setError('An error occurred during authentication');
     } finally {
       setLoading(false);
