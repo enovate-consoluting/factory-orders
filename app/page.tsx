@@ -61,6 +61,20 @@ function LoginContent() {
       } else {
         localStorage.removeItem('rememberedEmail');
       }
+
+      // If user is a manufacturer, fetch manufacturer_id from manufacturers table
+      if (userData.role === 'manufacturer') {
+        const { data: manufacturerData, error: manufacturerError } = await supabase
+          .from('manufacturers')
+          .select('id')
+          .eq('email', email.toLowerCase().trim())
+          .single();
+
+        if (manufacturerData && !manufacturerError) {
+          // Add manufacturer_id to user data
+          userData.manufacturer_id = manufacturerData.id;
+        }
+      }
  
       // Store user session
       localStorage.setItem('user', JSON.stringify(userData));

@@ -361,7 +361,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           sample_eta: sampleEta || null,
           sample_status: sampleStatus || 'pending'  // Ensure we always have a status
         };
-        
+
         // Only update notes if there's a new note
         if (tempSampleNotes && tempSampleNotes.trim()) {
           updateData.sample_notes = finalSampleNotes;
@@ -388,6 +388,26 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         }
         
         console.log('Sample section updated successfully');
+
+        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
+        try {
+          const { data: orderData } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', (product as any).order_id)
+            .single();
+
+          if (orderData && orderData.status === 'sent_to_manufacturer') {
+            await supabase
+              .from('orders')
+              .update({ status: 'in_progress' })
+              .eq('id', (product as any).order_id);
+            console.log('Order status updated to in_progress');
+          }
+        } catch (orderError) {
+          console.error('Error updating order status:', orderError);
+          // Don't fail the whole operation just because order status update failed
+        }
 
         // Upload pending sample files if any
         if (pendingSampleFiles.length > 0) {
@@ -509,7 +529,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           shipping_air_price: shippingAirPrice ? parseFloat(shippingAirPrice) : null,
           shipping_boat_price: shippingBoatPrice ? parseFloat(shippingBoatPrice) : null
         };
-        
+
         // Only update notes if there's a new note
         if (tempBulkNotes && tempBulkNotes.trim()) {
           updateData.client_notes = finalBulkNotes;
@@ -530,6 +550,26 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         }
         
         console.log('Bulk section updated successfully');
+
+        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
+        try {
+          const { data: orderData } = await supabase
+            .from('orders')
+            .select('status')
+            .eq('id', (product as any).order_id)
+            .single();
+
+          if (orderData && orderData.status === 'sent_to_manufacturer') {
+            await supabase
+              .from('orders')
+              .update({ status: 'in_progress' })
+              .eq('id', (product as any).order_id);
+            console.log('Order status updated to in_progress');
+          }
+        } catch (orderError) {
+          console.error('Error updating order status:', orderError);
+          // Don't fail the whole operation just because order status update failed
+        }
 
         // Upload pending bulk files if any
         if (pendingBulkFiles.length > 0) {
@@ -716,6 +756,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
 
     const handleSaveVariantNotes = async () => {
       try {
+        let hasChanges = false;
         for (const item of items) {
           const newNote = variantNotes[item.id] || '';
           if (newNote !== (item.notes || '')) {
@@ -723,9 +764,32 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               .from('order_items')
               .update({ notes: newNote })
               .eq('id', item.id);
+            hasChanges = true;
           }
         }
-        
+
+        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer' and changes were made
+        if (hasChanges) {
+          try {
+            const { data: orderData } = await supabase
+              .from('orders')
+              .select('status')
+              .eq('id', (product as any).order_id)
+              .single();
+
+            if (orderData && orderData.status === 'sent_to_manufacturer') {
+              await supabase
+                .from('orders')
+                .update({ status: 'in_progress' })
+                .eq('id', (product as any).order_id);
+              console.log('Order status updated to in_progress');
+            }
+          } catch (orderError) {
+            console.error('Error updating order status:', orderError);
+            // Don't fail the whole operation just because order status update failed
+          }
+        }
+
         setEditingVariants(false);
         await onUpdate();
       } catch (error) {
