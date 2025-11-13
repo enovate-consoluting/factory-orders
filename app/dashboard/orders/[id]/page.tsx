@@ -133,10 +133,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       const user = JSON.parse(userData);
       // Only fetch if manufacturer
       if (userRole === 'manufacturer') {
+        // Use manufacturer_id from localStorage if available, otherwise fall back to user.id
+        const manufacturerIdToUse = user.manufacturer_id || user.id;
         const { data, error } = await supabase
           .from('users')
           .select('id, name, email')
-          .eq('created_by', user.id)
+          .eq('created_by', manufacturerIdToUse)
           .eq('role', 'sub_manufacturer');
         if (!error && data) setSubManufacturers(data);
       }
@@ -834,7 +836,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
         {/* Sub Manufacturer Assignment - Only for Manufacturer */}
-        {userRole === 'manufacturer' && (
+        {/* Commented out as per user request */}
+        {/* {userRole === 'manufacturer' && (
           <div className="mb-6">
             <div className="bg-white rounded-lg shadow border border-gray-200 p-6 flex flex-col gap-4">
               <div className="flex items-center gap-3 mb-2">
@@ -869,7 +872,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <p className="text-xs text-gray-500 mt-2">Select a sub manufacturer to assign this order. Assigned sub manufacturer will be able to view and process this order.</p>
             </div>
           </div>
-        )}
+        )} */}
 
         {/* Product Location Summary with Individual Product Dropdown */}
         {productCounts.total > 0 && (
