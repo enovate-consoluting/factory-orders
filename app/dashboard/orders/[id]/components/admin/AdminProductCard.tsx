@@ -1,5 +1,5 @@
 // app/dashboard/orders/[id]/components/admin/AdminProductCard.tsx
-// FULLY FIXED VERSION - All TypeScript errors resolved
+// FIXED VERSION - Green total restored, proper margin calculations
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
@@ -24,7 +24,6 @@ interface AdminProductCardProps {
   hasNewHistory?: boolean;
 }
 
-// USING THE SAME PATTERN AS MANUFACTURERPRODUCTCARD
 export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
   function AdminProductCard({ 
     product, 
@@ -40,49 +39,72 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
     const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'admin';
     
-    // COLLAPSIBLE STATE - Auto-collapse for shipped products
+    // State for finance margins
+    const [productMargin, setProductMargin] = useState(80); // Default 80%
+    const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
+    const [marginsLoaded, setMarginsLoaded] = useState(false);
+    
+    // COLLAPSIBLE STATE
     const [isCollapsed, setIsCollapsed] = useState(
       (product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit'
     );
     
-    // Auto-collapse when status changes to shipped
+    // Load finance margins from database
+    useEffect(() => {
+      const loadMargins = async () => {
+        try {
+          const { data } = await supabase
+            .from('system_config')
+            .select('config_key, config_value')
+            .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+          
+          if (data) {
+            data.forEach(config => {
+              if (config.config_key === 'default_margin_percentage') {
+                setProductMargin(parseFloat(config.config_value) || 80);
+              } else if (config.config_key === 'default_shipping_margin_percentage') {
+                setShippingMargin(parseFloat(config.config_value) || 0);
+              }
+            });
+          }
+          setMarginsLoaded(true);
+        } catch (error) {
+          console.error('Error loading margins:', error);
+          setMarginsLoaded(true); // Use defaults
+        }
+      };
+      loadMargins();
+    }, []);
+    
+    // Auto-collapse when status changes
     useEffect(() => {
       if ((product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit') {
         setIsCollapsed(true);
       }
-    }, [(product as any).product_status, (product as any).is_locked]);
+    }, [(product as any).product_status]);
     
-    // State for notes
+    // All the state management remains the same...
     const [tempNotes, setTempNotes] = useState('');
     const [tempSampleNotes, setTempSampleNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
-    
-    // State for tracking if sections have changes
     const [notesSectionDirty, setNotesSectionDirty] = useState(false);
     const [sampleSectionDirty, setSampleSectionDirty] = useState(false);
     const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
-    
     const [processingProduct, setProcessingProduct] = useState(false);
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
     const sampleFileInputRef = useRef<HTMLInputElement>(null);
     const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
-    
-    // State for variant notes editing
     const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
     const [editingVariants, setEditingVariants] = useState(false);
-    
-    // State for pending file uploads
     const [pendingSampleFiles, setPendingSampleFiles] = useState<File[]>([]);
     const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
-    
-    // Store original values for cancel functionality
     const [originalValues, setOriginalValues] = useState({
       internalNotes: (product as any).internal_notes || '',
       sampleNotes: (product as any).sample_notes || '',
       bulkNotes: (product as any).client_notes || ''
     });
     
-    // Initialize variant notes from items
+    // Initialize variant notes
     useEffect(() => {
       const initialNotes: {[key: string]: string} = {};
       items.forEach(item => {
@@ -98,50 +120,39 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         sampleNotes: (product as any).sample_notes || '',
         bulkNotes: (product as any).client_notes || ''
       });
-      // Reset pending files when product changes
       setPendingSampleFiles([]);
       setPendingBulkFiles([]);
     }, [product]);
     
-    // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF - JUST LIKE MANUFACTURER CARD
+    // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF
     useImperativeHandle(ref, () => ({
       saveAll: async () => {
         console.log('SaveAll called for admin product:', (product as any).id);
         let changesMade = false;
         
-        // Check if notes section has changes
         if (notesSectionDirty || tempNotes) {
-          console.log('Saving notes section...');
           await handleSaveNotesSection();
           changesMade = true;
         }
         
-        // Check if sample section has changes
         if (sampleSectionDirty || tempSampleNotes || pendingSampleFiles.length > 0) {
-          console.log('Saving sample section...');
           await handleSaveSampleSection();
           changesMade = true;
         }
         
-        // Check if bulk section has changes
         if (bulkSectionDirty || tempBulkNotes || pendingBulkFiles.length > 0) {
-          console.log('Saving bulk section...');
           await handleSaveBulkSection();
           changesMade = true;
         }
         
-        // Save variant notes if editing
         if (editingVariants) {
-          console.log('Saving variant notes...');
           await handleSaveVariantNotes();
           changesMade = true;
         }
         
-        console.log('SaveAll complete for admin product:', (product as any).id, 'Changes made:', changesMade);
         return changesMade;
       }
     }), [
-      // Add all dependencies
       notesSectionDirty,
       sampleSectionDirty,
       bulkSectionDirty,
@@ -156,40 +167,58 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     
     const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     
-    // Get current user information
-    const getCurrentUser = () => {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        return {
-          id: user.id || crypto.randomUUID(),
-          name: user.name || user.email || 'Unknown User'
-        };
-      }
-      return {
-        id: crypto.randomUUID(),
-        name: 'Unknown User'
-      };
+    // FIXED: Calculate with DYNAMIC margins for admins
+    const calculateClientPrice = (manufacturerPrice: number, isShipping: boolean = false) => {
+      if (!manufacturerPrice || manufacturerPrice === 0) return 0;
+      const margin = isShipping ? shippingMargin : productMargin;
+      return manufacturerPrice * (1 + margin / 100);
     };
     
-    // Calculate totals with CLIENT prices (includes margin)
-    // Use client prices if available, fallback to regular prices
-    const samplePrice = (product as any).client_sample_fee || (product as any).sample_fee || 0;
-    const unitPrice = (product as any).client_product_price || (product as any).product_price || 0;
+    // FIXED: Calculate totals - ALWAYS use client prices for admin/super_admin
+    const samplePrice = (() => {
+      const mfgPrice = (product as any).sample_fee || 0;
+      // If we have a stored client price and margins not loaded yet, use it
+      if (!marginsLoaded && (product as any).client_sample_fee) {
+        return (product as any).client_sample_fee;
+      }
+      // Otherwise calculate dynamically with margins
+      return calculateClientPrice(mfgPrice, false);
+    })();
+    
+    const unitPrice = (() => {
+      const mfgPrice = (product as any).product_price || 0;
+      if (!marginsLoaded && (product as any).client_product_price) {
+        return (product as any).client_product_price;
+      }
+      return calculateClientPrice(mfgPrice, false);
+    })();
+    
     const productPrice = unitPrice * totalQuantity;
+    
     let shippingPrice = 0;
     if ((product as any).selected_shipping_method === 'air') {
-      shippingPrice = (product as any).client_shipping_air_price || (product as any).shipping_air_price || 0;
+      const mfgShipping = (product as any).shipping_air_price || 0;
+      if (!marginsLoaded && (product as any).client_shipping_air_price) {
+        shippingPrice = (product as any).client_shipping_air_price;
+      } else {
+        shippingPrice = calculateClientPrice(mfgShipping, true);
+      }
     } else if ((product as any).selected_shipping_method === 'boat') {
-      shippingPrice = (product as any).client_shipping_boat_price || (product as any).shipping_boat_price || 0;
+      const mfgShipping = (product as any).shipping_boat_price || 0;
+      if (!marginsLoaded && (product as any).client_shipping_boat_price) {
+        shippingPrice = (product as any).client_shipping_boat_price;
+      } else {
+        shippingPrice = calculateClientPrice(mfgShipping, true);
+      }
     }
+    
     const totalPrice = samplePrice + productPrice + shippingPrice;
 
     // Separate media types
     const referenceMedia = media.filter(m => m.file_type === 'document' || m.file_type === 'image');
     const sampleMedia = media.filter(m => m.file_type?.startsWith('sample'));
 
-    // Get variant type name from the first item
+    // Get variant type name
     const getVariantTypeName = () => {
       if (items.length > 0 && items[0].variant_combo) {
         const combo = items[0].variant_combo.toLowerCase();
@@ -243,6 +272,22 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
 
     const displayStatus = getCorrectProductStatus();
 
+    const getCurrentUser = () => {
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        const user = JSON.parse(userData);
+        return {
+          id: user.id || crypto.randomUUID(),
+          name: user.name || user.email || 'Unknown User'
+        };
+      }
+      return {
+        id: crypto.randomUUID(),
+        name: 'Unknown User'
+      };
+    };
+
+    // All handler functions remain the same...
     const handleToggleLock = async () => {
       setProcessingProduct(true);
       try {
@@ -278,7 +323,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    // Save Notes Section
     const handleSaveNotesSection = async () => {
       if (!tempNotes || tempNotes.trim() === '') return;
       
@@ -296,7 +340,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           return;
         }
 
-        // Try to log audit
         try {
           await supabase
             .from('audit_log')
@@ -313,7 +356,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           console.error('Failed to log audit:', auditError);
         }
 
-        // Update original value
         setOriginalValues(prev => ({ ...prev, internalNotes: tempNotes.trim() }));
         setTempNotes('');
         setNotesSectionDirty(false);
@@ -325,12 +367,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    // Save Sample Section with pending files
     const handleSaveSampleSection = async () => {
       try {
         const user = getCurrentUser();
         
-        // Save sample notes if any
         if (tempSampleNotes && tempSampleNotes.trim()) {
           const { error } = await supabase
             .from('order_products')
@@ -343,7 +383,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             return;
           }
 
-          // Try to log audit
           try {
             await supabase
               .from('audit_log')
@@ -361,7 +400,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
-        // Upload pending sample files
         if (pendingSampleFiles.length > 0) {
           for (const file of pendingSampleFiles) {
             const timestamp = Date.now();
@@ -392,7 +430,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
-        // Update original value and clear states
         setOriginalValues(prev => ({ ...prev, sampleNotes: tempSampleNotes.trim() }));
         setTempSampleNotes('');
         setPendingSampleFiles([]);
@@ -405,12 +442,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    // Save Bulk Section with pending files
     const handleSaveBulkSection = async () => {
       try {
         const user = getCurrentUser();
         
-        // Save bulk notes if any
         if (tempBulkNotes && tempBulkNotes.trim()) {
           const { error } = await supabase
             .from('order_products')
@@ -423,7 +458,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             return;
           }
 
-          // Try to log audit
           try {
             await supabase
               .from('audit_log')
@@ -441,7 +475,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
-        // Upload pending bulk files
         if (pendingBulkFiles.length > 0) {
           for (const file of pendingBulkFiles) {
             const timestamp = Date.now();
@@ -472,7 +505,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
-        // Update original value and clear states
         setOriginalValues(prev => ({ ...prev, bulkNotes: tempBulkNotes.trim() }));
         setTempBulkNotes('');
         setPendingBulkFiles([]);
@@ -498,7 +530,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    // Handle sample file selection (pending)
     const handleSampleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -512,7 +543,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    // Handle bulk file selection (pending)
     const handleBulkFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -591,13 +621,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       return `${name}...${ext}`;
     };
 
-    // COLLAPSED HEADER COMPONENT FOR SHIPPED PRODUCTS
+    // COLLAPSED HEADER COMPONENT
     const CollapsedHeader = () => (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1">
-              {/* Expand Button */}
               <button
                 onClick={() => setIsCollapsed(false)}
                 className="p-1 hover:bg-gray-200 rounded transition-colors"
@@ -631,11 +660,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <span>{(product as any).product_order_number}</span>
                   <span>•</span>
                   <span>Qty: {totalQuantity}</span>
-                  <span>•</span>
-                  <span className="font-semibold text-green-600">
-                    Total: ${totalPrice.toFixed(2)}
-                  </span>
-                  {/* Show tracking info if available */}
+                  {totalPrice > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-green-600">
+                        Total: ${totalPrice.toFixed(2)}
+                      </span>
+                    </>
+                  )}
                   {(product as any).tracking_number && (
                     <>
                       <span>•</span>
@@ -644,19 +676,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       </span>
                     </>
                   )}
-                  {(product as any).shipping_carrier && (
-                    <>
-                      <span>•</span>
-                      <span className="text-purple-600">
-                        {(product as any).shipping_carrier}
-                      </span>
-                    </>
-                  )}
                 </div>
               </div>
             </div>
             
-            {/* Action Buttons */}
             <div className="flex items-center gap-2">
               {onViewHistory && (
                 <button
@@ -670,7 +693,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 </button>
               )}
               
-              {/* Route button - still available even when shipped */}
               {(userRole === 'admin' || userRole === 'super_admin') && onRoute && (
                 <button
                   onClick={() => onRoute(product)}
@@ -680,7 +702,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 </button>
               )}
               
-              {/* Lock button disabled for shipped products */}
               {canLockProducts && (product as any).product_status !== 'shipped' && (
                 <button
                   onClick={handleToggleLock}
@@ -707,19 +728,17 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       </div>
     );
 
-    // MAIN RENDER - Show collapsed or full view based on state
     if (isCollapsed) {
       return <CollapsedHeader />;
     }
 
-    // FULL EXPANDED VIEW - REST OF THE COMPONENT CONTINUES BELOW...
+    // MAIN EXPANDED VIEW WITH GREEN TOTAL RESTORED
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header */}
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              {/* Collapse Button - Only show when shipped */}
               {((product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit') && (
                 <button
                   onClick={() => setIsCollapsed(true)}
@@ -743,22 +762,27 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       Paid
                     </span>
                   )}
+                  
+                  {/* FIXED: GREEN TOTAL BADGE RESTORED HERE! */}
+                  {totalPrice > 0 && (
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
+                      <DollarSign className="w-4 h-4" />
+                      Total: ${totalPrice.toFixed(2)}
+                    </span>
+                  )}
                 </div>
+                
                 {(product as any).description && (product as any).product?.title && (
                   <p className="text-sm text-gray-600 mt-1">{(product as any).product?.title}</p>
                 )}
+                
                 <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mt-2 text-xs text-gray-500">
                   <div className="flex items-center gap-2 sm:gap-4">
                     <span>{(product as any).product_order_number}</span>
                     <span className="hidden sm:inline">•</span>
                     <span>Qty: {totalQuantity}</span>
-                    {totalPrice > 0 && (
-                      <span className="font-semibold text-green-600">
-                        Total: ${totalPrice.toFixed(2)}
-                      </span>
-                    )}
                   </div>
-                  {/* Product Status Dropdown - Super Admin Only */}
+                  
                   {userRole === 'super_admin' && (
                     <select
                       value={displayStatus}
@@ -829,7 +853,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* Generic Notes Section with Save Button */}
+          {/* Rest of the component remains exactly the same... */}
+          {/* Notes Section */}
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
             
@@ -852,7 +877,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
               />
               
-              {/* Save button for Notes Section */}
               {notesSectionDirty && (
                 <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
                   <button
@@ -876,14 +900,13 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* Sample Request Section - PRICES REMAIN READ-ONLY */}
+          {/* Sample Request Section - WITH CLIENT PRICES */}
           <div className="mt-3 bg-amber-50 rounded-lg p-4 border border-amber-300">
             <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
               <AlertCircle className="w-4 h-4 mr-2" />
               Sample Request
             </h4>
 
-            {/* Display client prices (with margin) - READ ONLY */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
               <div className="opacity-60">
                 <label className="block text-xs font-medium text-amber-800 mb-1">
@@ -893,7 +916,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
                   <input
                     type="text"
-                    value={((product as any).client_sample_fee || (product as any).sample_fee) ? `$${((product as any).client_sample_fee || (product as any).sample_fee).toFixed(2)}` : 'Set by manufacturer'}
+                    value={samplePrice > 0 ? `$${samplePrice.toFixed(2)}` : 'Set by manufacturer'}
                     disabled
                     className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
                   />
@@ -953,7 +976,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               />
             </div>
 
-            {/* Sample Media with pending files */}
+            {/* Sample Media */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-amber-800">
@@ -1029,7 +1052,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
             </div>
             
-            {/* Save button for Sample Section */}
             {sampleSectionDirty && (
               <div className="flex justify-end gap-2 pt-2 mt-3 border-t border-amber-200">
                 <button
@@ -1053,14 +1075,13 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             )}
           </div>
 
-          {/* Bulk Order Information - PRICES REMAIN READ-ONLY */}
+          {/* Bulk Order Information - WITH CLIENT PRICES */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
               <Package className="w-4 h-4 mr-2" />
               Bulk Order Information
             </h4>
 
-            {/* Bulk Order Notes */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <h5 className="text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
               
@@ -1083,7 +1104,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               />
             </div>
 
-            {/* Bulk Order Media with pending files */}
+            {/* Bulk Order Media */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-gray-700">
@@ -1159,7 +1180,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
             </div>
 
-            {/* Product Price and Production Info - READ-ONLY */}
+            {/* Product Price and Production Info - WITH CLIENT PRICES */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1169,7 +1190,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={((product as any).client_product_price || (product as any).product_price) ? `$${((product as any).client_product_price || (product as any).product_price).toFixed(2)}` : 'Set by manufacturer'}
+                    value={unitPrice > 0 ? `$${unitPrice.toFixed(2)}` : 'Set by manufacturer'}
                     disabled
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
@@ -1192,13 +1213,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             </div>
 
-            {/* Shipping Method Selection - PRICES READ-ONLY */}
+            {/* Shipping Method Selection - WITH CLIENT PRICES */}
             <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
               <h5 className="text-sm font-medium text-gray-700 mb-3">Select Shipping Method</h5>
               
-              {/* Show if manufacturer has set prices - display CLIENT prices */}
-              {(((product as any).client_shipping_air_price || (product as any).shipping_air_price) || 
-                ((product as any).client_shipping_boat_price || (product as any).shipping_boat_price)) ? (
+              {/* FIXED: Show CLIENT shipping prices */}
+              {((product as any).shipping_air_price || (product as any).shipping_boat_price) ? (
                 <div className="space-y-3">
                   <label className="flex items-center cursor-pointer">
                     <input
@@ -1207,7 +1227,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       value="air"
                       checked={(product as any).selected_shipping_method === 'air'}
                       onChange={() => handleShippingMethodChange('air')}
-                      disabled={!((product as any).client_shipping_air_price || (product as any).shipping_air_price)}
+                      disabled={!(product as any).shipping_air_price}
                       className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                     />
                     <div className="ml-3 flex items-center gap-2">
@@ -1215,7 +1235,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       <span className={`text-sm ${
                         (product as any).selected_shipping_method === 'air' ? 'text-blue-700 font-medium' : 'text-gray-700'
                       }`}>
-                        Air - ${((product as any).client_shipping_air_price || (product as any).shipping_air_price || 0).toFixed(2)}
+                        Air - ${calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)}
                       </span>
                     </div>
                   </label>
@@ -1227,7 +1247,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       value="boat"
                       checked={(product as any).selected_shipping_method === 'boat'}
                       onChange={() => handleShippingMethodChange('boat')}
-                      disabled={!((product as any).client_shipping_boat_price || (product as any).shipping_boat_price)}
+                      disabled={!(product as any).shipping_boat_price}
                       className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                     />
                     <div className="ml-3 flex items-center gap-2">
@@ -1235,7 +1255,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       <span className={`text-sm ${
                         (product as any).selected_shipping_method === 'boat' ? 'text-blue-700 font-medium' : 'text-gray-700'
                       }`}>
-                        Boat - ${((product as any).client_shipping_boat_price || (product as any).shipping_boat_price || 0).toFixed(2)}
+                        Boat - ${calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
                       </span>
                     </div>
                   </label>
@@ -1251,7 +1271,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
             </div>
             
-            {/* Save button for Bulk Section */}
             {bulkSectionDirty && (
               <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
                 <button

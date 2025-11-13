@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { 
   Plus, Search, Filter, Eye, Package, Users, 
   Calendar, ChevronRight, Edit, Building,
-  ChevronDown, Send, AlertCircle, Trash2, Shield
+  ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign
 } from 'lucide-react';
 import { StatusBadge } from './[id]/components/shared/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -40,7 +40,6 @@ interface Order {
     };
   }>;
 }
-
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -52,6 +51,11 @@ export default function OrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  
+  // State for finance margins
+  const [productMargin, setProductMargin] = useState(80); // Default 80%
+  const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
+  const [marginsLoaded, setMarginsLoaded] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -59,15 +63,95 @@ export default function OrdersPage() {
       router.push('/');
       return;
     }
-    
-    const user = JSON.parse(userData);
+ const user = JSON.parse(userData);
     setUserRole(user.role);
     fetchOrders(user);
+    loadMargins(); // Load margins for price calculations
   }, [router]);
 
   useEffect(() => {
     filterOrders();
   }, [searchTerm, statusFilter, orders]);
+
+  // Load finance margins from database
+  const loadMargins = async () => {
+    try {
+      const { data } = await supabase
+        .from('system_config')
+        .select('config_key, config_value')
+        .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+      
+      if (data) {
+        data.forEach(config => {
+          if (config.config_key === 'default_margin_percentage') {
+            setProductMargin(parseFloat(config.config_value) || 80);
+          } else if (config.config_key === 'default_shipping_margin_percentage') {
+            setShippingMargin(parseFloat(config.config_value) || 0);
+          }
+        });
+      }
+ setMarginsLoaded(true);
+    } catch (error) {
+      console.error('Error loading margins:', error);
+      setMarginsLoaded(true); // Use defaults
+    }
+  };
+
+  // Calculate product total with margins for admin view
+  const calculateProductTotal = (product: any): number => {
+    if (!product.product_price && !product.sample_fee) return 0;
+    
+    const totalQty = product.order_items?.reduce((sum: number, item: any) => 
+      sum + (item.quantity || 0), 0) || 0;
+    
+    let productPrice = 0;
+    let sampleFee = 0;
+    let shippingPrice = 0;
+    
+    // For admin/super admin, apply margins
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      const mfgProductPrice = parseFloat(product.product_price || 0);
+      const mfgSampleFee = parseFloat(product.sample_fee || 0);
+      
+      // Apply product margin (80%)
+      productPrice = mfgProductPrice * (1 + productMargin / 100);
+      sampleFee = mfgSampleFee * (1 + productMargin / 100);
+      
+      // Apply shipping margin (0%)
+      if (product.selected_shipping_method === 'air') {
+        const mfgShipping = parseFloat(product.shipping_air_price || 0);
+        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+      } else if (product.selected_shipping_method === 'boat') {
+        const mfgShipping = parseFloat(product.shipping_boat_price || 0);
+        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+      }
+    } else {
+      // For other roles, use raw prices
+      productPrice = parseFloat(product.product_price || 0);
+      sampleFee = parseFloat(product.sample_fee || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.shipping_boat_price || 0);
+      }
+    }
+    
+    const total = (productPrice * totalQty) + sampleFee + shippingPrice;
+    return total;
+  };
+
+  // Calculate order total
+  const calculateOrderTotal = (order: Order): number => {
+    if (!order.order_products || order.order_products.length === 0) return 0;
+    
+    let total = 0;
+    order.order_products.forEach(product => {
+      total += calculateProductTotal(product);
+    });
+    
+    return total;
+  };
 
   const fetchOrders = async (user: any) => {
     try {
@@ -85,19 +169,23 @@ export default function OrdersPage() {
             description,
             product_status,
             routed_to,
-            product:products(title)
+            product:products(title),
+            product_price,
+            sample_fee,
+            shipping_air_price,
+            shipping_boat_price,
+            selected_shipping_method,
+            order_items(quantity)
           )
         `)
         .order('created_at', { ascending: false });
-
       // Filter based on user role
       if (user.role === 'manufacturer') {
         const { data: manufacturerData } = await supabase
           .from('manufacturers')
           .select('id')
           .eq('email', user.email)
-          .single();
-        
+          .single(); 
         if (manufacturerData) {
           // Only get orders assigned to this manufacturer AND not drafts
           query = query
@@ -544,8 +632,7 @@ export default function OrdersPage() {
           </select>
         </div>
       </div>
-
-      {/* Orders Table - Responsive */}
+{/* Orders Table - Responsive */}
       <div className="bg-white rounded-lg shadow">
         {/* Mobile View - Cards */}
         <div className="block lg:hidden">
@@ -553,6 +640,7 @@ export default function OrdersPage() {
             const routingStatus = getOrderRoutingStatus(order);
             const isExpanded = expandedOrders.has(order.id);
             const canDelete = canDeleteOrder(order);
+            const orderTotal = calculateOrderTotal(order); // ADDED
             
             // For manufacturers, filter products to only show those routed to them
             const visibleProducts = userRole === 'manufacturer' 
@@ -594,6 +682,12 @@ export default function OrdersPage() {
                         <div className="text-xs text-gray-400">
                           {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
                           {userRole === 'manufacturer' && ' assigned to you'}
+                        </div>
+                      )}
+                      {/* Show order total for admin/super admin */}
+                      {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
+                        <div className="text-xs font-semibold text-green-600 mt-1">
+                          Est. Total: ${orderTotal.toFixed(2)}
                         </div>
                       )}
                     </div>
@@ -665,25 +759,38 @@ export default function OrdersPage() {
                 {/* Expanded Products - Only show products routed to current user */}
                 {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                   <div className="mt-4 pl-4 space-y-2 border-t pt-3">
-                    {visibleProducts.map((product) => (
-                      <div key={product.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-gray-700 truncate">
-                              {product.product_order_number}
+                    {visibleProducts.map((product) => {
+                      const productTotal = calculateProductTotal(product);
+                      
+                      return (
+                        <div key={product.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium text-gray-700 truncate">
+                                {product.product_order_number}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {product.description || product.product?.title || 'Product'}
+                              </div>
                             </div>
-                            <div className="text-xs text-gray-500 truncate">
-                              {product.description || product.product?.title || 'Product'}
+                          </div>
+                          <div className="flex items-center gap-2 ml-2">
+                            {/* Price badge FIRST (moved to left) */}
+                            {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
+                                <DollarSign className="w-3 h-3" />
+                                ${productTotal.toFixed(2)}
+                              </span>
+                            )}
+                            <div className="flex flex-col items-end gap-1">
+                              <StatusBadge status={product.product_status} />
+                              {getProductRoutingBadge(product)}
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 ml-2">
-                          <StatusBadge status={product.product_status} />
-                          {getProductRoutingBadge(product)}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -706,10 +813,15 @@ export default function OrdersPage() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden xl:table-cell">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Products
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden 2xl:table-cell">
+                  {(userRole === 'admin' || userRole === 'super_admin') && (
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Est. Total
+                    </th>
+                  )}
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -722,13 +834,13 @@ export default function OrdersPage() {
                   const routingStatus = getOrderRoutingStatus(order);
                   const isExpanded = expandedOrders.has(order.id);
                   const canDelete = canDeleteOrder(order);
+                  const orderTotal = calculateOrderTotal(order); // ADDED
                   
                   // For manufacturers, filter products to only show those routed to them
                   const visibleProducts = userRole === 'manufacturer' 
                     ? order.order_products?.filter(p => p.routed_to === 'manufacturer') 
                     : order.order_products;
-                  
-                  return (
+ return (
                     <React.Fragment key={order.id}>
                       <tr 
                         className="hover:bg-gray-50 cursor-pointer"
@@ -777,13 +889,24 @@ export default function OrdersPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge status={order.status} />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap hidden xl:table-cell">
+ </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
                             {routingStatus.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden 2xl:table-cell">
+                        {/* EST. TOTAL COLUMN - Show for admin/super admin */}
+                        {(userRole === 'admin' || userRole === 'super_admin') && (
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {orderTotal > 0 && (
+                              <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1 inline-flex">
+                                <DollarSign className="w-3.5 h-3.5" />
+                                ${orderTotal.toFixed(2)}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           <div className="flex items-center gap-1">
                             <Calendar className="w-4 h-4" />
                             {new Date(order.created_at).toLocaleDateString()}
@@ -832,27 +955,38 @@ export default function OrdersPage() {
                       {/* Expanded Products Row - Only show products routed to current user */}
                       {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-2 bg-gray-50">
+                          <td colSpan={(userRole === 'admin' || userRole === 'super_admin') ? 7 : 6} className="px-6 py-2 bg-gray-50">
                             <div className="pl-8 space-y-1">
-                              {visibleProducts.map((product) => (
-                                <div key={product.id} className="flex items-center justify-between py-1.5 px-3 bg-white rounded border border-gray-200">
-                                  <div className="flex items-center gap-3">
-                                    <Package className="w-4 h-4 text-gray-400" />
-                                    <div>
-                                      <span className="text-sm font-medium text-gray-700">
-                                        {product.product_order_number}
-                                      </span>
-                                      <span className="text-xs text-gray-500 ml-2">
-                                        {product.description || product.product?.title || 'Product'}
-                                      </span>
+                              {visibleProducts.map((product) => {
+                                const productTotal = calculateProductTotal(product);
+                                
+                                return (
+                                  <div key={product.id} className="flex items-center justify-between py-1.5 px-3 bg-white rounded border border-gray-200">
+                                    <div className="flex items-center gap-3">
+                                      <Package className="w-4 h-4 text-gray-400" />
+                                      <div>
+                                        <span className="text-sm font-medium text-gray-700">
+                                          {product.product_order_number}
+                                        </span>
+                                        <span className="text-xs text-gray-500 ml-2">
+                                          {product.description || product.product?.title || 'Product'}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {/* Price badge FIRST (moved to left) */}
+                                      {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
+                                          <DollarSign className="w-3 h-3" />
+                                          ${productTotal.toFixed(2)}
+                                        </span>
+                                      )}
+                                      <StatusBadge status={product.product_status} />
+                                      {getProductRoutingBadge(product)}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <StatusBadge status={product.product_status} />
-                                    {getProductRoutingBadge(product)}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </td>
                         </tr>
