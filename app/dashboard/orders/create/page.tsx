@@ -483,8 +483,8 @@ export default function CreateOrderPage() {
       // UPDATED: Use simplified statuses
       let orderStatus = 'draft'
       if (!isDraft) {
-        orderStatus = 'in_progress'  // SIMPLIFIED: All non-draft orders are 'in_progress'
-        console.log('Status: in_progress (order submitted)')
+        orderStatus = 'sent_to_manufacturer'  // Default status when order is created and sent to manufacturer
+        console.log('Status: sent_to_manufacturer (order submitted)')
       } else {
         console.log('Status: draft (saved as draft)')
       }

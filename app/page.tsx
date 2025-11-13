@@ -41,20 +41,20 @@ function LoginContent() {
         .select('*')
         .eq('email', email.toLowerCase().trim())
         .single();
-
+ 
       if (userError || !userData) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
-
+ 
       // Check password (simple comparison - passwords stored as plain text)
       if (userData.password !== password) {
         setError('Invalid email or password');
         setLoading(false);
         return;
       }
-
+ 
       // Successful login
       if (rememberMe) {
         localStorage.setItem('rememberedEmail', email);
@@ -62,18 +62,58 @@ function LoginContent() {
         localStorage.removeItem('rememberedEmail');
       }
 
+      // If user is a manufacturer, fetch manufacturer_id from manufacturers table
+      if (userData.role === 'manufacturer') {
+        const { data: manufacturerData, error: manufacturerError } = await supabase
+          .from('manufacturers')
+          .select('id')
+          .eq('email', email.toLowerCase().trim())
+          .single();
+
+        if (manufacturerData && !manufacturerError) {
+          // Add manufacturer_id to user data
+          userData.manufacturer_id = manufacturerData.id;
+        }
+      }
+ 
       // Store user session
       localStorage.setItem('user', JSON.stringify(userData));
-      
+     
       // Set session expiry (7 days)
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + 7);
       localStorage.setItem('sessionExpiry', expiryDate.toISOString());
-
+ 
       router.push('/dashboard');
     } catch (err) {
       console.error('Login error:', err);
       setError('An error occurred during authentication');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Please enter your email address first');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/users/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setError(result.error || 'Failed to send reset email.');
+      } else {
+        setMessage('Password reset instructions sent to your email');
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -158,6 +198,13 @@ function LoginContent() {
               />
               <span className="ml-2 text-sm text-gray-700">Remember me</span>
             </label>
+            <button
+              type="button"
+              onClick={handleForgotPassword}
+              className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
+            >
+              Forgot password?
+            </button>
           </div>
 
           {error && (

@@ -352,6 +352,15 @@ export default function ManufacturersPage() {
                   <p className="text-sm text-gray-500">{manufacturer.email}</p>
                 </div>
               </div>
+              {(user?.role === 'super_admin') && (
+                <button
+                  onClick={() => window.location.href = `/dashboard/manufacturers/${manufacturer.id}`}
+                  className="ml-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-full"
+                  title="View Users for Manufacturer"
+                >
+                  <AlertCircle className="w-5 h-5 text-blue-600" />
+                </button>
+              )}
             </div>
 
             {(user?.role === 'super_admin' || user?.role === 'admin') && (
