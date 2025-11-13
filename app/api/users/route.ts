@@ -108,8 +108,8 @@ export async function POST(request: Request) {
         .from('manufacturers')
         .insert({
           name,
-          email,
-          user_id: authData.user.id
+          email
+          // user_id: authData.user.id
         })
 
       if (manuError) {
@@ -128,8 +128,8 @@ export async function POST(request: Request) {
         .from('clients')
         .insert({
           name,
-          email,
-          user_id: authData.user.id
+          email
+          // user_id: authData.user.id
         })
 
       if (clientError) {
