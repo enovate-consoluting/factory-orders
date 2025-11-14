@@ -228,14 +228,20 @@ export default function VariantsPage() {
 
   const handleDeleteType = async (type: VariantType) => {
     setProcessingId(type.id);
-    
     try {
-      const { error } = await supabase
+      // First, delete all options for this type
+      const { error: optionsError } = await supabase
+        .from('variant_options')
+        .delete()
+        .eq('type_id', type.id);
+      if (optionsError) throw optionsError;
+
+      // Then, delete the type itself
+      const { error: typeError } = await supabase
         .from('variant_types')
         .delete()
         .eq('id', type.id);
-
-      if (error) throw error;
+      if (typeError) throw typeError;
 
       notify.success(`Variant type "${type.name}" deleted successfully!`);
       await fetchVariants();
