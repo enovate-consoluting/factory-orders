@@ -340,10 +340,10 @@ export default function OrdersPage() {
     }
   };
 
-  // NEW: Filter orders based on tab for manufacturers
+  // NEW: Filter orders based on tab for manufacturers and super/admin//
   const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
-    if (userRole !== 'manufacturer') {
-      return ordersToFilter;
+   if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') {
+     return ordersToFilter;
     }
 
     switch (activeTab) {
@@ -790,10 +790,10 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {/* NEW: Tabs for Manufacturers */}
-        {userRole === 'manufacturer' && (
-          <div className="border-b border-gray-200 mb-4">
-            <nav className="-mb-px flex space-x-8">
+        {/* NEW: Tabs for Manufacturers AND Admins */}
+          {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin') && (
+            <div className="border-b border-gray-200 mb-4">
+             <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab('my_orders')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
