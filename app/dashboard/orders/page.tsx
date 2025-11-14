@@ -56,7 +56,7 @@ export default function OrdersPage() {
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
-  // NEW: Tab state for manufacturers
+  // NEW: Tab state for manufacturers AND admins
   const [activeTab, setActiveTab] = useState<ManufacturerTab>('my_orders');
 
   // State for finance margins
@@ -340,10 +340,10 @@ export default function OrdersPage() {
     }
   };
 
-  // NEW: Filter orders based on tab for manufacturers and super/admin//
+  // Filter orders based on tab for manufacturers AND admins
   const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
-   if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') {
-     return ordersToFilter;
+    if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') {
+      return ordersToFilter;
     }
 
     switch (activeTab) {
@@ -409,15 +409,16 @@ export default function OrdersPage() {
       filtered = filtered.filter(order => order.status === statusFilter);
     }
     
-    // Apply tab filtering for manufacturers
+    // Apply tab filtering for manufacturers and admins
     filtered = getTabFilteredOrders(filtered);
     
     setFilteredOrders(filtered);
   };
 
-  // Get tab counts for manufacturers
+  // Get tab counts for manufacturers AND admins
   const getTabCounts = () => {
-    if (userRole !== 'manufacturer') return {};
+    // Enable for admins and super admins too
+    if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') return {};
     
     return {
       my_orders: getTabFilteredOrders(orders.filter(o => statusFilter === 'all' || o.status === statusFilter)).length,
@@ -473,7 +474,7 @@ export default function OrdersPage() {
     return false;
   };
 
-  // Delete order function (same as before)
+  // Delete order function
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrder(orderId);
@@ -612,7 +613,7 @@ export default function OrdersPage() {
     const products = order.order_products;
     
     // For manufacturers in different tabs, show relevant info
-    if (userRole === 'manufacturer') {
+    if (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin') {
       if (activeTab === 'my_orders') {
         const manufacturerProducts = products.filter(p => 
           p.routed_to === 'manufacturer' && 
@@ -652,7 +653,7 @@ export default function OrdersPage() {
       }
     }
     
-    // For admin/super_admin - show full status
+    // Default status for all roles
     const allWithAdmin = products.every(p => p.routed_to === 'admin');
     const allWithManufacturer = products.every(p => p.routed_to === 'manufacturer');
     const allCompleted = products.every(p => p.product_status === 'completed');
@@ -790,10 +791,10 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {/* NEW: Tabs for Manufacturers AND Admins */}
-          {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin') && (
-            <div className="border-b border-gray-200 mb-4">
-             <nav className="-mb-px flex space-x-8">
+        {/* Tabs for Manufacturers AND Admins */}
+        {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin') && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab('my_orders')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
@@ -890,7 +891,7 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Orders Table - Responsive (rest of the component remains the same) */}
+      {/* Orders Table - Rest remains the same */}
       <div className="bg-white rounded-lg shadow">
         {/* Mobile View - Cards */}
         <div className="block lg:hidden">
@@ -1269,7 +1270,7 @@ export default function OrdersPage() {
             <Package className="mx-auto h-12 w-12 text-gray-300" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No orders</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {userRole === 'manufacturer' 
+              {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin')
                 ? activeTab === 'my_orders' 
                   ? 'No orders need your action right now'
                   : `No orders in ${activeTab.replace('_', ' ')}`
