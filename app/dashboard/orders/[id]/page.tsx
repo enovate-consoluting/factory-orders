@@ -17,17 +17,21 @@ import { formatOrderNumber } from '@/lib/utils/orderUtils';
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
-  
+
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
+  
+  // State for finance margins
+  const [productMargin, setProductMargin] = useState(80); // Default 80%
+  const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
+  const [marginsLoaded, setMarginsLoaded] = useState(false);
   
   // NEW: State for editing client
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [availableClients, setAvailableClients] = useState<any[]>([]);
   const [savingClient, setSavingClient] = useState(false);
-  
   // NEW: State for showing all products (super admin only)
   const [showAllProducts, setShowAllProducts] = useState(false);
   
@@ -62,15 +66,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           shippingPrice = parseFloat(product.shipping_boat_price || 0);
         }
       } else {
-        // Admin/Super Admin see CLIENT prices (with markup)
-        // Use client prices if available, fallback to regular prices
-        productPrice = parseFloat(product.client_product_price || product.product_price || 0);
-        sampleFee = parseFloat(product.client_sample_fee || product.sample_fee || 0);
+        // Admin/Super Admin see CLIENT prices (with dynamic markup from settings)
+        const mfgProductPrice = parseFloat(product.product_price || 0);
+        const mfgSampleFee = parseFloat(product.sample_fee || 0);
         
+        // Apply product margin (80% from settings)
+        productPrice = mfgProductPrice * (1 + productMargin / 100);
+        sampleFee = mfgSampleFee * (1 + productMargin / 100);
+        
+        // Apply shipping margin (0% from settings)
         if (product.selected_shipping_method === 'air') {
-          shippingPrice = parseFloat(product.client_shipping_air_price || product.shipping_air_price || 0);
+          const mfgShipping = parseFloat(product.shipping_air_price || 0);
+          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
         } else if (product.selected_shipping_method === 'boat') {
-          shippingPrice = parseFloat(product.client_shipping_boat_price || product.shipping_boat_price || 0);
+          const mfgShipping = parseFloat(product.shipping_boat_price || 0);
+          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
         }
       }
       
@@ -156,6 +166,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       fetchAvailableClients();
     }
   }, [router, userRole, id]);
+
+  // Load finance margins from database
+  useEffect(() => {
+    const loadMargins = async () => {
+      try {
+        const { data } = await supabase
+          .from('system_config')
+          .select('config_key, config_value')
+          .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+        
+        if (data) {
+          data.forEach(config => {
+            if (config.config_key === 'default_margin_percentage') {
+              setProductMargin(parseFloat(config.config_value) || 80);
+            } else if (config.config_key === 'default_shipping_margin_percentage') {
+              setShippingMargin(parseFloat(config.config_value) || 0);
+            }
+          });
+        }
+        setMarginsLoaded(true);
+      } catch (error) {
+        console.error('Error loading margins:', error);
+        setMarginsLoaded(true);
+      }
+    };
+    loadMargins();
+  }, []);
 
   const fetchManufacturerId = async (user: any) => {
     try {

@@ -50,9 +50,11 @@ export default function FinanceOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<Record<string, string>>({});
-
-  useEffect(() => {
+  const [defaultProductMargin, setDefaultProductMargin] = useState(80);
+  const [defaultShippingMargin, setDefaultShippingMargin] = useState(0);
+useEffect(() => {
     checkUserRole();
+    loadDefaultMargins(); // ADDED: Load margins from system_config
     fetchOrders();
   }, []);
 
@@ -65,6 +67,28 @@ export default function FinanceOrdersPage() {
     const user = JSON.parse(userData);
     if (user.role !== 'super_admin') {
       router.push('/dashboard');
+    }
+  };
+
+  // ADDED: Load default margins from system_config
+  const loadDefaultMargins = async () => {
+    try {
+      const { data } = await supabase
+        .from('system_config')
+        .select('config_key, config_value')
+        .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+      
+      if (data) {
+        data.forEach(config => {
+          if (config.config_key === 'default_margin_percentage') {
+            setDefaultProductMargin(parseFloat(config.config_value) || 80);
+          } else if (config.config_key === 'default_shipping_margin_percentage') {
+            setDefaultShippingMargin(parseFloat(config.config_value) || 0);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Error loading default margins:', error);
     }
   };
 
@@ -118,7 +142,7 @@ export default function FinanceOrdersPage() {
           })),
           order_margin: orderMargin
         };
-      });
+ });
 
       setOrders(ordersWithMargins);
 
@@ -128,13 +152,13 @@ export default function FinanceOrdersPage() {
       
       ordersWithMargins.forEach(order => {
         margins[order.id] = {
-          product: order.order_margin?.margin_percentage?.toString() || '80',
-          shipping: order.order_margin?.shipping_margin_percentage?.toString() || '0'
+          product: order.order_margin?.margin_percentage?.toString() || defaultProductMargin.toString(),
+          shipping: order.order_margin?.shipping_margin_percentage?.toString() || defaultShippingMargin.toString()
         };
         
         order.order_products?.forEach(product => {
           prodMargins[product.id] = product.product_margin_override?.toString() || 
-                                     order.order_margin?.margin_percentage?.toString() || '80';
+                                     order.order_margin?.margin_percentage?.toString() || defaultProductMargin.toString();
         });
       });
       
@@ -287,12 +311,11 @@ export default function FinanceOrdersPage() {
           View and override margin percentages for specific orders and products
         </p>
       </div>
-
-      {/* Orders List */}
+{/* Orders List */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">All Orders</h2>
+            <h2 className="text-lg font-semibold text-gray-900">All Orders</h2>
             <div className="text-sm text-gray-500">
               {orders.length} total orders
             </div>
@@ -306,7 +329,6 @@ export default function FinanceOrdersPage() {
             const totalProducts = order.order_products?.length || 0;
             const totalValue = order.order_products?.reduce((sum, p) => 
               sum + (p.client_product_price || 0), 0) || 0;
-
             return (
               <div key={order.id} className="hover:bg-gray-50">
                 {/* Order Row */}
@@ -324,8 +346,7 @@ export default function FinanceOrdersPage() {
                           <ChevronRight className="w-4 h-4 text-gray-500" />
                         )}
                       </button>
-                      
-                      <div className="flex-1">
+ <div className="flex-1">
                         <div className="flex items-center gap-4">
                           <div>
                             <div className="font-medium text-gray-900">
@@ -352,13 +373,13 @@ export default function FinanceOrdersPage() {
                           <div className="text-sm">
                             <span className="text-gray-500">Product Margin:</span>
                             <span className="ml-2 font-semibold text-gray-900">
-                              {orderMargins[order.id]?.product || '80'}%
+                              {orderMargins[order.id]?.product || defaultProductMargin}%
                             </span>
                           </div>
                           <div className="text-sm">
                             <span className="text-gray-500">Shipping:</span>
                             <span className="ml-2 font-semibold text-gray-900">
-                              {orderMargins[order.id]?.shipping || '0'}%
+                              {orderMargins[order.id]?.shipping || defaultShippingMargin}%
                             </span>
                           </div>
                           <button
@@ -380,7 +401,7 @@ export default function FinanceOrdersPage() {
                                   ...prev,
                                   [order.id]: { ...prev[order.id], product: e.target.value }
                                 }))}
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
                                 min="0"
                                 max="500"
                               />
@@ -398,7 +419,7 @@ export default function FinanceOrdersPage() {
                                   ...prev,
                                   [order.id]: { ...prev[order.id], shipping: e.target.value }
                                 }))}
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
+                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
                                 min="0"
                                 max="500"
                               />

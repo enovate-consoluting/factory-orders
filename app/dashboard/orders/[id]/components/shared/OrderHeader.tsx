@@ -132,7 +132,7 @@ export function OrderHeader({
                   <div className="flex items-center gap-2">
                     <DollarSign className="w-5 h-5 text-green-600" />
                     <div className="text-right">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Order Total</p>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Estimated Total</p>
                       <p className="text-2xl font-bold text-gray-900">
                         ${(Number(totalAmount) || 0).toFixed(2)}
                       </p>
