@@ -22,6 +22,7 @@ interface AdminProductCardProps {
   onRoute?: (product: OrderProduct) => void;
   onViewHistory?: (productId: string) => void;
   hasNewHistory?: boolean;
+  autoCollapse?: boolean;  // ADD THIS
 }
 
 export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
@@ -33,7 +34,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     onUpdate,
     onRoute,
     onViewHistory,
-    hasNewHistory = false
+    hasNewHistory = false,
+    autoCollapse = false  // ADD THIS DEFAULT
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
@@ -44,12 +46,19 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
     const [marginsLoaded, setMarginsLoaded] = useState(false);
     
-    // COLLAPSIBLE STATE
-    const [isCollapsed, setIsCollapsed] = useState(
-      (product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit'
-    );
+    // COLLAPSIBLE STATE - Updated to use autoCollapse prop
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+      // Auto-collapse takes priority when there are multiple products
+      if (autoCollapse) return true;
+  
+    // For single products, check status
+    const productStatus = (product as any)?.product_status;
+  
+    // Only auto-collapse for these specific statuses when NOT using autoCollapse
+    return (productStatus === 'shipped' || productStatus === 'in_transit');
+  });
     
-    // Load finance margins from database
+ // Load finance margins from database
     useEffect(() => {
       const loadMargins = async () => {
         try {
@@ -75,6 +84,18 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       };
       loadMargins();
     }, []);
+    
+    // Auto-collapse when status changes
+    useEffect(() => {
+      // Don't override autoCollapse behavior
+      if (autoCollapse) return;
+      
+      const productStatus = (product as any)?.product_status;
+      
+      if (productStatus === 'shipped' || productStatus === 'in_transit') {
+        setIsCollapsed(true);
+      }
+    }, [(product as any)?.product_status, autoCollapse]);
     
     // Auto-collapse when status changes
     useEffect(() => {
@@ -815,15 +836,15 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     if (isCollapsed) {
       return <CollapsedHeader />;
     }
-
-    // MAIN EXPANDED VIEW WITH GREEN TOTAL RESTORED
+// MAIN EXPANDED VIEW WITH GREEN TOTAL RESTORED
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header */}
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              {((product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit') && (
+              {/* Collapse Button - ALWAYS show when multiple products (autoCollapse=true) */}
+              {autoCollapse && (
                 <button
                   onClick={() => setIsCollapsed(true)}
                   className="p-1 hover:bg-gray-200 rounded transition-colors mt-1"
@@ -832,7 +853,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <ChevronDown className="w-5 h-5 text-gray-600" />
                 </button>
               )}
-              
               {getProductStatusIcon(displayStatus)}
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">

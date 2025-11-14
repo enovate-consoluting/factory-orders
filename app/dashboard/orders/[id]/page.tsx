@@ -8,10 +8,11 @@ import { OrderHeader } from './components/shared/OrderHeader';
 import { StatusBadge } from './components/shared/StatusBadge';
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
+import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
 import { HistoryModal } from './components/modals/HistoryModal';
 import { RouteModal } from './components/modals/RouteModal';
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check, ChevronDown } from 'lucide-react';
+import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check, ChevronDown, Printer } from 'lucide-react';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +25,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   
   // State for finance margins
   const [productMargin, setProductMargin] = useState(80); // Default 80%
-  const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
+  const [shippingMargin, setShippingMargin] = useState(5); // Default 5%
   const [marginsLoaded, setMarginsLoaded] = useState(false);
   
   // NEW: State for editing client
@@ -396,7 +397,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     });
   };
 
-  // NEW: Handle Save All & Route
+  // Handle Save All & Route
   const handleSaveAllAndRoute = async () => {
     setMasterRouteModal({
       isOpen: true,
@@ -404,7 +405,110 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     });
   };
 
-  // NEW: Handle Master Route (when route is selected in modal)
+  // Handle Print All for Manufacturers
+  const handlePrintAll = () => {
+    const visibleProducts = getVisibleProducts();
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Order ${order.order_number} - Product Sheets</title>
+        <style>
+          @page {
+            size: portrait;
+            margin: 0.5in;
+          }
+          @media print { 
+            .page-break { page-break-after: always; }
+            @page { 
+              size: portrait;
+              margin: 0.5in;
+            }
+          }
+          body { font-family: Arial, sans-serif; }
+          .product-sheet { padding: 20px; margin-bottom: 30px; }
+          .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+          h1 { font-size: 24px; margin: 0 0 10px 0; }
+          h2 { font-size: 18px; margin: 20px 0 10px 0; color: #333; }
+          .info-row { display: flex; margin-bottom: 8px; }
+          .label { font-weight: bold; width: 150px; }
+          .value { flex: 1; border-bottom: 1px dotted #999; min-height: 20px; }
+          .notes-box { border: 1px solid #999; min-height: 100px; margin-top: 10px; padding: 10px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #999; padding: 8px; text-align: left; }
+          th { background-color: #f0f0f0; }
+        </style>
+      </head>
+      <body>
+        ${visibleProducts.map((product: any, index: number) => {
+          const items = product.order_items || [];
+          const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+
+          return `
+            <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
+              <div class="header">
+                <h1>Order: ${order.order_number}</h1>
+                <div>Client: ${order.client?.name || 'N/A'}</div>
+                <div>Date: ${new Date().toLocaleDateString()}</div>
+              </div>
+              
+              <h2>Product: ${product.product_order_number}</h2>
+              <div class="info-row">
+                <div class="label">Description:</div>
+                <div class="value">${product.description || ''}</div>
+              </div>
+              <div class="info-row">
+                <div class="label">Total Quantity:</div>
+                <div class="value">${totalQty}</div>
+              </div>
+              <div class="info-row">
+                <div class="label">Product Price:</div>
+                <div class="value">$${product.product_price || '________'}</div>
+              </div>
+              <div class="info-row">
+                <div class="label">Production Time:</div>
+                <div class="value">${product.production_time || '________'}</div>
+              </div>
+              
+              <h2>Variants</h2>
+              <table>
+                <thead>
+                  <tr><th>Variant</th><th>Quantity</th><th>Notes</th></tr>
+                </thead>
+                <tbody>
+                  ${items.map((item: any) => `
+                    <tr>
+                      <td>${item.variant_combo || ''}</td>
+                      <td>${item.quantity || 0}</td>
+                      <td>${item.notes || ''}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              
+              <h2>Production Notes</h2>
+              <div class="notes-box">${product.manufacturer_notes || ''}</div>
+              
+              <h2>Additional Notes (Write Here)</h2>
+              <div class="notes-box"></div>
+            </div>
+          `;
+        }).join('')}
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  };
+
+  // Handle Master Route (when route is selected in modal)
   const handleMasterRoute = async (selectedRoute: string, notes?: string) => {
     setMasterRouteModal(prev => ({ ...prev, isSaving: true }));
     
@@ -423,7 +527,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           }
         }
       }
-      // Note: Admin cards don't have pending changes to save
       
       // Step 2: Apply the selected route to ALL visible products
       console.log(`Applying route "${selectedRoute}" to all products...`);
@@ -479,7 +582,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             case 'send_for_approval':
               updates.requires_client_approval = true;
               updates.product_status = 'pending_client_approval';
-              updates.routed_to = 'admin'; // Stays with admin
+              updates.routed_to = 'admin';
               break;
               
             case 'send_back_to_manufacturer':
@@ -523,7 +626,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       
       // Create notifications
       if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
-        // Manufacturer notifying admin
         const { data: orderData } = await supabase
           .from('orders')
           .select('created_by, order_number')
@@ -549,7 +651,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             });
         }
       } else if (!isManufacturer && (selectedRoute === 'approve_for_production' || selectedRoute === 'request_sample' || selectedRoute === 'send_back_to_manufacturer')) {
-        // Admin notifying manufacturer - need to find manufacturer user
         const { data: manufacturerUsers } = await supabase
           .from('users')
           .select('id')
@@ -565,7 +666,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             message = `Admin has requested revisions for ${visibleProducts.length} products - Order ${order.order_number}`;
           }
           
-          // Notify all manufacturer users
           for (const mfgUser of manufacturerUsers) {
             await supabase
               .from('notifications')
@@ -581,8 +681,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
       
       console.log('All products routed successfully');
-      
-      // Close modal and refresh
       setMasterRouteModal({ isOpen: false, isSaving: false });
       await refetch();
       
@@ -865,44 +963,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
         )}
-        {/* Sub Manufacturer Assignment - Only for Manufacturer */}
-        {/* Commented out as per user request */}
-        {/* {userRole === 'manufacturer' && (
-          <div className="mb-6">
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 flex flex-col gap-4">
-              <div className="flex items-center gap-3 mb-2">
-                <Building className="w-6 h-6 text-blue-600" />
-                <h3 className="text-lg font-semibold text-gray-900">Assign Sub Manufacturer</h3>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 items-center">
-                <select
-                  value={selectedSubManufacturer || order.sub_manufacturer_id || ''}
-                  onChange={e => setSelectedSubManufacturer(e.target.value)}
-                  className="w-full sm:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
-                >
-                  <option value="">None</option>
-                  {subManufacturers.map((sm: any) => (
-                    <option key={sm.id} value={sm.id}>{sm.name} ({sm.email})</option>
-                  ))}
-                </select>
-                <button
-                  className="px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-all"
-                  onClick={async () => {
-                    if (!order.id || !selectedSubManufacturer) return;
-                    const { error } = await supabase
-                      .from('orders')
-                      .update({ sub_manufacturer_id: selectedSubManufacturer })
-                      .eq('id', order.id);
-                    if (!error) {
-                      refetch();
-                    }
-                  }}
-                >Assign</button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">Select a sub manufacturer to assign this order. Assigned sub manufacturer will be able to view and process this order.</p>
-            </div>
-          </div>
-        )} */}
+
+        {/* Manufacturer Control Panel - ONLY FOR MANUFACTURERS */}
+        {userRole === 'manufacturer' && visibleProducts.length > 0 && (
+          <ManufacturerControlPanel
+            order={order}
+            visibleProducts={visibleProducts}
+            onSaveAndRoute={handleSaveAllAndRoute}
+            onPrintAll={handlePrintAll}
+          />
+        )}
 
         {/* Product Location Summary with Individual Product Dropdown */}
         {productCounts.total > 0 && (
@@ -1009,21 +1079,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   )}
                 </button>
               )}
-              
-              {/* Save All & Route - MANUFACTURER ONLY */}
-              {userRole === 'manufacturer' && visibleProducts.length > 0 && (
-                <button
-                  onClick={handleSaveAllAndRoute}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-green-700 transition-all flex items-center gap-2 font-medium"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="hidden sm:inline">Save All & Route</span>
-                  <span className="sm:hidden">Save & Route</span>
-                </button>
-              )}
             </div>
           </div>
-          
+
           {/* Show message when no products are visible */}
           {visibleProducts.length === 0 ? (
             <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
@@ -1049,6 +1107,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
               
+              // DEBUG - Remove this after fixing
+              if (isManufacturer) {
+                console.log('Manufacturer view - visibleProducts count:', visibleProducts.length);
+                console.log('Visible products:', visibleProducts.map((p: any) => p.product_order_number));
+              }
+              
+              // AUTO-COLLAPSE WHEN MORE THAN 3 PRODUCTS
+              const shouldAutoCollapse = visibleProducts.length >= 2;
+              
               // When super admin is viewing all products, show manufacturer cards for products with manufacturer
               const shouldShowManufacturerCard = isManufacturer || 
                 (isSuperAdmin && showAllProducts && product.routed_to === 'manufacturer');
@@ -1072,6 +1139,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     onViewHistory={(productId) => handleViewHistory(productId, productName)}
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
+                    autoCollapse={shouldAutoCollapse}
                   />
                 );
               }
@@ -1088,14 +1156,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   onRoute={handleRouteProduct}
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
                   hasNewHistory={hasNewHistory(product.id)}
+                  autoCollapse={shouldAutoCollapse}
                 />
               );
             })
           )}
         </div>
       </div>
-
-      {/* Route Modal for individual products - FIXED TypeScript error */}
+      
+      {/* Route Modal for individual products */}
       <RouteModal
         isOpen={routeModal.isOpen}
         onClose={() => setRouteModal({ isOpen: false, product: null })}
@@ -1104,7 +1173,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* NEW: Master Route Modal for Save All & Route */}
+      {/* Master Route Modal for Save All & Route */}
       {masterRouteModal.isOpen && (
         <MasterRouteModal
           isOpen={masterRouteModal.isOpen}
@@ -1126,7 +1195,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   );
 }
 
-// NEW: Master Route Modal Component
+// Master Route Modal Component
 function MasterRouteModal({ 
   isOpen, 
   isSaving,
@@ -1142,7 +1211,7 @@ function MasterRouteModal({
 }) {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
-  const userRole = getUserRole(); // Get user role to show correct options
+  const userRole = getUserRole();
 
   if (!isOpen) return null;
 

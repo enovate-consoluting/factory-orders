@@ -7,7 +7,8 @@ import { supabase } from '@/lib/supabase';
 import { 
   Plus, Search, Filter, Eye, Package, Users, 
   Calendar, ChevronRight, Edit, Building,
-  ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign
+  ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign,
+  Inbox, SendHorizontal, Factory, Truck
 } from 'lucide-react';
 import { StatusBadge } from './[id]/components/shared/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -40,6 +41,9 @@ interface Order {
     };
   }>;
 }
+
+type ManufacturerTab = 'my_orders' | 'sent_to_admin' | 'in_production' | 'shipped';
+
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -51,6 +55,9 @@ export default function OrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+
+  // NEW: Tab state for manufacturers
+  const [activeTab, setActiveTab] = useState<ManufacturerTab>('my_orders');
 
   // State for finance margins
   const [productMargin, setProductMargin] = useState(80); // Default 80%
@@ -167,7 +174,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     filterOrders();
-  }, [searchTerm, statusFilter, orders]);
+  }, [searchTerm, statusFilter, orders, activeTab]);
 
   // Load finance margins from database
   const loadMargins = async () => {
@@ -186,7 +193,7 @@ export default function OrdersPage() {
           }
         });
       }
- setMarginsLoaded(true);
+      setMarginsLoaded(true);
     } catch (error) {
       console.error('Error loading margins:', error);
       setMarginsLoaded(true); // Use defaults
@@ -275,6 +282,7 @@ export default function OrdersPage() {
           )
         `)
         .order('created_at', { ascending: false });
+
       // Filter based on user role
       if (user.role === 'manufacturer') {
         const { data: manufacturerData } = await supabase
@@ -283,14 +291,11 @@ export default function OrdersPage() {
           .eq('email', user.email)
           .single(); 
         if (manufacturerData) {
-          // Only get orders assigned to this manufacturer AND not drafts
-          query = query
-            .eq('manufacturer_id', manufacturerData.id)
-            .neq('status', 'draft'); // EXCLUDE DRAFTS for manufacturers
+          // Get ALL orders assigned to this manufacturer (including drafts now)
+          query = query.eq('manufacturer_id', manufacturerData.id);
         }
       } else if (user.role === 'manufacturer_team_member') {
         // Team members see same orders as manufacturer
-        // Find the manufacturer user this team member belongs to
         const { data: manufacturerUser } = await supabase
           .from('users')
           .select('created_by')
@@ -326,29 +331,66 @@ export default function OrdersPage() {
       
       if (error) throw error;
       
-      // ADDITIONAL FILTERING FOR MANUFACTURERS
-      // Only show orders where at least one product is routed to them
-      let processedOrders = data || [];
-      
-      if (user.role === 'manufacturer') {
-        processedOrders = processedOrders.filter(order => {
-          // Check if at least one product is routed to manufacturer
-          if (order.order_products && order.order_products.length > 0) {
-            return order.order_products.some((product: any) => 
-              product.routed_to === 'manufacturer'
-            );
-          }
-          // If no products, don't show the order
-          return false;
-        });
-      }
-      
-      setOrders(processedOrders);
-      setFilteredOrders(processedOrders);
+      setOrders(data || []);
+      setFilteredOrders(data || []);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // NEW: Filter orders based on tab for manufacturers
+  const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
+    if (userRole !== 'manufacturer') {
+      return ordersToFilter;
+    }
+
+    switch (activeTab) {
+      case 'my_orders':
+        // Orders with ANY products still routed to manufacturer
+        return ordersToFilter.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.routed_to === 'manufacturer' && 
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+        });
+
+      case 'sent_to_admin':
+        // Orders where ALL products are routed to admin (but not shipped/completed)
+        return ordersToFilter.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
+          const hasNoProductsWithManufacturer = !order.order_products.some(p => 
+            p.routed_to === 'manufacturer' && 
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+          return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
+        });
+
+      case 'in_production':
+        // Orders with products in production
+        return ordersToFilter.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => p.product_status === 'in_production');
+        });
+
+      case 'shipped':
+        // Orders with shipped/completed products
+        return ordersToFilter.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'shipped' || p.product_status === 'completed'
+          );
+        });
+
+      default:
+        return ordersToFilter;
     }
   };
 
@@ -367,7 +409,40 @@ export default function OrdersPage() {
       filtered = filtered.filter(order => order.status === statusFilter);
     }
     
+    // Apply tab filtering for manufacturers
+    filtered = getTabFilteredOrders(filtered);
+    
     setFilteredOrders(filtered);
+  };
+
+  // Get tab counts for manufacturers
+  const getTabCounts = () => {
+    if (userRole !== 'manufacturer') return {};
+    
+    return {
+      my_orders: getTabFilteredOrders(orders.filter(o => statusFilter === 'all' || o.status === statusFilter)).length,
+      sent_to_admin: orders.filter(order => {
+        if (!order.order_products || order.order_products.length === 0) return false;
+        const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
+        const hasNoProductsWithManufacturer = !order.order_products.some(p => 
+          p.routed_to === 'manufacturer' && 
+          p.product_status !== 'in_production' && 
+          p.product_status !== 'shipped' &&
+          p.product_status !== 'completed'
+        );
+        return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
+      }).length,
+      in_production: orders.filter(order => {
+        if (!order.order_products || order.order_products.length === 0) return false;
+        return order.order_products.some(p => p.product_status === 'in_production');
+      }).length,
+      shipped: orders.filter(order => {
+        if (!order.order_products || order.order_products.length === 0) return false;
+        return order.order_products.some(p => 
+          p.product_status === 'shipped' || p.product_status === 'completed'
+        );
+      }).length
+    };
   };
 
   const toggleOrderExpansion = (orderId: string) => {
@@ -398,7 +473,7 @@ export default function OrdersPage() {
     return false;
   };
 
-  // FIXED: Properly delete order with all related records
+  // Delete order function (same as before)
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrder(orderId);
@@ -528,7 +603,7 @@ export default function OrdersPage() {
     }
   };
 
-  // Calculate order routing status - UPDATED FOR MANUFACTURER VIEW
+  // Calculate order routing status
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
       return { status: 'no_products', label: 'No Products', color: 'gray' };
@@ -536,29 +611,45 @@ export default function OrdersPage() {
 
     const products = order.order_products;
     
-    // For manufacturers, only show status of products routed to them
+    // For manufacturers in different tabs, show relevant info
     if (userRole === 'manufacturer') {
-      const manufacturerProducts = products.filter(p => p.routed_to === 'manufacturer');
-      
-      if (manufacturerProducts.length === 0) {
-        return { status: 'none_assigned', label: 'None Assigned', color: 'gray' };
+      if (activeTab === 'my_orders') {
+        const manufacturerProducts = products.filter(p => 
+          p.routed_to === 'manufacturer' && 
+          p.product_status !== 'in_production' && 
+          p.product_status !== 'shipped'
+        );
+        if (manufacturerProducts.length > 0) {
+          return { 
+            status: 'with_manufacturer', 
+            label: `${manufacturerProducts.length} Need Action`, 
+            color: 'indigo' 
+          };
+        }
+      } else if (activeTab === 'sent_to_admin') {
+        const adminProducts = products.filter(p => p.routed_to === 'admin');
+        return { 
+          status: 'with_admin', 
+          label: `${adminProducts.length} With Admin`, 
+          color: 'purple' 
+        };
+      } else if (activeTab === 'in_production') {
+        const inProdProducts = products.filter(p => p.product_status === 'in_production');
+        return { 
+          status: 'in_production', 
+          label: `${inProdProducts.length} In Production`, 
+          color: 'blue' 
+        };
+      } else if (activeTab === 'shipped') {
+        const shippedProducts = products.filter(p => 
+          p.product_status === 'shipped' || p.product_status === 'completed'
+        );
+        return { 
+          status: 'shipped', 
+          label: `${shippedProducts.length} Shipped`, 
+          color: 'green' 
+        };
       }
-      
-      const allInProduction = manufacturerProducts.every(p => p.product_status === 'in_production');
-      const allCompleted = manufacturerProducts.every(p => p.product_status === 'completed');
-      
-      if (allCompleted) {
-        return { status: 'completed', label: 'All Completed', color: 'green' };
-      }
-      if (allInProduction) {
-        return { status: 'in_production', label: 'In Production', color: 'blue' };
-      }
-      
-      return { 
-        status: 'with_manufacturer', 
-        label: `${manufacturerProducts.length} With You`, 
-        color: 'indigo' 
-      };
     }
     
     // For admin/super_admin - show full status
@@ -591,13 +682,8 @@ export default function OrdersPage() {
     };
   };
 
-  // Get product routing badge - UPDATED FOR MANUFACTURER VIEW
+  // Get product routing badge
   const getProductRoutingBadge = (product: any) => {
-    // For manufacturers, only show badges for products routed to them
-    if (userRole === 'manufacturer' && product.routed_to !== 'manufacturer') {
-      return null; // Don't show badge for products not routed to manufacturer
-    }
-    
     const isWithMe = (userRole === 'manufacturer' && product.routed_to === 'manufacturer') ||
                      (userRole !== 'manufacturer' && product.routed_to === 'admin');
 
@@ -606,6 +692,9 @@ export default function OrdersPage() {
     }
     if (product.product_status === 'in_production') {
       return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">In Production</span>;
+    }
+    if (product.product_status === 'shipped') {
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Shipped</span>;
     }
     
     return (
@@ -631,6 +720,8 @@ export default function OrdersPage() {
       </span>
     );
   };
+
+  const tabCounts = getTabCounts();
 
   if (loading) {
     return (
@@ -699,7 +790,79 @@ export default function OrdersPage() {
           )}
         </div>
 
-        {/* Filters - FIXED: Added text-gray-900 and placeholder-gray-500 */}
+        {/* NEW: Tabs for Manufacturers */}
+        {userRole === 'manufacturer' && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('my_orders')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'my_orders'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Inbox className="w-4 h-4" />
+                My Orders
+                {tabCounts.my_orders !== undefined && tabCounts.my_orders > 0 && (
+                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs">
+                    {tabCounts.my_orders}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('sent_to_admin')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'sent_to_admin'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <SendHorizontal className="w-4 h-4" />
+                Sent to Admin
+                {tabCounts.sent_to_admin !== undefined && tabCounts.sent_to_admin > 0 && (
+                  <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs">
+                    {tabCounts.sent_to_admin}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('in_production')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'in_production'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Factory className="w-4 h-4" />
+                In Production
+                {tabCounts.in_production !== undefined && tabCounts.in_production > 0 && (
+                  <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs">
+                    {tabCounts.in_production}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('shipped')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'shipped'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Truck className="w-4 h-4" />
+                Shipped
+                {tabCounts.shipped !== undefined && tabCounts.shipped > 0 && (
+                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs">
+                    {tabCounts.shipped}
+                  </span>
+                )}
+              </button>
+            </nav>
+          </div>
+        )}
+
+        {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
@@ -720,15 +883,14 @@ export default function OrdersPage() {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
           >
             <option value="all">All Status</option>
-            {userRole !== 'manufacturer' && ( // Hide draft option for manufacturers
-              <option value="draft">Draft</option>
-            )}
+            <option value="draft">Draft</option>
             <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
           </select>
         </div>
       </div>
-{/* Orders Table - Responsive */}
+
+      {/* Orders Table - Responsive (rest of the component remains the same) */}
       <div className="bg-white rounded-lg shadow">
         {/* Mobile View - Cards */}
         <div className="block lg:hidden">
@@ -736,13 +898,11 @@ export default function OrdersPage() {
             const routingStatus = getOrderRoutingStatus(order);
             const isExpanded = expandedOrders.has(order.id);
             const canDelete = canDeleteOrder(order);
-            const orderTotal = calculateOrderTotal(order); // ADDED
+            const orderTotal = calculateOrderTotal(order);
             const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
 
-            // For manufacturers, filter products to only show those routed to them
-            const visibleProducts = userRole === 'manufacturer'
-              ? order.order_products?.filter(p => p.routed_to === 'manufacturer')
-              : order.order_products;
+            // Show all products in expanded view regardless of tab
+            const visibleProducts = order.order_products;
 
             return (
               <div
@@ -785,10 +945,8 @@ export default function OrdersPage() {
                       {visibleProducts && (
                         <div className="text-xs text-gray-400">
                           {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
-                          {userRole === 'manufacturer' && ' assigned to you'}
                         </div>
                       )}
-                      {/* Show order total for admin/super admin */}
                       {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
                         <div className="text-xs font-semibold text-green-600 mt-1">
                           Est. Total: ${orderTotal.toFixed(2)}
@@ -860,7 +1018,7 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {/* Expanded Products - Only show products routed to current user */}
+                {/* Expanded Products */}
                 {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                   <div className="mt-4 pl-4 space-y-2 border-t pt-3">
                     {visibleProducts.map((product) => {
@@ -880,7 +1038,6 @@ export default function OrdersPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2 ml-2">
-                            {/* Price badge FIRST (moved to left) */}
                             {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
                               <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
                                 <DollarSign className="w-3 h-3" />
@@ -938,13 +1095,12 @@ export default function OrdersPage() {
                   const routingStatus = getOrderRoutingStatus(order);
                   const isExpanded = expandedOrders.has(order.id);
                   const canDelete = canDeleteOrder(order);
-                  const orderTotal = calculateOrderTotal(order); // ADDED
+                  const orderTotal = calculateOrderTotal(order);
                   const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
 
-                  // For manufacturers, filter products to only show those routed to them
-                  const visibleProducts = userRole === 'manufacturer'
-                    ? order.order_products?.filter(p => p.routed_to === 'manufacturer')
-                    : order.order_products;
+                  // Show all products in expanded view regardless of tab
+                  const visibleProducts = order.order_products;
+
                   return (
                     <React.Fragment key={order.id}>
                       <tr
@@ -985,7 +1141,6 @@ export default function OrdersPage() {
                               {visibleProducts && (
                                 <div className="text-xs text-gray-400">
                                   {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
-                                  {userRole === 'manufacturer' && ' assigned'}
                                 </div>
                               )}
                             </div>
@@ -1001,13 +1156,12 @@ export default function OrdersPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge status={order.status} />
- </td>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
                             {routingStatus.label}
                           </span>
                         </td>
-                        {/* EST. TOTAL COLUMN - Show for admin/super admin */}
                         {(userRole === 'admin' || userRole === 'super_admin') && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             {orderTotal > 0 && (
@@ -1064,7 +1218,7 @@ export default function OrdersPage() {
                         </td>
                       </tr>
 
-                      {/* Expanded Products Row - Only show products routed to current user */}
+                      {/* Expanded Products Row */}
                       {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                         <tr>
                           <td colSpan={(userRole === 'admin' || userRole === 'super_admin') ? 7 : 6} className="px-6 py-2 bg-gray-50">
@@ -1086,7 +1240,6 @@ export default function OrdersPage() {
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      {/* Price badge FIRST (moved to left) */}
                                       {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
                                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
                                           <DollarSign className="w-3 h-3" />
@@ -1117,7 +1270,9 @@ export default function OrdersPage() {
             <h3 className="mt-2 text-sm font-medium text-gray-900">No orders</h3>
             <p className="mt-1 text-sm text-gray-500">
               {userRole === 'manufacturer' 
-                ? 'No orders have been assigned to you yet'
+                ? activeTab === 'my_orders' 
+                  ? 'No orders need your action right now'
+                  : `No orders in ${activeTab.replace('_', ' ')}`
                 : searchTerm || statusFilter !== 'all' 
                   ? 'Try adjusting your filters'
                   : 'Get started by creating a new order'}

@@ -1,16 +1,22 @@
-// ManufacturerProductCard.tsx - FULLY FIXED - All TypeScript errors resolved
+// ManufacturerProductCard.tsx - WITH MANUFACTURER TOTALS
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
   Package, Calendar, Clock, Lock, Unlock, Send, CheckCircle, 
   XCircle, Loader2, MessageSquare, Save, History, AlertCircle,
   DollarSign, CreditCard, Plane, Ship, Upload, X, Play, File,
-  RotateCcw, FileText, Image, Paperclip, ChevronDown, ChevronRight
+  RotateCcw, FileText, Image, Paperclip, ChevronDown, ChevronRight,
+  Calculator
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../shared/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
+
+// Define the ref type for imperative handle
+export interface ManufacturerProductCardRef {
+  saveAll: () => Promise<boolean>;
+}
 
 interface ManufacturerProductCardProps {
   product: OrderProduct;
@@ -23,11 +29,7 @@ interface ManufacturerProductCardProps {
   hasNewHistory?: boolean;
   manufacturerId?: string | null;
   isSuperAdminView?: boolean;
-}
-
-// Define the ref type for imperative handle
-export interface ManufacturerProductCardRef {
-  saveAll: () => Promise<boolean>;
+  autoCollapse?: boolean;
 }
 
 export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, ManufacturerProductCardProps>(
@@ -41,28 +43,40 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     onViewHistory,
     hasNewHistory = false,
     manufacturerId,
-    isSuperAdminView = false
+    isSuperAdminView = false,
+    autoCollapse = false
   }, ref) {
   const permissions = usePermissions() as any;
   const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
-    
-    // COLLAPSIBLE STATE - Each card manages its own state independently
-    const [isCollapsed, setIsCollapsed] = useState(
-      (product as any).product_status === 'in_production' || (product as any).is_locked
-    );
+
+    // COLLAPSIBLE STATE - Updated to use autoCollapse prop
+    const [isCollapsed, setIsCollapsed] = useState(() => {
+      // Auto-collapse takes priority when there are multiple products
+      if (autoCollapse) return true;
+      
+      // For single products, check status
+      const productStatus = (product as any)?.product_status;
+      
+      // Only auto-collapse for these specific statuses when NOT using autoCollapse
+      return (productStatus === 'in_production' || productStatus === 'in_transit');
+    });
     
     // Auto-collapse when status changes to in_production
     useEffect(() => {
-      if ((product as any).product_status === 'in_production' || (product as any).is_locked) {
+      // Don't override autoCollapse behavior
+      if (autoCollapse) return;
+      
+      const productStatus = (product as any)?.product_status;
+      
+      if (productStatus === 'in_production' || productStatus === 'in_transit') {
         setIsCollapsed(true);
       }
-    }, [(product as any).product_status, (product as any).is_locked]);
+    }, [(product as any)?.product_status, autoCollapse]);
     
     // State for notes
     const [tempNotes, setTempNotes] = useState('');
     const [tempSampleNotes, setTempSampleNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
-    
     // State for tracking if sections have changes
     const [sampleSectionDirty, setSampleSectionDirty] = useState(false);
     const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
@@ -107,6 +121,35 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       shippingAirPrice: (product as any).shipping_air_price?.toString() || '',
       shippingBoatPrice: (product as any).shipping_boat_price?.toString() || ''
     });
+    
+    // Calculate total quantity
+    const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    
+    // CALCULATE MANUFACTURER TOTALS
+    const calculateManufacturerTotal = () => {
+      let total = 0;
+      
+      // Add product price (unit price × quantity)
+      const unitPrice = parseFloat(productPrice) || 0;
+      total += unitPrice * totalQuantity;
+      
+      // Add sample fee if exists
+      const sampleAmount = parseFloat(sampleFee) || 0;
+      total += sampleAmount;
+      
+      // Add selected shipping price
+      if ((product as any).selected_shipping_method === 'air') {
+        const airShipping = parseFloat(shippingAirPrice) || 0;
+        total += airShipping;
+      } else if ((product as any).selected_shipping_method === 'boat') {
+        const boatShipping = parseFloat(shippingBoatPrice) || 0;
+        total += boatShipping;
+      }
+      
+      return total;
+    };
+    
+    const manufacturerTotal = calculateManufacturerTotal();
     
     // Initialize variant notes from items
     useEffect(() => {
@@ -215,8 +258,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       originalValues,
       (product as any).id
     ]);
-    
-    const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
     
     // Get current user information
     const getCurrentUser = () => {
@@ -827,7 +868,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       return `${name}...${ext}`;
     };
 
-    // COLLAPSED HEADER COMPONENT
+    // COLLAPSED HEADER COMPONENT - WITH TOTAL
     const CollapsedHeader = () => (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
@@ -865,6 +906,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     <>
                       <span>•</span>
                       <span>Production: {productionTime}</span>
+                    </>
+                  )}
+                  {/* MANUFACTURER TOTAL IN COLLAPSED VIEW */}
+                  {manufacturerTotal > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-green-600">
+                        Total: ${manufacturerTotal.toFixed(2)}
+                      </span>
                     </>
                   )}
                   {/* Show tracking info if shipped */}
@@ -930,16 +980,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     if (isCollapsed) {
       return <CollapsedHeader />;
     }
-
-    // FULL EXPANDED VIEW (your existing full card content)
+// FULL EXPANDED VIEW WITH MANUFACTURER TOTAL BADGE
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header with Collapse Button */}
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              {/* Collapse Button - Only show when in production */}
-              {((product as any).product_status === 'in_production' || (product as any).is_locked) && (
+              {/* Collapse Button - ALWAYS show when multiple products (autoCollapse=true) */}
+              {autoCollapse && (
                 <button
                   onClick={() => setIsCollapsed(true)}
                   className="p-1 hover:bg-gray-200 rounded transition-colors mt-1"
@@ -956,6 +1005,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
                   <ProductStatusBadge status={displayStatus} />
+                  {/* MANUFACTURER TOTAL BADGE */}
+                  {manufacturerTotal > 0 && (
+                    <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
+                      <Calculator className="w-4 h-4" />
+                      Mfg Total: ${manufacturerTotal.toFixed(2)}
+                    </span>
+                  )}
                 </div>
                 {(product as any).description && (product as any).product?.title && (
                   <p className="text-sm text-gray-600 mt-1">{(product as any).product?.title}</p>
@@ -1014,7 +1070,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* ALL YOUR EXISTING CONTENT SECTIONS BELOW - No changes needed! */}
           {/* Generic Notes Section */}
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
@@ -1054,7 +1109,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* Sample Request Section - CONTINUES UNCHANGED */}
+          {/* Sample Request Section */}
           <div className="mt-3 bg-amber-50 rounded-lg p-4 border border-amber-300">
             <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
               <AlertCircle className="w-4 h-4 mr-2" />
@@ -1210,7 +1265,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <p className="text-xs text-amber-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
                     {pendingSampleFiles.map((file, index) => {
-                      // Generate display name for preview
                       const existingSampleFiles = media.filter((m: any) =>
                         m.file_type === 'sample_image' || m.file_type === 'sample_document'
                       );
@@ -1266,7 +1320,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             )}
           </div>
 
-          {/* REST OF YOUR EXISTING CONTENT - Bulk Order, Variants, etc. */}
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
@@ -1355,7 +1408,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
                     {pendingBulkFiles.map((file, index) => {
-                      // Generate display name for preview
                       const existingBulkFiles = media.filter((m: any) =>
                         m.file_type === 'image' || m.file_type === 'document'
                       );
@@ -1430,23 +1482,37 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* Shipping Options & Pricing - EDITABLE */}
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <h5 className="text-sm font-medium text-gray-700 mb-3">Shipping Options & Pricing</h5>
+            {/* Shipping Options & Pricing */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
+              <h5 className="text-sm font-semibold text-gray-800 mb-3">Shipping Options & Pricing</h5>
               
               {(product as any).selected_shipping_method && (
-                <div className="mb-3 p-2 bg-white rounded border border-blue-300">
-                  <p className="text-xs text-blue-700 mb-1">Client selected:</p>
-                  <div className="flex items-center gap-2">
+                <div className="mb-4 p-3 bg-white rounded-lg border-2 border-blue-400 shadow-sm">
+                  <p className="text-xs font-medium text-blue-700 mb-2">CLIENT SELECTED:</p>
+                  <div className="flex items-center gap-3">
                     {(product as any).selected_shipping_method === 'air' ? (
                       <>
-                        <Plane className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm text-blue-700 font-medium">Air Shipping</span>
+                        <div className="p-2 bg-blue-100 rounded-full">
+                          <Plane className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <span className="text-base font-bold text-blue-800">AIR SHIPPING</span>
+                          {shippingAirPrice && (
+                            <p className="text-sm text-blue-600">Price: ${parseFloat(shippingAirPrice).toFixed(2)}</p>
+                          )}
+                        </div>
                       </>
                     ) : (
                       <>
-                        <Ship className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm text-blue-700 font-medium">Boat Shipping</span>
+                        <div className="p-2 bg-cyan-100 rounded-full">
+                          <Ship className="w-5 h-5 text-cyan-600" />
+                        </div>
+                        <div>
+                          <span className="text-base font-bold text-cyan-800">BOAT SHIPPING</span>
+                          {shippingBoatPrice && (
+                            <p className="text-sm text-cyan-600">Price: ${parseFloat(shippingBoatPrice).toFixed(2)}</p>
+                          )}
+                        </div>
                       </>
                     )}
                   </div>
@@ -1504,9 +1570,49 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
+            {/* MANUFACTURER PRICING SUMMARY */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-300">
+              <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
+                <Calculator className="w-4 h-4 mr-2" />
+                Manufacturing Cost Summary
+              </h5>
+              <div className="space-y-2 text-sm">
+                {productPrice && totalQuantity > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Product: ${parseFloat(productPrice).toFixed(2)} × {totalQuantity} units</span>
+                    <span className="font-semibold text-gray-900">${(parseFloat(productPrice) * totalQuantity).toFixed(2)}</span>
+                  </div>
+                )}
+                {sampleFee && parseFloat(sampleFee) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Sample Fee</span>
+                    <span className="font-semibold text-gray-900">${parseFloat(sampleFee).toFixed(2)}</span>
+                  </div>
+                )}
+                {(product as any).selected_shipping_method && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">
+                      Shipping ({(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'})
+                    </span>
+                    <span className="font-semibold text-gray-900">
+                      ${(product as any).selected_shipping_method === 'air' 
+                        ? (parseFloat(shippingAirPrice) || 0).toFixed(2)
+                        : (parseFloat(shippingBoatPrice) || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
+                <div className="pt-2 border-t border-green-300">
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-green-800">Total Manufacturing Cost</span>
+                    <span className="font-bold text-green-800 text-base">${manufacturerTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Save button for Bulk Section */}
             {bulkSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
+              <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-gray-200">
                 <button
                   onClick={() => {
                     setProductPrice(originalValues.productPrice);
@@ -1603,4 +1709,4 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       </div>
     );
   }
-);
+);   
