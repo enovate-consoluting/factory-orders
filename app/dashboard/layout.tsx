@@ -77,19 +77,23 @@ export default function DashboardLayout({
       router.push('/');
       return;
     }
-    
+
+    let cleanup: (() => void) | undefined;
+
     try {
       const parsedUser = JSON.parse(userData);
       console.log('Logged in user:', parsedUser); // DEBUG
       setUser(parsedUser);
-      
+
       // Load notifications based on role
       if (parsedUser.role === 'manufacturer') {
         console.log('User is manufacturer, loading manufacturer data...'); // DEBUG
-        loadManufacturerData(parsedUser);
+        loadManufacturerData(parsedUser).then((cleanupFn) => {
+          cleanup = cleanupFn;
+        });
       } else if (parsedUser.id) {
         loadNotificationCounts(parsedUser.id);
-        subscribeToNotifications(parsedUser.id);
+        cleanup = subscribeToNotifications(parsedUser.id);
       }
     } catch (error) {
       console.error('Error parsing user data:', error);
@@ -97,35 +101,56 @@ export default function DashboardLayout({
     } finally {
       setLoading(false);
     }
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
   }, [router]);
 
   // Load manufacturer specific data
   const loadManufacturerData = async (user: User) => {
     try {
       console.log('Loading manufacturer data for email:', user.email); // DEBUG
-      
+
       // Get manufacturer ID from manufacturers table using email
       const { data: manufacturer, error: manError } = await supabase
         .from('manufacturers')
         .select('id, name, email')
         .eq('email', user.email)
         .single();
-      
+
       console.log('Manufacturer query result:', manufacturer, 'Error:', manError); // DEBUG
-      
+
       if (!manufacturer) {
         console.error('No manufacturer found for email:', user.email);
         return;
       }
-      
+
       console.log('Found manufacturer ID:', manufacturer.id); // DEBUG
       setManufacturerId(manufacturer.id);
-      
+
       // Load manufacturer notifications
       await loadManufacturerNotifications(manufacturer.id);
-      
-      // Subscribe to real-time updates
-      subscribeToManufacturerNotifications(manufacturer.id);
+
+      // Subscribe to real-time updates and return cleanup function
+      const subscriptionCleanup = subscribeToManufacturerNotifications(manufacturer.id);
+
+      // FALLBACK: Poll for notifications every 5 seconds as backup
+      // This ensures updates even if Realtime has issues
+      console.log('🔄 Setting up polling fallback (every 5s)...');
+      const pollInterval = setInterval(() => {
+        console.log('🔄 Polling for notification updates (fallback)...');
+        loadManufacturerNotifications(manufacturer.id);
+      }, 5000);
+
+      // Return combined cleanup function
+      return () => {
+        console.log('🧹 Cleaning up subscription and polling...');
+        subscriptionCleanup();
+        clearInterval(pollInterval);
+      };
     } catch (error) {
       console.error('Error loading manufacturer data:', error);
     }
@@ -161,15 +186,18 @@ export default function DashboardLayout({
       });
 
       console.log('Notification counts - Total:', notifs?.length || 0, 'Samples:', samples, 'Production:', production, 'Orders:', orders); // DEBUG
+      console.log('Updating notification state with unread count:', notifs?.length || 0); // DEBUG
 
       setNotifications(notifs || []);
-      setNotificationCounts({
+      const newCounts = {
         orders,
         products: 0,
         total: notifs?.length || 0,
         samples,
         production
-      });
+      };
+      console.log('Setting notificationCounts to:', newCounts); // DEBUG
+      setNotificationCounts(newCounts);
     } catch (error) {
       console.error('Error loading manufacturer notifications:', error);
     }
@@ -177,7 +205,7 @@ export default function DashboardLayout({
 
   const subscribeToManufacturerNotifications = (manufacturerId: string) => {
     console.log('Setting up real-time subscription for manufacturer:', manufacturerId); // DEBUG
-    
+
     const channel = supabase
       .channel(`manufacturer-notifications-${manufacturerId}`)
       .on(
@@ -189,15 +217,42 @@ export default function DashboardLayout({
           filter: `manufacturer_id=eq.${manufacturerId}`,
         },
         (payload) => {
-          console.log('New manufacturer notification received:', payload);
+          console.log('✅ INSERT event - New manufacturer notification received:', payload);
           loadManufacturerNotifications(manufacturerId);
         }
       )
-      .subscribe((status) => {
-        console.log('Subscription status:', status); // DEBUG
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'manufacturer_notifications',
+          filter: `manufacturer_id=eq.${manufacturerId}`,
+        },
+        (payload) => {
+          console.log('✅ UPDATE event - Manufacturer notification updated:', payload);
+          console.log('Reloading notifications for manufacturer:', manufacturerId); // DEBUG
+          loadManufacturerNotifications(manufacturerId);
+        }
+      )
+      .subscribe((status, err) => {
+        console.log('📡 Subscription status:', status); // DEBUG
+        if (err) {
+          console.error('❌ Subscription error:', err);
+        }
+        // if (status === 'SUBSCRIBED') {
+        //   console.log('✅ Successfully subscribed to manufacturer notifications!');
+        // } else if (status === 'CHANNEL_ERROR') {
+        //   console.error('❌ Channel error - subscription failed');
+        // } else if (status === 'TIMED_OUT') {
+        //   console.error('❌ Subscription timed out');
+        // } else if (status === 'CLOSED') {
+        //   console.log('⚠️ Subscription closed');
+        // }
       });
 
     return () => {
+      console.log('🧹 Cleaning up subscription for manufacturer:', manufacturerId);
       supabase.removeChannel(channel);
     };
   };
@@ -755,6 +810,7 @@ function SidebarContent({
           let notificationCount = 0;
           if (user?.role === 'manufacturer' && item.href === '/dashboard/orders') {
             notificationCount = notificationCounts.total;
+            console.log('Orders menu badge count for manufacturer:', notificationCount); // DEBUG
           } else if (item.notificationKey) {
             notificationCount = notificationCounts[item.notificationKey as keyof NotificationCount] || 0;
           }

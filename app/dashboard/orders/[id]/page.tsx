@@ -149,23 +149,53 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       router.push('/');
       return;
     }
-    
+
     // Get manufacturer ID if user is a manufacturer
     if (userRole === 'manufacturer') {
       fetchManufacturerId(JSON.parse(userData));
     }
-    
+
     // Load viewed history from localStorage
     const viewed = localStorage.getItem(`viewedHistory_${id}`);
     if (viewed) {
       setViewedHistory(JSON.parse(viewed));
     }
-    
+
     // NEW: Fetch available clients for editing
     if (userRole === 'admin' || userRole === 'super_admin') {
       fetchAvailableClients();
     }
   }, [router, userRole, id]);
+
+  // Auto-mark manufacturer notifications as read when order is viewed
+  useEffect(() => {
+    const markOrderNotificationsAsRead = async () => {
+      if (userRole === 'manufacturer' && manufacturerId && id) {
+        try {
+          console.log('Marking notifications as read for order:', id); // DEBUG
+
+          // Mark all unread manufacturer notifications for this order as read
+          const { data, error } = await supabase
+            .from('manufacturer_notifications')
+            .update({ is_read: true })
+            .eq('manufacturer_id', manufacturerId)
+            .eq('order_id', id)
+            .eq('is_read', false)
+            .select();
+
+          if (error) {
+            console.error('Error marking notifications as read:', error);
+          } else {
+            console.log('Successfully marked', data?.length || 0, 'notifications as read'); // DEBUG
+          }
+        } catch (err) {
+          console.error('Error in markOrderNotificationsAsRead:', err);
+        }
+      }
+    };
+
+    markOrderNotificationsAsRead();
+  }, [userRole, manufacturerId, id]);
 
   // Load finance margins from database
   useEffect(() => {

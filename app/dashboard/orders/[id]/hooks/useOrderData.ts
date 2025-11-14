@@ -116,8 +116,7 @@ export const useOrderData = (orderId: string) => {
             *,
             product:products(*),
             order_items(*),
-            order_media(*),
-            audit_log(*)
+            order_media(*)
           `)
           .eq('order_id', currentOrderId);
         
@@ -188,31 +187,40 @@ export const useOrderData = (orderId: string) => {
             order_products: sortedProducts
           }));
         } else {
-          // Filter audit_log to only include relevant items
-          const productsWithFilteredAudit = productsData?.map(product => ({
-            ...product,
-            audit_log: product.audit_log?.filter((log: any) => 
-              log.target_id === product.id && log.target_type === 'order_product'
-            ) || [],
-            // Sort order_items within each product for consistency
-            order_items: product.order_items?.sort((a: any, b: any) => 
-              (a.variant_combo || '').localeCompare(b.variant_combo || '')
-            ) || []
-          }));
-          
+          // Fetch audit_log separately for each product
+          const productsWithAudit = await Promise.all(
+            (productsData || []).map(async (product: any) => {
+              // Get audit log for this product
+              const { data: auditLog } = await supabase
+                .from('audit_log')
+                .select('*')
+                .eq('target_id', product.id)
+                .eq('target_type', 'order_product');
+
+              return {
+                ...product,
+                audit_log: auditLog || [],
+                // Sort order_items within each product for consistency
+                order_items: product.order_items?.sort((a: any, b: any) =>
+                  (a.variant_combo || '').localeCompare(b.variant_combo || '')
+                ) || []
+              };
+            })
+          );
+
           // SORT PRODUCTS BY product_order_number to maintain consistent order
-          const sortedProducts = productsWithFilteredAudit?.sort((a, b) => {
+          const sortedProducts = productsWithAudit?.sort((a, b) => {
             // First try to sort by product_order_number (PRD-0001, PRD-0002, etc.)
             if (a.product_order_number && b.product_order_number) {
               return a.product_order_number.localeCompare(b.product_order_number);
             }
-            
+
             // Fallback to created_at if product_order_number is missing
             const dateA = new Date(a.created_at || 0).getTime();
             const dateB = new Date(b.created_at || 0).getTime();
             return dateA - dateB;
           }) || [];
-          
+
           setOrder((prevOrder: any) => ({
             ...prevOrder,
             order_products: sortedProducts
