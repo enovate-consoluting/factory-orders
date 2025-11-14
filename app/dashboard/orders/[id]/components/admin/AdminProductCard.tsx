@@ -401,31 +401,73 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         }
 
         if (pendingSampleFiles.length > 0) {
+          console.log('Starting sample file uploads...', pendingSampleFiles.length, 'files');
+
+          // Count existing sample files to get the next counter
+          const existingSampleFiles = media.filter((m: any) =>
+            m.file_type === 'sample_image' || m.file_type === 'sample_document'
+          );
+          let sampleFileCounter = existingSampleFiles.length + 1;
+
           for (const file of pendingSampleFiles) {
-            const timestamp = Date.now();
-            const randomStr = Math.random().toString(36).substring(7);
-            const fileExt = file.name.split('.').pop();
-            const fileName = `sample-${timestamp}-${randomStr}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${fileName}`;
-            
-            const { error: uploadError } = await supabase.storage
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
+
+            // Create display name using product code and sequential number
+            const displayName = `${productOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`;
+            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
+
+            console.log('Uploading file to storage:', filePath);
+            const { data: uploadData, error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(filePath, file);
+              .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false
+              });
 
-            if (!uploadError) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath);
+            if (uploadError) {
+              console.error('Storage upload error:', uploadError);
+              console.error('Error details:', {
+                message: uploadError.message,
+                statusCode: (uploadError as any).statusCode,
+                error: (uploadError as any).error,
+                cause: (uploadError as any).cause
+              });
+              alert(`Failed to upload ${file.name}: ${uploadError.message}\n\nPlease check:\n1. Storage bucket 'order-media' exists\n2. You have upload permissions\n3. File type is allowed`);
+              continue;
+            }
+            console.log('File uploaded successfully:', uploadData);
 
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: (product as any).id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-                  uploaded_by: user.id,
-                  original_filename: file.name
-                });
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath);
+
+            console.log('File uploaded, inserting into order_media table:', {
+              order_product_id: (product as any).id,
+              file_url: publicUrl,
+              file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
+              original_filename: file.name,
+              display_name: displayName
+            });
+
+            const { data: insertData, error: insertError } = await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: (product as any).id,
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
+                uploaded_by: user.id,
+                original_filename: file.name,
+                display_name: displayName
+              })
+              .select();
+
+            if (insertError) {
+              console.error('Database insert error:', insertError);
+              alert(`Failed to save ${file.name} to database: ${insertError.message}`);
+            } else {
+              console.log('File saved to database successfully:', insertData);
+              sampleFileCounter++;
             }
           }
         }
@@ -476,31 +518,73 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         }
 
         if (pendingBulkFiles.length > 0) {
+          console.log('Starting bulk file uploads...', pendingBulkFiles.length, 'files');
+
+          // Count existing bulk/product files to get the next counter
+          const existingBulkFiles = media.filter((m: any) =>
+            m.file_type === 'image' || m.file_type === 'document'
+          );
+          let bulkFileCounter = existingBulkFiles.length + 1;
+
           for (const file of pendingBulkFiles) {
-            const timestamp = Date.now();
-            const randomStr = Math.random().toString(36).substring(7);
-            const fileExt = file.name.split('.').pop();
-            const fileName = `bulk-${timestamp}-${randomStr}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${fileName}`;
-            
-            const { error: uploadError } = await supabase.storage
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
+
+            // Create display name using product code and sequential number
+            const displayName = `${productOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`;
+            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
+
+            console.log('Uploading file to storage:', filePath);
+            const { data: uploadData, error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(filePath, file);
+              .upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false
+              });
 
-            if (!uploadError) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath);
+            if (uploadError) {
+              console.error('Storage upload error:', uploadError);
+              console.error('Error details:', {
+                message: uploadError.message,
+                statusCode: (uploadError as any).statusCode,
+                error: (uploadError as any).error,
+                cause: (uploadError as any).cause
+              });
+              alert(`Failed to upload ${file.name}: ${uploadError.message}\n\nPlease check:\n1. Storage bucket 'order-media' exists\n2. You have upload permissions\n3. File type is allowed`);
+              continue;
+            }
+            console.log('File uploaded successfully:', uploadData);
 
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: (product as any).id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'image' : 'document',
-                  uploaded_by: user.id,
-                  original_filename: file.name
-                });
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath);
+
+            console.log('File uploaded, inserting into order_media table:', {
+              order_product_id: (product as any).id,
+              file_url: publicUrl,
+              file_type: file.type.startsWith('image/') ? 'image' : 'document',
+              original_filename: file.name,
+              display_name: displayName
+            });
+
+            const { data: insertData, error: insertError } = await supabase
+              .from('order_media')
+              .insert({
+                order_product_id: (product as any).id,
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                uploaded_by: user.id,
+                original_filename: file.name,
+                display_name: displayName
+              })
+              .select();
+
+            if (insertError) {
+              console.error('Database insert error:', insertError);
+              alert(`Failed to save ${file.name} to database: ${insertError.message}`);
+            } else {
+              console.log('File saved to database successfully:', insertData);
+              bulkFileCounter++;
             }
           }
         }
@@ -1007,10 +1091,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       <button
                         onClick={() => handleFileClick(file.file_url)}
                         className="px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-700 hover:bg-amber-50 hover:border-amber-300 transition-colors flex items-center gap-1"
-                        title={file.original_filename || 'Sample File'}
+                        title={file.display_name || file.original_filename || 'Sample File'}
                       >
                         <Paperclip className="w-3 h-3" />
-                        <span>{truncateFilename(file.original_filename || 'File', 12)}</span>
+                        <span>{file.display_name || file.original_filename || 'Sample File'}</span>
                       </button>
                       <button
                         onClick={() => handleDeleteMedia(file.id)}
@@ -1028,21 +1112,31 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 <div className="mt-2">
                   <p className="text-xs text-amber-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
-                    {pendingSampleFiles.map((file, index) => (
-                      <div key={index} className="group relative inline-flex">
-                        <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800 flex items-center gap-1">
-                          <Upload className="w-3 h-3" />
-                          <span>{truncateFilename(file.name, 12)}</span>
+                    {pendingSampleFiles.map((file, index) => {
+                      // Generate display name for preview
+                      const existingSampleFiles = media.filter((m: any) =>
+                        m.file_type === 'sample_image' || m.file_type === 'sample_document'
+                      );
+                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
+                      const displayName = `${productOrderNumber}-sample-${String(existingSampleFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
+
+                      return (
+                        <div key={index} className="group relative inline-flex">
+                          <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800 flex items-center gap-1">
+                            <Upload className="w-3 h-3" />
+                            <span>{displayName}</span>
+                          </div>
+                          <button
+                            onClick={() => removePendingSampleFile(index)}
+                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
+                            title="Remove file"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => removePendingSampleFile(index)}
-                          className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                          title="Remove file"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1135,10 +1229,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       <button
                         onClick={() => handleFileClick(file.file_url)}
                         className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center gap-1"
-                        title={file.original_filename || 'Bulk File'}
+                        title={file.display_name || file.original_filename || 'Product File'}
                       >
                         <Paperclip className="w-3 h-3" />
-                        <span>{truncateFilename(file.original_filename || 'File', 12)}</span>
+                        <span>{file.display_name || file.original_filename || 'Product File'}</span>
                       </button>
                       <button
                         onClick={() => handleDeleteMedia(file.id)}
@@ -1156,21 +1250,31 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 <div className="mt-2">
                   <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
-                    {pendingBulkFiles.map((file, index) => (
-                      <div key={index} className="group relative inline-flex">
-                        <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
-                          <Upload className="w-3 h-3" />
-                          <span>{truncateFilename(file.name, 12)}</span>
+                    {pendingBulkFiles.map((file, index) => {
+                      // Generate display name for preview
+                      const existingBulkFiles = media.filter((m: any) =>
+                        m.file_type === 'image' || m.file_type === 'document'
+                      );
+                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
+                      const displayName = `${productOrderNumber}-bulk-${String(existingBulkFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
+
+                      return (
+                        <div key={index} className="group relative inline-flex">
+                          <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
+                            <Upload className="w-3 h-3" />
+                            <span>{displayName}</span>
+                          </div>
+                          <button
+                            onClick={() => removePendingBulkFile(index)}
+                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
+                            title="Remove file"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
                         </div>
-                        <button
-                          onClick={() => removePendingBulkFile(index)}
-                          className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                          title="Remove file"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

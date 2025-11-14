@@ -51,11 +51,15 @@ export default function OrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  
+
   // State for finance margins
   const [productMargin, setProductMargin] = useState(80); // Default 80%
   const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
   const [marginsLoaded, setMarginsLoaded] = useState(false);
+
+  // State for tracking orders with unread notifications
+  const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
+  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -63,11 +67,103 @@ export default function OrdersPage() {
       router.push('/');
       return;
     }
- const user = JSON.parse(userData);
+    const user = JSON.parse(userData);
     setUserRole(user.role);
     fetchOrders(user);
     loadMargins(); // Load margins for price calculations
+
+    // Load unread notifications for manufacturer
+    let unsubscribe: (() => void) | undefined;
+    if (user.role === 'manufacturer') {
+      loadManufacturerData(user).then(cleanup => {
+        unsubscribe = cleanup;
+      });
+    }
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [router]);
+
+  // Load manufacturer data and unread notifications
+  const loadManufacturerData = async (user: any): Promise<(() => void) | undefined> => {
+    try {
+      // Get manufacturer ID
+      const { data: manufacturer } = await supabase
+        .from('manufacturers')
+        .select('id')
+        .eq('email', user.email)
+        .single();
+
+      if (!manufacturer) return undefined;
+
+      setManufacturerId(manufacturer.id);
+
+      // Load unread notifications
+      await loadUnreadNotifications(manufacturer.id);
+
+      // Subscribe to real-time updates and return cleanup function
+      return subscribeToNotificationUpdates(manufacturer.id);
+    } catch (error) {
+      console.error('Error loading manufacturer data:', error);
+      return undefined;
+    }
+  };
+
+  // Load unread notifications for manufacturer
+  const loadUnreadNotifications = async (manufacturerId: string) => {
+    try {
+      console.log('Loading unread notifications for manufacturer:', manufacturerId);
+      const { data: unreadNotifs } = await supabase
+        .from('manufacturer_notifications')
+        .select('order_id')
+        .eq('manufacturer_id', manufacturerId)
+        .eq('is_read', false);
+
+      console.log('Unread notifications:', unreadNotifs);
+
+      if (unreadNotifs) {
+        const unreadOrderIds = new Set(unreadNotifs.map(n => n.order_id));
+        console.log('Setting unread order IDs:', unreadOrderIds);
+        setOrdersWithUnreadNotifications(unreadOrderIds);
+      }
+    } catch (error) {
+      console.error('Error loading unread notifications:', error);
+    }
+  };
+
+  // Subscribe to notification changes
+  const subscribeToNotificationUpdates = (manufacturerId: string): (() => void) => {
+    console.log('Subscribing to notification updates for manufacturer:', manufacturerId);
+
+    const channel = supabase
+      .channel(`orders-page-notifications-${manufacturerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'manufacturer_notifications',
+          filter: `manufacturer_id=eq.${manufacturerId}`,
+        },
+        (payload) => {
+          console.log('Notification change detected on orders page:', payload);
+          // Reload unread notifications when any change happens
+          loadUnreadNotifications(manufacturerId);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Orders page notification subscription status:', status);
+      });
+
+    return () => {
+      console.log('Cleaning up orders page notification subscription');
+      supabase.removeChannel(channel);
+    };
+  };
 
   useEffect(() => {
     filterOrders();
@@ -641,16 +737,21 @@ export default function OrdersPage() {
             const isExpanded = expandedOrders.has(order.id);
             const canDelete = canDeleteOrder(order);
             const orderTotal = calculateOrderTotal(order); // ADDED
-            
+            const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
+
             // For manufacturers, filter products to only show those routed to them
-            const visibleProducts = userRole === 'manufacturer' 
-              ? order.order_products?.filter(p => p.routed_to === 'manufacturer') 
+            const visibleProducts = userRole === 'manufacturer'
+              ? order.order_products?.filter(p => p.routed_to === 'manufacturer')
               : order.order_products;
-            
+
             return (
-              <div 
-                key={order.id} 
-                className="border-b border-gray-200 p-4 cursor-pointer"
+              <div
+                key={order.id}
+                className={`border-b border-gray-200 p-4 cursor-pointer transition-all ${
+                  hasUnreadNotification
+                    ? 'bg-blue-50 border-l-4 border-l-blue-500 shadow-sm'
+                    : ''
+                }`}
                 onDoubleClick={() => navigateToOrder(order.id)}
               >
                 {/* Order Header */}
@@ -672,8 +773,11 @@ export default function OrdersPage() {
                       </button>
                     )}
                     <div>
-                      <div className="font-medium text-gray-900">
+                      <div className="font-medium text-gray-900 flex items-center gap-2">
                         {formatOrderNumber(order.order_number)}
+                        {hasUnreadNotification && (
+                          <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
+                        )}
                       </div>
                       {order.order_name && (
                         <div className="text-xs text-gray-500">{order.order_name}</div>
@@ -835,15 +939,20 @@ export default function OrdersPage() {
                   const isExpanded = expandedOrders.has(order.id);
                   const canDelete = canDeleteOrder(order);
                   const orderTotal = calculateOrderTotal(order); // ADDED
-                  
+                  const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
+
                   // For manufacturers, filter products to only show those routed to them
-                  const visibleProducts = userRole === 'manufacturer' 
-                    ? order.order_products?.filter(p => p.routed_to === 'manufacturer') 
+                  const visibleProducts = userRole === 'manufacturer'
+                    ? order.order_products?.filter(p => p.routed_to === 'manufacturer')
                     : order.order_products;
- return (
+                  return (
                     <React.Fragment key={order.id}>
-                      <tr 
-                        className="hover:bg-gray-50 cursor-pointer"
+                      <tr
+                        className={`hover:bg-gray-50 cursor-pointer transition-all ${
+                          hasUnreadNotification
+                            ? 'bg-blue-50 border-l-4 border-l-blue-500'
+                            : ''
+                        }`}
                         onDoubleClick={() => navigateToOrder(order.id)}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -864,8 +973,11 @@ export default function OrdersPage() {
                               </button>
                             )}
                             <div>
-                              <div className="text-sm font-medium text-gray-900">
+                              <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
                                 {formatOrderNumber(order.order_number)}
+                                {hasUnreadNotification && (
+                                  <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
+                                )}
                               </div>
                               {order.order_name && (
                                 <div className="text-xs text-gray-500">{order.order_name}</div>
