@@ -774,7 +774,6 @@ function SidebarContent({
             <Bell className="w-4 h-4 text-yellow-600" />
             <span className="text-sm font-medium text-yellow-800">
               You have {notificationCounts.total} new notification{notificationCounts.total > 1 ? 's' : ''}
-              {console.log('Rendering notification banner with count:', notificationCounts.total) || ''}
             </span>
           </div>
           <div className="space-y-1 text-xs text-yellow-700">
