@@ -8,7 +8,7 @@ import {
   Plus, Search, Filter, Eye, Package, Users, 
   Calendar, ChevronRight, Edit, Building,
   ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign,
-  Inbox, SendHorizontal, Factory, Truck
+  Inbox, SendHorizontal, Factory, Truck, CheckCircle
 } from 'lucide-react';
 import { StatusBadge } from './[id]/components/shared/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -42,7 +42,7 @@ interface Order {
   }>;
 }
 
-type ManufacturerTab = 'my_orders' | 'sent_to_admin' | 'in_production' | 'shipped';
+type TabType = 'my_orders' | 'sent_to_other' | 'approved_for_production' | 'in_production' | 'shipped';
 
 export default function OrdersPage() {
   const router = useRouter();
@@ -56,8 +56,8 @@ export default function OrdersPage() {
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
 
-  // NEW: Tab state for manufacturers AND admins
-  const [activeTab, setActiveTab] = useState<ManufacturerTab>('my_orders');
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TabType>('my_orders');
 
   // State for finance margins
   const [productMargin, setProductMargin] = useState(80); // Default 80%
@@ -123,18 +123,14 @@ export default function OrdersPage() {
   // Load unread notifications for manufacturer
   const loadUnreadNotifications = async (manufacturerId: string) => {
     try {
-      console.log('Loading unread notifications for manufacturer:', manufacturerId);
       const { data: unreadNotifs } = await supabase
         .from('manufacturer_notifications')
         .select('order_id')
         .eq('manufacturer_id', manufacturerId)
         .eq('is_read', false);
 
-      console.log('Unread notifications:', unreadNotifs);
-
       if (unreadNotifs) {
         const unreadOrderIds = new Set(unreadNotifs.map(n => n.order_id));
-        console.log('Setting unread order IDs:', unreadOrderIds);
         setOrdersWithUnreadNotifications(unreadOrderIds);
       }
     } catch (error) {
@@ -144,8 +140,6 @@ export default function OrdersPage() {
 
   // Subscribe to notification changes
   const subscribeToNotificationUpdates = (manufacturerId: string): (() => void) => {
-    console.log('Subscribing to notification updates for manufacturer:', manufacturerId);
-
     const channel = supabase
       .channel(`orders-page-notifications-${manufacturerId}`)
       .on(
@@ -157,17 +151,12 @@ export default function OrdersPage() {
           filter: `manufacturer_id=eq.${manufacturerId}`,
         },
         (payload) => {
-          console.log('Notification change detected on orders page:', payload);
-          // Reload unread notifications when any change happens
           loadUnreadNotifications(manufacturerId);
         }
       )
-      .subscribe((status) => {
-        console.log('Orders page notification subscription status:', status);
-      });
+      .subscribe();
 
     return () => {
-      console.log('Cleaning up orders page notification subscription');
       supabase.removeChannel(channel);
     };
   };
@@ -340,37 +329,81 @@ export default function OrdersPage() {
     }
   };
 
-  // Filter orders based on tab for manufacturers AND admins
+  // Filter orders based on tab - FIXED FOR ADMIN/MANUFACTURER DIFFERENCES
   const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
-    if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') {
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isManufacturerUser = userRole === 'manufacturer';
+    
+    // Skip filtering for other roles
+    if (!isAdminUser && !isManufacturerUser) {
       return ordersToFilter;
     }
 
     switch (activeTab) {
       case 'my_orders':
-        // Orders with ANY products still routed to manufacturer
+        if (isAdminUser) {
+          // Admin: Show orders with products routed to ADMIN
+          return ordersToFilter.filter(order => {
+            if (!order.order_products || order.order_products.length === 0) return false;
+            return order.order_products.some(p => 
+              p.routed_to === 'admin' && 
+              p.product_status !== 'approved_for_production' &&
+              p.product_status !== 'in_production' && 
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
+          });
+        } else {
+          // Manufacturer: Show orders with products routed to MANUFACTURER
+          return ordersToFilter.filter(order => {
+            if (!order.order_products || order.order_products.length === 0) return false;
+            return order.order_products.some(p => 
+              p.routed_to === 'manufacturer' && 
+              p.product_status !== 'approved_for_production' &&
+              p.product_status !== 'in_production' && 
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
+          });
+        }
+
+      case 'sent_to_other':
+        if (isAdminUser) {
+          // Admin: Show orders sent to MANUFACTURER
+          return ordersToFilter.filter(order => {
+            if (!order.order_products || order.order_products.length === 0) return false;
+            const hasProductsRoutedToManufacturer = order.order_products.some(p => p.routed_to === 'manufacturer');
+            const hasNoProductsWithAdmin = !order.order_products.some(p => 
+              p.routed_to === 'admin' && 
+              p.product_status !== 'in_production' && 
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
+            return hasProductsRoutedToManufacturer && hasNoProductsWithAdmin;
+          });
+        } else {
+          // Manufacturer: Show orders sent to ADMIN
+          return ordersToFilter.filter(order => {
+            if (!order.order_products || order.order_products.length === 0) return false;
+            const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
+            const hasNoProductsWithManufacturer = !order.order_products.some(p => 
+              p.routed_to === 'manufacturer' && 
+              p.product_status !== 'in_production' && 
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
+            return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
+          });
+        }
+
+      case 'approved_for_production':
+        // Show orders with products approved for production
         return ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
           return order.order_products.some(p => 
-            p.routed_to === 'manufacturer' && 
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
+            p.product_status === 'approved_for_production' || 
+            p.product_status === 'ready_for_production'
           );
-        });
-
-      case 'sent_to_admin':
-        // Orders where ALL products are routed to admin (but not shipped/completed)
-        return ordersToFilter.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
-          const hasNoProductsWithManufacturer = !order.order_products.some(p => 
-            p.routed_to === 'manufacturer' && 
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
-          );
-          return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
         });
 
       case 'in_production':
@@ -415,35 +448,99 @@ export default function OrdersPage() {
     setFilteredOrders(filtered);
   };
 
-  // Get tab counts for manufacturers AND admins
+  // Get tab counts - FIXED FOR ADMIN/MANUFACTURER
   const getTabCounts = () => {
-    // Enable for admins and super admins too
-    if (userRole !== 'manufacturer' && userRole !== 'admin' && userRole !== 'super_admin') return {};
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isManufacturerUser = userRole === 'manufacturer';
     
-    return {
-      my_orders: getTabFilteredOrders(orders.filter(o => statusFilter === 'all' || o.status === statusFilter)).length,
-      sent_to_admin: orders.filter(order => {
-        if (!order.order_products || order.order_products.length === 0) return false;
-        const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
-        const hasNoProductsWithManufacturer = !order.order_products.some(p => 
-          p.routed_to === 'manufacturer' && 
-          p.product_status !== 'in_production' && 
-          p.product_status !== 'shipped' &&
-          p.product_status !== 'completed'
-        );
-        return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
-      }).length,
-      in_production: orders.filter(order => {
-        if (!order.order_products || order.order_products.length === 0) return false;
-        return order.order_products.some(p => p.product_status === 'in_production');
-      }).length,
-      shipped: orders.filter(order => {
-        if (!order.order_products || order.order_products.length === 0) return false;
-        return order.order_products.some(p => 
-          p.product_status === 'shipped' || p.product_status === 'completed'
-        );
-      }).length
-    };
+    if (!isAdminUser && !isManufacturerUser) return {};
+    
+    const baseOrders = orders.filter(o => statusFilter === 'all' || o.status === statusFilter);
+    
+    if (isAdminUser) {
+      return {
+        my_orders: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.routed_to === 'admin' && 
+            p.product_status !== 'approved_for_production' &&
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+        }).length,
+        sent_to_other: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          const hasProductsRoutedToManufacturer = order.order_products.some(p => p.routed_to === 'manufacturer');
+          const hasNoProductsWithAdmin = !order.order_products.some(p => 
+            p.routed_to === 'admin' && 
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+          return hasProductsRoutedToManufacturer && hasNoProductsWithAdmin;
+        }).length,
+        approved_for_production: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'approved_for_production' || 
+            p.product_status === 'ready_for_production'
+          );
+        }).length,
+        in_production: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => p.product_status === 'in_production');
+        }).length,
+        shipped: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'shipped' || p.product_status === 'completed'
+          );
+        }).length
+      };
+    } else {
+      // Manufacturer counts
+      return {
+        my_orders: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.routed_to === 'manufacturer' && 
+            p.product_status !== 'approved_for_production' &&
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+        }).length,
+        sent_to_other: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
+          const hasNoProductsWithManufacturer = !order.order_products.some(p => 
+            p.routed_to === 'manufacturer' && 
+            p.product_status !== 'in_production' && 
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed'
+          );
+          return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
+        }).length,
+        approved_for_production: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'approved_for_production' || 
+            p.product_status === 'ready_for_production'
+          );
+        }).length,
+        in_production: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => p.product_status === 'in_production');
+        }).length,
+        shipped: baseOrders.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'shipped' || p.product_status === 'completed'
+          );
+        }).length
+      };
+    }
   };
 
   const toggleOrderExpansion = (orderId: string) => {
@@ -611,75 +708,75 @@ export default function OrdersPage() {
     }
 
     const products = order.order_products;
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isManufacturerUser = userRole === 'manufacturer';
     
-    // For manufacturers in different tabs, show relevant info
-    if (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin') {
-      if (activeTab === 'my_orders') {
-        const manufacturerProducts = products.filter(p => 
-          p.routed_to === 'manufacturer' && 
-          p.product_status !== 'in_production' && 
-          p.product_status !== 'shipped'
-        );
-        if (manufacturerProducts.length > 0) {
-          return { 
-            status: 'with_manufacturer', 
-            label: `${manufacturerProducts.length} Need Action`, 
-            color: 'indigo' 
-          };
-        }
-      } else if (activeTab === 'sent_to_admin') {
-        const adminProducts = products.filter(p => p.routed_to === 'admin');
-        return { 
-          status: 'with_admin', 
-          label: `${adminProducts.length} With Admin`, 
-          color: 'purple' 
-        };
-      } else if (activeTab === 'in_production') {
-        const inProdProducts = products.filter(p => p.product_status === 'in_production');
-        return { 
-          status: 'in_production', 
-          label: `${inProdProducts.length} In Production`, 
-          color: 'blue' 
-        };
-      } else if (activeTab === 'shipped') {
-        const shippedProducts = products.filter(p => 
-          p.product_status === 'shipped' || p.product_status === 'completed'
-        );
-        return { 
-          status: 'shipped', 
-          label: `${shippedProducts.length} Shipped`, 
-          color: 'green' 
-        };
-      }
-    }
-    
-    // Default status for all roles
-    const allWithAdmin = products.every(p => p.routed_to === 'admin');
-    const allWithManufacturer = products.every(p => p.routed_to === 'manufacturer');
-    const allCompleted = products.every(p => p.product_status === 'completed');
-    const allInProduction = products.every(p => p.product_status === 'in_production');
-
-    if (allCompleted) {
-      return { status: 'completed', label: 'All Completed', color: 'green' };
-    }
-    if (allInProduction) {
-      return { status: 'in_production', label: 'All In Production', color: 'blue' };
-    }
-    if (allWithAdmin) {
-      return { status: 'all_with_admin', label: 'All With Admin', color: 'purple' };
-    }
-    if (allWithManufacturer) {
-      return { status: 'all_with_manufacturer', label: 'All With Manufacturer', color: 'indigo' };
-    }
-
-    // Count where products are
+    // Count product statuses
     const withAdmin = products.filter(p => p.routed_to === 'admin').length;
     const withManufacturer = products.filter(p => p.routed_to === 'manufacturer').length;
+    const approvedForProduction = products.filter(p => 
+      p.product_status === 'approved_for_production' || 
+      p.product_status === 'ready_for_production'
+    ).length;
+    const inProduction = products.filter(p => p.product_status === 'in_production').length;
+    const shipped = products.filter(p => 
+      p.product_status === 'shipped' || p.product_status === 'completed'
+    ).length;
     
+    // Return status based on tab and counts
+    if (activeTab === 'my_orders') {
+      if (isAdminUser) {
+        return { 
+          status: 'with_admin', 
+          label: `${withAdmin} With Admin`, 
+          color: 'purple' 
+        };
+      } else {
+        return { 
+          status: 'with_manufacturer', 
+          label: `${withManufacturer} Need Action`, 
+          color: 'indigo' 
+        };
+      }
+    } else if (activeTab === 'sent_to_other') {
+      if (isAdminUser) {
+        return { 
+          status: 'with_manufacturer', 
+          label: `${withManufacturer} With Manufacturer`, 
+          color: 'indigo' 
+        };
+      } else {
+        return { 
+          status: 'with_admin', 
+          label: `${withAdmin} With Admin`, 
+          color: 'purple' 
+        };
+      }
+    } else if (activeTab === 'approved_for_production') {
+      return { 
+        status: 'approved', 
+        label: `${approvedForProduction} Approved`, 
+        color: 'green' 
+      };
+    } else if (activeTab === 'in_production') {
+      return { 
+        status: 'in_production', 
+        label: `${inProduction} In Production`, 
+        color: 'blue' 
+      };
+    } else if (activeTab === 'shipped') {
+      return { 
+        status: 'shipped', 
+        label: `${shipped} Shipped`, 
+        color: 'green' 
+      };
+    }
+    
+    // Default status
     return { 
-      status: 'split', 
-      label: `Split (${withAdmin} Admin / ${withManufacturer} Mfr)`, 
-      color: 'yellow' 
+      status: 'mixed', 
+      label: `${products.length} Products`, 
+      color: 'gray' 
     };
   };
 
@@ -690,6 +787,9 @@ export default function OrdersPage() {
 
     if (product.product_status === 'completed') {
       return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Completed</span>;
+    }
+    if (product.product_status === 'approved_for_production') {
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Approved</span>;
     }
     if (product.product_status === 'in_production') {
       return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">In Production</span>;
@@ -812,18 +912,34 @@ export default function OrdersPage() {
                 )}
               </button>
               <button
-                onClick={() => setActiveTab('sent_to_admin')}
+                onClick={() => setActiveTab('sent_to_other')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                  activeTab === 'sent_to_admin'
+                  activeTab === 'sent_to_other'
                     ? 'border-purple-500 text-purple-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
                 <SendHorizontal className="w-4 h-4" />
-                Sent to Admin
-                {tabCounts.sent_to_admin !== undefined && tabCounts.sent_to_admin > 0 && (
+                {userRole === 'manufacturer' ? 'Sent to Admin' : 'Sent to Manufacturer'}
+                {tabCounts.sent_to_other !== undefined && tabCounts.sent_to_other > 0 && (
                   <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs">
-                    {tabCounts.sent_to_admin}
+                    {tabCounts.sent_to_other}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('approved_for_production')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'approved_for_production'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" />
+                Approved for Production
+                {tabCounts.approved_for_production !== undefined && tabCounts.approved_for_production > 0 && (
+                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs">
+                    {tabCounts.approved_for_production}
                   </span>
                 )}
               </button>
@@ -883,10 +999,11 @@ export default function OrdersPage() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
           >
-            <option value="all">All Status</option>
+            <option value="all">All Order Status</option>
             <option value="draft">Draft</option>
             <option value="in_progress">In Progress</option>
             <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>
