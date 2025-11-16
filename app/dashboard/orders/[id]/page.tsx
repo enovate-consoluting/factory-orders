@@ -1,3 +1,11 @@
+/**
+ * Order Detail Page - /dashboard/orders/[id]
+ * Main order details view with products, routing, and status management
+ * Shows all products regardless of routing status (no filtering)
+ * Roles: Admin, Super Admin, Manufacturer, Client
+ * Last Modified: December 2024
+ */
+
 'use client';
 
 import { use, useEffect, useState, useRef } from 'react';
@@ -704,13 +712,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return currentCount > viewedCount;
   };
 
-  // Get all products before filtering
+  // FIXED: Get all products - NO MORE FILTERING BY routed_to
   const getAllProducts = () => {
     if (!order?.order_products) return [];
     
-    const isManufacturer = userRole === 'manufacturer';
-    const isTeamMember = userRole !== null && userRole === 'manufacturer_team_member';
-    const isSubManufacturer = userRole !== null && userRole === 'sub_manufacturer';
     const isSuperAdmin = userRole === 'super_admin';
     
     // If super admin and showAllProducts is true, show everything
@@ -718,31 +723,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       return order.order_products;
     }
     
-    // Original filtering logic
-    const filteredProducts = order.order_products.filter((product: any) => {
-      // Always show products that are in_production or completed to everyone
-      if (product.product_status === 'in_production' || product.product_status === 'completed') {
-        return true;
-      }
-      
-      // If routed_to is not set, default to admin
-      const routedTo = product.routed_to || 'admin';
-      
-      // For manufacturer, show products routed to manufacturer
-      if (isManufacturer || isTeamMember) {
-        return routedTo === 'manufacturer';
-      }
-
-      // Sub manufacturer sees products if order is assigned to them
-      if (isSubManufacturer && order.sub_manufacturer_id === JSON.parse(localStorage.getItem('user') || '{}').id) {
-        return true;
-      }
-      
-      // For admin/others, show products routed to admin
-      return routedTo === 'admin';
-    });
-    
-    return filteredProducts;
+    // REMOVED THE FILTERING - Now returns all products
+    // Products are always visible regardless of routed_to status
+    return order.order_products;
   };
 
   // UPDATED: Filter products based on selection
@@ -1028,13 +1011,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </p>
             )}
             
-            {visibleProducts.length < productCounts.total && !showAllProducts && selectedProductId === 'all' && (
-              <p className="text-xs text-gray-500 mt-2">
-                <AlertCircle className="w-3 h-3 inline mr-1" />
-                Showing {visibleProducts.length} of {productCounts.total} products 
-                {isManufacturer ? ' (products with admin are hidden)' : ' (products with manufacturer are hidden)'}
-              </p>
-            )}
+            {/* REMOVED THE WARNING MESSAGE ABOUT HIDDEN PRODUCTS */}
             
             {isSuperAdmin && showAllProducts && (
               <p className="text-xs text-blue-600 mt-2">
@@ -1049,7 +1026,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {isManufacturer ? 'Your Products' : showAllProducts ? 'All Products' : selectedProductId !== 'all' ? 'Product Detail' : 'Products Requiring Action'}
+              {selectedProductId !== 'all' ? 'Product Detail' : 'Order Products'}
             </h2>
             
             <div className="flex items-center gap-3">
@@ -1088,10 +1065,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">
                 {selectedProductId !== 'all' 
-                  ? `Product not found or not visible to you.`
-                  : isManufacturer 
-                    ? 'No products are currently routed to you. Products will appear here when admin sends them to you.'
-                    : 'No products currently need your attention. Products will appear here when manufacturer routes them to you.'}
+                  ? `Product not found.`
+                  : `No products found in this order.`}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
@@ -1100,28 +1075,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
             </div>
           ) : (
-            // Show only visible products based on routing
+            // Show only visible products
             visibleProducts.map((product: any) => {
               // Get items and media for this product
               const items = product.order_items || [];
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
               
-              // DEBUG - Remove this after fixing
-              if (isManufacturer) {
-                console.log('Manufacturer view - visibleProducts count:', visibleProducts.length);
-                console.log('Visible products:', visibleProducts.map((p: any) => p.product_order_number));
-              }
-              
               // AUTO-COLLAPSE WHEN MORE THAN 3 PRODUCTS
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
-              // When super admin is viewing all products, show manufacturer cards for products with manufacturer
-              const shouldShowManufacturerCard = isManufacturer || 
-                (isSuperAdmin && showAllProducts && product.routed_to === 'manufacturer');
+              // Determine which card to show based on routed_to
+              const isRoutedToManufacturer = product.routed_to === 'manufacturer';
               
-              // Render different cards based on context
-              if (shouldShowManufacturerCard) {
+              // Show manufacturer card for products routed to manufacturer OR if user is manufacturer
+              if (isManufacturer || isRoutedToManufacturer) {
                 return (
                   <ManufacturerProductCard
                     key={product.id}
