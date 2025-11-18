@@ -433,7 +433,8 @@ export default function OrdersPage() {
       filtered = filtered.filter(order => 
         formatOrderNumber(order.order_number).toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.client?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.manufacturer?.name.toLowerCase().includes(searchTerm.toLowerCase())
+        order.manufacturer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.order_name && order.order_name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     
@@ -1050,15 +1051,16 @@ export default function OrdersPage() {
                       </button>
                     )}
                     <div>
-                      <div className="font-medium text-gray-900 flex items-center gap-2">
-                        {formatOrderNumber(order.order_number)}
+                      {/* FIXED: Order name bold on top, number smaller below */}
+                      <div className="font-bold text-gray-900 flex items-center gap-2">
+                        {order.order_name || 'Untitled Order'}
                         {hasUnreadNotification && (
                           <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
                         )}
                       </div>
-                      {order.order_name && (
-                        <div className="text-xs text-gray-500">{order.order_name}</div>
-                      )}
+                      <div className="text-xs text-gray-500">
+                        {formatOrderNumber(order.order_number)}
+                      </div>
                       {visibleProducts && (
                         <div className="text-xs text-gray-400">
                           {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
@@ -1246,15 +1248,16 @@ export default function OrdersPage() {
                               </button>
                             )}
                             <div>
-                              <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                                {formatOrderNumber(order.order_number)}
+                              {/* FIXED: Order name bold on top, number smaller below */}
+                              <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                                {order.order_name || 'Untitled Order'}
                                 {hasUnreadNotification && (
                                   <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
                                 )}
                               </div>
-                              {order.order_name && (
-                                <div className="text-xs text-gray-500">{order.order_name}</div>
-                              )}
+                              <div className="text-xs text-gray-500">
+                                {formatOrderNumber(order.order_number)}
+                              </div>
                               {visibleProducts && (
                                 <div className="text-xs text-gray-400">
                                   {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}

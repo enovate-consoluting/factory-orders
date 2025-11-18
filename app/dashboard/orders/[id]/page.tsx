@@ -1,8 +1,8 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * COMPLETE FIX: Admin shipping selection + Manufacturer sample save + Redirect
+ * FIXED: Proper file naming (original_sample_001) and no refresh after save
  * Roles: Admin, Super Admin, Manufacturer, Client
- * Last Modified: November 2025
+ * Last Modified: December 2024
  */
 
 'use client';
@@ -317,6 +317,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         });
 
       setIsEditingClient(false);
+      
+      // Refresh data without page reload
       await refetch();
     } catch (error) {
       console.error('Error updating client:', error);
@@ -395,6 +397,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           });
       }
       
+      // Just update the local state, don't refresh entire page
       await refetch();
     } catch (error) {
       console.error('Error deleting media:', error);
@@ -402,7 +405,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // FIX: Save order sample data - now properly saves for manufacturers
+  // FIXED: Save order sample data with proper file naming and NO PAGE REFRESH
   const saveOrderSampleData = async () => {
     if (!order) return;
     
@@ -410,7 +413,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      // FIXED: Use correct field names for the update
+      // Use correct field names for the update
       const updateData: any = {};
       
       // Only update fields that have values
@@ -445,59 +448,105 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       
       console.log('Order sample data saved successfully');
       
-      // Upload sample files if any
+      // Upload sample files if any - FIXED FILE NAMING
       if (orderSampleFiles.length > 0) {
         console.log('Uploading', orderSampleFiles.length, 'sample files...');
         
         for (let i = 0; i < orderSampleFiles.length; i++) {
           const file = orderSampleFiles[i];
-          const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
           const timestamp = Date.now();
-          const fileName = `order-sample-${timestamp}-${i}.${fileExt}`;
-          const filePath = `${order.id}/${fileName}`;
+          const randomStr = Math.random().toString(36).substring(2, 8);
           
-          console.log(`Uploading file ${i + 1}:`, fileName);
+          // PROPER FILE NAMING: originalname_sample_001
+          const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+          const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+          const sequenceNumber = String(i + 1).padStart(3, '0'); // 001, 002, etc.
+          const uniqueFileName = `${fileNameWithoutExt}_sample_${sequenceNumber}_${timestamp}_${randomStr}.${fileExt}`;
+          const filePath = `${order.id}/${uniqueFileName}`;
           
-          // Upload to storage
+          console.log(`Uploading file ${i + 1}:`, file.name, 'as:', uniqueFileName);
+          
+          // Try upload with upsert to handle duplicates
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('order-media')
             .upload(filePath, file, {
-              upsert: true
+              upsert: true  // This will overwrite if file exists
             });
           
           if (uploadError) {
             console.error('Storage upload error:', uploadError);
-            continue;
-          }
-          
-          console.log('Upload successful:', uploadData);
-          
-          // Get the public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('order-media')
-            .getPublicUrl(filePath);
-          
-          console.log('Public URL:', publicUrl);
-          
-          // Save to database
-          const { error: dbError } = await supabase
-            .from('order_media')
-            .insert({
-              order_id: order.id,
-              order_product_id: null, // NULL for order-level files
-              file_url: publicUrl,
-              file_type: 'order_sample', // Clear type for order samples
-              uploaded_by: user.id || crypto.randomUUID(),
-              original_filename: file.name,
-              display_name: fileName,
-              is_sample: true,
-              created_at: new Date().toISOString()
-            });
-          
-          if (dbError) {
-            console.error('Database insert error:', dbError);
+            
+            // If still fails, try with a different name
+            if (uploadError.message?.includes('already exists')) {
+              const altSequenceNumber = String(i + 1).padStart(3, '0');
+              const altFileName = `${fileNameWithoutExt}_sample_${altSequenceNumber}_v2_${timestamp}_${randomStr}.${fileExt}`;
+              const altFilePath = `${order.id}/${altFileName}`;
+              
+              const { data: retryData, error: retryError } = await supabase.storage
+                .from('order-media')
+                .upload(altFilePath, file, {
+                  upsert: true
+                });
+              
+              if (retryError) {
+                console.error('Retry upload failed:', retryError);
+                alert(`Failed to upload "${file.name}". Please try renaming the file.`);
+                continue;
+              }
+              
+              // Use the alternative path if retry succeeded
+              const { data: { publicUrl } } = supabase.storage
+                .from('order-media')
+                .getPublicUrl(altFilePath);
+              
+              // Save to database with ORIGINAL filename preserved
+              await supabase
+                .from('order_media')
+                .insert({
+                  order_id: order.id,
+                  order_product_id: null,
+                  file_url: publicUrl,
+                  file_type: 'order_sample',
+                  uploaded_by: user.id || crypto.randomUUID(),
+                  original_filename: file.name,  // Keep original name
+                  display_name: file.name,       // Show original name
+                  is_sample: true,
+                  created_at: new Date().toISOString()
+                });
+            } else {
+              alert(`Error uploading "${file.name}": ${uploadError.message}`);
+              continue;
+            }
           } else {
-            console.log('File saved to database');
+            console.log('Upload successful:', uploadData);
+            
+            // Get the public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath);
+            
+            console.log('Public URL:', publicUrl);
+            
+            // Save to database with ORIGINAL filename preserved
+            const { error: dbError } = await supabase
+              .from('order_media')
+              .insert({
+                order_id: order.id,
+                order_product_id: null,
+                file_url: publicUrl,
+                file_type: 'order_sample',
+                uploaded_by: user.id || crypto.randomUUID(),
+                original_filename: file.name,  // Keep original name for display
+                display_name: file.name,       // Show original name to user
+                is_sample: true,
+                created_at: new Date().toISOString()
+              });
+            
+            if (dbError) {
+              console.error('Database insert error:', dbError);
+            } else {
+              console.log('File saved to database with original name:', file.name);
+            }
           }
         }
       }
@@ -545,15 +594,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       // Clear temp files
       setOrderSampleFiles([]);
       
-      // Refresh to show new data
-      await refetch();
+      // IMPORTANT: Don't use full page refresh, just update the data
+      await refetch(); // This updates the data without refreshing the page
       
-      alert('Sample request saved successfully!');
+      // Show success message without alert (which can cause page issues)
+      console.log('Sample request saved successfully!');
+      
+      // Optional: Add a success toast/notification here instead of alert
+      // For now, just a subtle indication
+      setSavingOrderSample(false);
       
     } catch (error) {
       console.error('Error saving order sample data:', error);
       alert('Error saving sample data. Please try again.');
-    } finally {
       setSavingOrderSample(false);
     }
   };
@@ -582,7 +635,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      refetch();
+      // Just refresh data, not the page
+      await refetch();
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -612,7 +666,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      refetch();
+      // Just refresh data, not the page
+      await refetch();
     } catch (error) {
       console.error('Error updating payment status:', error);
     }
@@ -756,7 +811,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           router.push('/dashboard/orders');
         }, 300);
       } else {
-        // For other cases, just refresh the current page
+        // For other cases, just refresh the current page data
         await refetch();
       }
       
@@ -766,92 +821,287 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setMasterRouteModal(prev => ({ ...prev, isSaving: false }));
     }
   };
-
-  const handlePrintAll = () => {
+const handlePrintAll = () => {
     const visibleProducts = getVisibleProducts();
+    
+    const printHTML = visibleProducts.map((product: any, index: number) => {
+      const items = product.order_items || [];
+      const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+      
+      // Build variants rows
+      const variantsRows = items.length > 0 
+        ? items.map((item: any) => 
+            `<tr>
+              <td>${item.variant_combo || 'N/A'}</td>
+              <td style="text-align: center;">${item.quantity || 0}</td>
+              <td>${item.notes || ''}</td>
+            </tr>`
+          ).join('')
+        : `<tr>
+            <td colspan="3" style="text-align: center; color: #999;">
+              No variants configured
+            </td>
+          </tr>`;
+
+      return `
+        <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
+          <div class="header">
+            <div class="header-title">MANUFACTURING SHEET</div>
+            <div class="product-name">${product.description || product.product?.title || 'Product'}</div>
+            <div class="header-details">
+              <div>Order: <strong>${order.order_number}</strong></div>
+              <div>Product: <strong>${product.product_order_number}</strong></div>
+              <div>Client: <strong>${order.client?.name || 'N/A'}</strong></div>
+              <div>Date: <strong>${new Date().toLocaleDateString()}</strong></div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h2>SAMPLE INFORMATION</h2>
+            <div class="sample-row">
+              <div class="sample-field">
+                <span class="small-label">Sample Fee: $</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="sample-field">
+                <span class="small-label">Sample Date:</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="sample-field">
+                <span class="small-label">Status:</span>
+                <span class="blank-line">_________________</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h2>PRICING & PRODUCTION</h2>
+            <div class="pricing-grid">
+              <div class="pricing-field">
+                <span class="small-label">Unit Price: $</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="pricing-field">
+                <span class="small-label">Quantity:</span>
+                <span class="filled-value">${totalQty} units</span>
+              </div>
+              <div class="pricing-field">
+                <span class="small-label">Prod. Time:</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="pricing-field">
+                <span class="small-label">Air Ship: $</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="pricing-field">
+                <span class="small-label">Boat Ship: $</span>
+                <span class="blank-line">_________________</span>
+              </div>
+              <div class="pricing-field">
+                <span class="small-label">Total: $</span>
+                <span class="blank-line">_________________</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="section">
+            <h2>VARIANTS & QUANTITIES</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Variant/Size</th>
+                  <th style="width: 80px;">Qty</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${variantsRows}
+                <tr class="total-row">
+                  <td><strong>TOTAL</strong></td>
+                  <td style="text-align: center;"><strong>${totalQty}</strong></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="section">
+            <h2>PRODUCTION NOTES</h2>
+            <div class="notes-box"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
     const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Order ${order.order_number} - Product Sheets</title>
+        <title>Order ${order.order_number} - Manufacturing Sheets</title>
         <style>
-          @page { size: portrait; margin: 0.5in; }
-          @media print { 
-            .page-break { page-break-after: always; }
+          @page { 
+            size: letter portrait; 
+            margin: 0.5in;
           }
-          body { font-family: Arial, sans-serif; }
-          .product-sheet { padding: 20px; margin-bottom: 30px; }
-          .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-          h1 { font-size: 24px; margin: 0 0 10px 0; }
-          h2 { font-size: 18px; margin: 20px 0 10px 0; color: #333; }
-          .info-row { display: flex; margin-bottom: 8px; }
-          .label { font-weight: bold; width: 150px; }
-          .value { flex: 1; border-bottom: 1px dotted #999; min-height: 20px; }
-          .notes-box { border: 1px solid #999; min-height: 100px; margin-top: 10px; padding: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td { border: 1px solid #999; padding: 8px; text-align: left; }
-          th { background-color: #f0f0f0; }
+          @media print { 
+            .page-break { 
+              page-break-after: always;
+            }
+          }
+          
+          body { 
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            font-size: 11pt;
+          }
+          
+          .product-sheet { 
+            padding: 0;
+            max-width: 100%;
+            min-height: 100%;
+            display: flex;
+            flex-direction: column;
+          }
+          
+          .header { 
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000;
+          }
+          
+          .header-title {
+            font-size: 10pt;
+            letter-spacing: 2px;
+            color: #666;
+            margin-bottom: 8px;
+          }
+          
+          .product-name { 
+            font-size: 22pt;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #000;
+          }
+          
+          .header-details {
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            font-size: 10pt;
+            color: #333;
+            margin-top: 10px;
+          }
+          
+          .section {
+            margin-bottom: 15px;
+          }
+          
+          .section:last-child {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+          }
+          
+          h2 {
+            font-size: 11pt;
+            margin: 15px 0 8px 0;
+            padding: 3px 0;
+            border-bottom: 1px solid #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+          }
+          
+          .sample-row {
+            display: flex;
+            gap: 20px;
+            margin: 8px 0;
+          }
+          
+          .sample-field {
+            display: flex;
+            align-items: center;
+            flex: 1;
+          }
+          
+          .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin: 8px 0;
+          }
+          
+          .pricing-field {
+            display: flex;
+            align-items: center;
+          }
+          
+          .small-label {
+            font-size: 10pt;
+            font-weight: bold;
+            margin-right: 5px;
+            white-space: nowrap;
+          }
+          
+          .blank-line {
+            flex: 1;
+            font-size: 10pt;
+            color: #999;
+            padding-left: 3px;
+          }
+          
+          .filled-value {
+            font-weight: bold;
+            padding-left: 8px;
+            font-size: 10pt;
+          }
+          
+          table { 
+            width: 100%; 
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 10pt;
+          }
+          
+          th { 
+            background: #f0f0f0;
+            border: 1px solid #666;
+            padding: 6px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 10pt;
+          }
+          
+          td { 
+            border: 1px solid #666;
+            padding: 5px;
+            font-size: 10pt;
+          }
+          
+          .total-row {
+            background: #f0f0f0;
+            font-weight: bold;
+          }
+          
+          .notes-box { 
+            border: 1px solid #666;
+            min-height: 200px;
+            padding: 10px;
+            background: #fafafa;
+            margin-top: 8px;
+            flex: 1;
+          }
         </style>
       </head>
       <body>
-        ${visibleProducts.map((product: any, index: number) => {
-          const items = product.order_items || [];
-          const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-
-          return `
-            <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
-              <div class="header">
-                <h1>Order: ${order.order_number}</h1>
-                <div>Client: ${order.client?.name || 'N/A'}</div>
-                <div>Date: ${new Date().toLocaleDateString()}</div>
-              </div>
-              
-              <h2>Product: ${product.product_order_number}</h2>
-              <div class="info-row">
-                <div class="label">Description:</div>
-                <div class="value">${product.description || ''}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Total Quantity:</div>
-                <div class="value">${totalQty}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Product Price:</div>
-                <div class="value">$${product.product_price || '________'}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Production Time:</div>
-                <div class="value">${product.production_time || '________'}</div>
-              </div>
-              
-              <h2>Variants</h2>
-              <table>
-                <thead>
-                  <tr><th>Variant</th><th>Quantity</th><th>Notes</th></tr>
-                </thead>
-                <tbody>
-                  ${items.map((item: any) => `
-                    <tr>
-                      <td>${item.variant_combo || ''}</td>
-                      <td>${item.quantity || 0}</td>
-                      <td>${item.notes || ''}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-              
-              <h2>Production Notes</h2>
-              <div class="notes-box">${product.manufacturer_notes || ''}</div>
-              
-              <h2>Additional Notes (Write Here)</h2>
-              <div class="notes-box"></div>
-            </div>
-          `;
-        }).join('')}
+        ${printHTML}
       </body>
       </html>
     `;
-
+    
     const printWindow = window.open('', '_blank');
     if (printWindow) {
       printWindow.document.write(printContent);

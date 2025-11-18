@@ -1,5 +1,5 @@
 // app/dashboard/orders/[id]/components/admin/AdminProductCard.tsx
-// FIXED VERSION - Shipping method selection enabled for admins
+// FIXED VERSION - NO FILE RENAMING - Original filenames preserved
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
@@ -23,6 +23,8 @@ interface AdminProductCardProps {
   onViewHistory?: (productId: string) => void;
   hasNewHistory?: boolean;
   autoCollapse?: boolean;
+  forceExpanded?: boolean;
+  onExpand?: () => void;
 }
 
 export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
@@ -35,7 +37,9 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     onRoute,
     onViewHistory,
     hasNewHistory = false,
-    autoCollapse = false
+    autoCollapse = false,
+    forceExpanded = false,
+    onExpand
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
@@ -59,8 +63,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     // State for individual product selection
     const [selectedProductId, setSelectedProductId] = useState<string>('all');
     
-    // COLLAPSIBLE STATE - Updated to use autoCollapse prop
+    // COLLAPSIBLE STATE - Updated to use forceExpanded
     const [isCollapsed, setIsCollapsed] = useState(() => {
+      // If forceExpanded is true, don't collapse
+      if (forceExpanded) return false;
+      
       // Auto-collapse takes priority when there are multiple products
       if (autoCollapse) return true;
       
@@ -146,8 +153,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       setPendingBulkFiles([]);
     }, [product]);
     
-    // Auto-collapse when status changes
+    // Auto-collapse when status changes (unless forceExpanded)
     useEffect(() => {
+      // Don't collapse if forceExpanded
+      if (forceExpanded) return;
+      
       // Don't override autoCollapse behavior
       if (autoCollapse) return;
       
@@ -156,7 +166,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       if (productStatus === 'shipped' || productStatus === 'in_transit') {
         setIsCollapsed(true);
       }
-    }, [(product as any)?.product_status, autoCollapse]);
+    }, [(product as any)?.product_status, autoCollapse, forceExpanded]);
 
     // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF
     useImperativeHandle(ref, () => ({
@@ -373,6 +383,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         setTempNotes('');
         setNotesSectionDirty(false);
         setShowNewHistoryDot(true);
+        
+        // Call onExpand to keep card expanded after save
+        if (onExpand) onExpand();
+        
         await onUpdate();
       } catch (error) {
         console.error('Error saving notes:', error);
@@ -413,25 +427,20 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
+        // FIXED: NO FILE RENAMING - Keep original filenames
         if (pendingBulkFiles.length > 0) {
           console.log('Starting bulk file uploads...', pendingBulkFiles.length, 'files');
 
-          const existingBulkFiles = media.filter((m: any) =>
-            m.file_type === 'image' || m.file_type === 'document'
-          );
-          let bulkFileCounter = existingBulkFiles.length + 1;
-
           for (const file of pendingBulkFiles) {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
+            // Generate unique storage path but keep original filename for display
+            const timestamp = Date.now();
+            const randomStr = Math.random().toString(36).substring(2, 8);
+            const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
 
-            const displayName = `${productOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
-
-            console.log('Uploading file to storage:', filePath);
+            console.log('Uploading file to storage:', storagePath);
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(filePath, file, {
+              .upload(storagePath, file, {
                 cacheControl: '3600',
                 upsert: false
               });
@@ -445,8 +454,9 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
 
             const { data: { publicUrl } } = supabase.storage
               .from('order-media')
-              .getPublicUrl(filePath);
+              .getPublicUrl(storagePath);
 
+            // KEEP ORIGINAL FILENAME IN DATABASE
             const { data: insertData, error: insertError } = await supabase
               .from('order_media')
               .insert({
@@ -454,8 +464,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 file_url: publicUrl,
                 file_type: file.type.startsWith('image/') ? 'image' : 'document',
                 uploaded_by: user.id,
-                original_filename: file.name,
-                display_name: displayName
+                original_filename: file.name,  // KEEP ORIGINAL NAME
+                display_name: file.name        // KEEP ORIGINAL NAME
               })
               .select();
 
@@ -463,8 +473,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               console.error('Database insert error:', insertError);
               alert(`Failed to save ${file.name} to database: ${insertError.message}`);
             } else {
-              console.log('File saved to database successfully:', insertData);
-              bulkFileCounter++;
+              console.log('File saved to database with original name:', file.name);
             }
           }
         }
@@ -474,6 +483,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         setPendingBulkFiles([]);
         setBulkSectionDirty(false);
         setShowNewHistoryDot(true);
+        
+        // Call onExpand to keep card expanded after save
+        if (onExpand) onExpand();
+        
         await onUpdate();
       } catch (error) {
         console.error('Error saving bulk section:', error);
@@ -589,6 +602,16 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       return `${name}...${ext}`;
     };
 
+    // Handle expand/collapse with onExpand callback
+    const handleExpand = () => {
+      setIsCollapsed(false);
+      if (onExpand) onExpand();
+    };
+
+    const handleCollapse = () => {
+      setIsCollapsed(true);
+    };
+
     // COLLAPSED HEADER COMPONENT
     const CollapsedHeader = () => (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
@@ -596,7 +619,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3 flex-1">
               <button
-                onClick={() => setIsCollapsed(false)}
+                onClick={handleExpand}
                 className="p-1 hover:bg-gray-200 rounded transition-colors"
                 title="Expand details"
               >
@@ -710,7 +733,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               {/* Collapse Button - ALWAYS show when multiple products (autoCollapse=true) */}
               {autoCollapse && (
                 <button
-                  onClick={() => setIsCollapsed(true)}
+                  onClick={handleCollapse}
                   className="p-1 hover:bg-gray-200 rounded transition-colors mt-1"
                   title="Collapse details"
                 >
@@ -952,34 +975,26 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 </div>
               )}
               
+              {/* FIXED: Display pending files with ORIGINAL NAMES */}
               {pendingBulkFiles.length > 0 && (
                 <div className="mt-2">
                   <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
-                    {pendingBulkFiles.map((file, index) => {
-                      const existingBulkFiles = media.filter((m: any) =>
-                        m.file_type === 'image' || m.file_type === 'document'
-                      );
-                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-                      const displayName = `${productOrderNumber}-bulk-${String(existingBulkFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
-
-                      return (
-                        <div key={index} className="group relative inline-flex">
-                          <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            <span>{displayName}</span>
-                          </div>
-                          <button
-                            onClick={() => removePendingBulkFile(index)}
-                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove file"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
+                    {pendingBulkFiles.map((file, index) => (
+                      <div key={index} className="group relative inline-flex">
+                        <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
+                          <Upload className="w-3 h-3" />
+                          <span>{file.name}</span> {/* SHOW ORIGINAL FILENAME */}
                         </div>
-                      );
-                    })}
+                        <button
+                          onClick={() => removePendingBulkFile(index)}
+                          className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
+                          title="Remove file"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
