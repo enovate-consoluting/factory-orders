@@ -3,7 +3,7 @@
 import React from 'react';
 import { Calendar, Edit, CheckCircle, DollarSign, Package } from 'lucide-react';
 import { Order } from '../../types/order.types';
-import { StatusBadge } from './StatusBadge';
+import { StatusBadge } from '../../../shared-components/StatusBadge';
 import { usePermissions, getUserRole } from '../../hooks/usePermissions';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 

@@ -1,5 +1,5 @@
 // app/dashboard/orders/[id]/components/admin/AdminProductCard.tsx
-// FIXED VERSION - Green total restored, proper margin calculations
+// FIXED VERSION - Shipping method selection enabled for admins
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
@@ -9,7 +9,7 @@ import {
   RotateCcw, FileText, Image, Paperclip, ChevronDown, ChevronRight, Truck
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
-import { ProductStatusBadge } from '../shared/StatusBadge';
+import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
 
@@ -22,7 +22,7 @@ interface AdminProductCardProps {
   onRoute?: (product: OrderProduct) => void;
   onViewHistory?: (productId: string) => void;
   hasNewHistory?: boolean;
-  autoCollapse?: boolean;  // ADD THIS
+  autoCollapse?: boolean;
 }
 
 export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
@@ -35,30 +35,73 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     onRoute,
     onViewHistory,
     hasNewHistory = false,
-    autoCollapse = false  // ADD THIS DEFAULT
+    autoCollapse = false
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
     const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'admin';
+    const canEditPricing = userRole === 'super_admin'; // ONLY super admin can edit pricing
     
     // State for finance margins
     const [productMargin, setProductMargin] = useState(80); // Default 80%
-    const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
+    const [shippingMargin, setShippingMargin] = useState(5); // Default 5%
     const [marginsLoaded, setMarginsLoaded] = useState(false);
+    
+    // State for editing client
+    const [isEditingClient, setIsEditingClient] = useState(false);
+    const [selectedClientId, setSelectedClientId] = useState('');
+    const [availableClients, setAvailableClients] = useState<any[]>([]);
+    const [savingClient, setSavingClient] = useState(false);
+    
+    // State for showing all products (super admin only)
+    const [showAllProducts, setShowAllProducts] = useState(false);
+    
+    // State for individual product selection
+    const [selectedProductId, setSelectedProductId] = useState<string>('all');
     
     // COLLAPSIBLE STATE - Updated to use autoCollapse prop
     const [isCollapsed, setIsCollapsed] = useState(() => {
       // Auto-collapse takes priority when there are multiple products
       if (autoCollapse) return true;
-  
-    // For single products, check status
-    const productStatus = (product as any)?.product_status;
-  
-    // Only auto-collapse for these specific statuses when NOT using autoCollapse
-    return (productStatus === 'shipped' || productStatus === 'in_transit');
-  });
+      
+      // For single products, check status
+      const productStatus = (product as any)?.product_status;
+      
+      // Only auto-collapse for these specific statuses when NOT using autoCollapse
+      return (productStatus === 'shipped' || productStatus === 'in_transit');
+    });
     
- // Load finance margins from database
+    // State for notes
+    const [tempNotes, setTempNotes] = useState('');
+    const [tempBulkNotes, setTempBulkNotes] = useState('');
+    
+    // State for tracking if sections have changes
+    const [notesSectionDirty, setNotesSectionDirty] = useState(false);
+    const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
+    
+    const [processingProduct, setProcessingProduct] = useState(false);
+    const bulkFileInputRef = useRef<HTMLInputElement>(null);
+    const [uploadingMedia, setUploadingMedia] = useState(false);
+    const [uploadingBulkMedia, setUploadingBulkMedia] = useState(false);
+    const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
+    
+    // State for variant notes
+    const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
+    const [editingVariants, setEditingVariants] = useState(false);
+    
+    // State for pending file uploads
+    const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
+    
+    // Store original values for comparison
+    const [originalValues, setOriginalValues] = useState({
+      internalNotes: (product as any).internal_notes || '',
+      bulkNotes: (product as any).client_notes || ''
+    });
+    
+    // Calculate total quantity
+    const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    
+    // Load finance margins from database
     useEffect(() => {
       const loadMargins = async () => {
         try {
@@ -85,47 +128,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       loadMargins();
     }, []);
     
-    // Auto-collapse when status changes
-    useEffect(() => {
-      // Don't override autoCollapse behavior
-      if (autoCollapse) return;
-      
-      const productStatus = (product as any)?.product_status;
-      
-      if (productStatus === 'shipped' || productStatus === 'in_transit') {
-        setIsCollapsed(true);
-      }
-    }, [(product as any)?.product_status, autoCollapse]);
-    
-    // Auto-collapse when status changes
-    useEffect(() => {
-      if ((product as any).product_status === 'shipped' || (product as any).product_status === 'in_transit') {
-        setIsCollapsed(true);
-      }
-    }, [(product as any).product_status]);
-    
-    // All the state management remains the same...
-    const [tempNotes, setTempNotes] = useState('');
-    const [tempSampleNotes, setTempSampleNotes] = useState('');
-    const [tempBulkNotes, setTempBulkNotes] = useState('');
-    const [notesSectionDirty, setNotesSectionDirty] = useState(false);
-    const [sampleSectionDirty, setSampleSectionDirty] = useState(false);
-    const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
-    const [processingProduct, setProcessingProduct] = useState(false);
-    const bulkFileInputRef = useRef<HTMLInputElement>(null);
-    const sampleFileInputRef = useRef<HTMLInputElement>(null);
-    const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
-    const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
-    const [editingVariants, setEditingVariants] = useState(false);
-    const [pendingSampleFiles, setPendingSampleFiles] = useState<File[]>([]);
-    const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
-    const [originalValues, setOriginalValues] = useState({
-      internalNotes: (product as any).internal_notes || '',
-      sampleNotes: (product as any).sample_notes || '',
-      bulkNotes: (product as any).client_notes || ''
-    });
-    
-    // Initialize variant notes
+    // Initialize variant notes from items
     useEffect(() => {
       const initialNotes: {[key: string]: string} = {};
       items.forEach(item => {
@@ -138,13 +141,23 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     useEffect(() => {
       setOriginalValues({
         internalNotes: (product as any).internal_notes || '',
-        sampleNotes: (product as any).sample_notes || '',
         bulkNotes: (product as any).client_notes || ''
       });
-      setPendingSampleFiles([]);
       setPendingBulkFiles([]);
     }, [product]);
     
+    // Auto-collapse when status changes
+    useEffect(() => {
+      // Don't override autoCollapse behavior
+      if (autoCollapse) return;
+      
+      const productStatus = (product as any)?.product_status;
+      
+      if (productStatus === 'shipped' || productStatus === 'in_transit') {
+        setIsCollapsed(true);
+      }
+    }, [(product as any)?.product_status, autoCollapse]);
+
     // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF
     useImperativeHandle(ref, () => ({
       saveAll: async () => {
@@ -153,11 +166,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         
         if (notesSectionDirty || tempNotes) {
           await handleSaveNotesSection();
-          changesMade = true;
-        }
-        
-        if (sampleSectionDirty || tempSampleNotes || pendingSampleFiles.length > 0) {
-          await handleSaveSampleSection();
           changesMade = true;
         }
         
@@ -175,18 +183,13 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     }), [
       notesSectionDirty,
-      sampleSectionDirty,
       bulkSectionDirty,
       editingVariants,
       tempNotes,
-      tempSampleNotes,
       tempBulkNotes,
-      pendingSampleFiles,
       pendingBulkFiles,
       (product as any).id
     ]);
-    
-    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
     
     // FIXED: Calculate with DYNAMIC margins for admins
     const calculateClientPrice = (manufacturerPrice: number, isShipping: boolean = false) => {
@@ -196,16 +199,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     };
     
     // FIXED: Calculate totals - ALWAYS use client prices for admin/super_admin
-    const samplePrice = (() => {
-      const mfgPrice = (product as any).sample_fee || 0;
-      // If we have a stored client price and margins not loaded yet, use it
-      if (!marginsLoaded && (product as any).client_sample_fee) {
-        return (product as any).client_sample_fee;
-      }
-      // Otherwise calculate dynamically with margins
-      return calculateClientPrice(mfgPrice, false);
-    })();
-    
     const unitPrice = (() => {
       const mfgPrice = (product as any).product_price || 0;
       if (!marginsLoaded && (product as any).client_product_price) {
@@ -233,11 +226,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     }
     
-    const totalPrice = samplePrice + productPrice + shippingPrice;
+    const totalPrice = productPrice + shippingPrice;
 
     // Separate media types
     const referenceMedia = media.filter(m => m.file_type === 'document' || m.file_type === 'image');
-    const sampleMedia = media.filter(m => m.file_type?.startsWith('sample'));
 
     // Get variant type name
     const getVariantTypeName = () => {
@@ -308,7 +300,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       };
     };
 
-    // All handler functions remain the same...
+    // All handler functions
     const handleToggleLock = async () => {
       setProcessingProduct(true);
       try {
@@ -388,123 +380,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    const handleSaveSampleSection = async () => {
-      try {
-        const user = getCurrentUser();
-        
-        if (tempSampleNotes && tempSampleNotes.trim()) {
-          const { error } = await supabase
-            .from('order_products')
-            .update({ sample_notes: tempSampleNotes.trim() })
-            .eq('id', (product as any).id);
-
-          if (error) {
-            console.error('Database error:', error);
-            alert('Failed to save sample note. Please try again.');
-            return;
-          }
-
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'sample_note_added',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                new_value: `Sample Note: "${tempSampleNotes.trim()}"`,
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-          }
-        }
-
-        if (pendingSampleFiles.length > 0) {
-          console.log('Starting sample file uploads...', pendingSampleFiles.length, 'files');
-
-          // Count existing sample files to get the next counter
-          const existingSampleFiles = media.filter((m: any) =>
-            m.file_type === 'sample_image' || m.file_type === 'sample_document'
-          );
-          let sampleFileCounter = existingSampleFiles.length + 1;
-
-          for (const file of pendingSampleFiles) {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-
-            // Create display name using product code and sequential number
-            const displayName = `${productOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
-
-            console.log('Uploading file to storage:', filePath);
-            const { data: uploadData, error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: false
-              });
-
-            if (uploadError) {
-              console.error('Storage upload error:', uploadError);
-              console.error('Error details:', {
-                message: uploadError.message,
-                statusCode: (uploadError as any).statusCode,
-                error: (uploadError as any).error,
-                cause: (uploadError as any).cause
-              });
-              alert(`Failed to upload ${file.name}: ${uploadError.message}\n\nPlease check:\n1. Storage bucket 'order-media' exists\n2. You have upload permissions\n3. File type is allowed`);
-              continue;
-            }
-            console.log('File uploaded successfully:', uploadData);
-
-            const { data: { publicUrl } } = supabase.storage
-              .from('order-media')
-              .getPublicUrl(filePath);
-
-            console.log('File uploaded, inserting into order_media table:', {
-              order_product_id: (product as any).id,
-              file_url: publicUrl,
-              file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-              original_filename: file.name,
-              display_name: displayName
-            });
-
-            const { data: insertData, error: insertError } = await supabase
-              .from('order_media')
-              .insert({
-                order_product_id: (product as any).id,
-                file_url: publicUrl,
-                file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-                uploaded_by: user.id,
-                original_filename: file.name,
-                display_name: displayName
-              })
-              .select();
-
-            if (insertError) {
-              console.error('Database insert error:', insertError);
-              alert(`Failed to save ${file.name} to database: ${insertError.message}`);
-            } else {
-              console.log('File saved to database successfully:', insertData);
-              sampleFileCounter++;
-            }
-          }
-        }
-
-        setOriginalValues(prev => ({ ...prev, sampleNotes: tempSampleNotes.trim() }));
-        setTempSampleNotes('');
-        setPendingSampleFiles([]);
-        setSampleSectionDirty(false);
-        setShowNewHistoryDot(true);
-        await onUpdate();
-      } catch (error) {
-        console.error('Error saving sample section:', error);
-        alert('Failed to save sample section. Please try again.');
-      }
-    };
-
     const handleSaveBulkSection = async () => {
       try {
         const user = getCurrentUser();
@@ -541,7 +416,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         if (pendingBulkFiles.length > 0) {
           console.log('Starting bulk file uploads...', pendingBulkFiles.length, 'files');
 
-          // Count existing bulk/product files to get the next counter
           const existingBulkFiles = media.filter((m: any) =>
             m.file_type === 'image' || m.file_type === 'document'
           );
@@ -551,7 +425,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
             const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
 
-            // Create display name using product code and sequential number
             const displayName = `${productOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`;
             const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
 
@@ -565,13 +438,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
 
             if (uploadError) {
               console.error('Storage upload error:', uploadError);
-              console.error('Error details:', {
-                message: uploadError.message,
-                statusCode: (uploadError as any).statusCode,
-                error: (uploadError as any).error,
-                cause: (uploadError as any).cause
-              });
-              alert(`Failed to upload ${file.name}: ${uploadError.message}\n\nPlease check:\n1. Storage bucket 'order-media' exists\n2. You have upload permissions\n3. File type is allowed`);
+              alert(`Failed to upload ${file.name}: ${uploadError.message}`);
               continue;
             }
             console.log('File uploaded successfully:', uploadData);
@@ -579,14 +446,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             const { data: { publicUrl } } = supabase.storage
               .from('order-media')
               .getPublicUrl(filePath);
-
-            console.log('File uploaded, inserting into order_media table:', {
-              order_product_id: (product as any).id,
-              file_url: publicUrl,
-              file_type: file.type.startsWith('image/') ? 'image' : 'document',
-              original_filename: file.name,
-              display_name: displayName
-            });
 
             const { data: insertData, error: insertError } = await supabase
               .from('order_media')
@@ -622,29 +481,40 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
+    // FIX: Shipping method change handler - NOW WORKS FOR ADMIN/SUPER ADMIN
     const handleShippingMethodChange = async (method: 'air' | 'boat') => {
       try {
-        await supabase
+        const user = getCurrentUser();
+        
+        const { error } = await supabase
           .from('order_products')
           .update({ selected_shipping_method: method })
           .eq('id', (product as any).id);
 
+        if (error) {
+          console.error('Error updating shipping method:', error);
+          alert('Failed to update shipping method. Please try again.');
+          return;
+        }
+
+        // Log audit
+        await supabase
+          .from('audit_log')
+          .insert({
+            user_id: user.id,
+            user_name: user.name,
+            action_type: 'shipping_method_changed',
+            target_type: 'order_product',
+            target_id: (product as any).id,
+            old_value: (product as any).selected_shipping_method || 'none',
+            new_value: method,
+            timestamp: new Date().toISOString()
+          });
+
         onUpdate();
       } catch (error) {
         console.error('Error updating shipping method:', error);
-      }
-    };
-
-    const handleSampleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const newFiles = Array.from(files);
-      setPendingSampleFiles(prev => [...prev, ...newFiles]);
-      setSampleSectionDirty(true);
-      
-      if (sampleFileInputRef.current) {
-        sampleFileInputRef.current.value = '';
+        alert('Failed to update shipping method. Please try again.');
       }
     };
 
@@ -658,13 +528,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       
       if (bulkFileInputRef.current) {
         bulkFileInputRef.current.value = '';
-      }
-    };
-
-    const removePendingSampleFile = (index: number) => {
-      setPendingSampleFiles(prev => prev.filter((_, i) => i !== index));
-      if (pendingSampleFiles.length === 1 && !tempSampleNotes) {
-        setSampleSectionDirty(false);
       }
     };
 
@@ -836,7 +699,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     if (isCollapsed) {
       return <CollapsedHeader />;
     }
-// MAIN EXPANDED VIEW WITH GREEN TOTAL RESTORED
+
+    // MAIN EXPANDED VIEW
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header */}
@@ -867,7 +731,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     </span>
                   )}
                   
-                  {/* FIXED: GREEN TOTAL BADGE RESTORED HERE! */}
+                  {/* GREEN TOTAL BADGE */}
                   {totalPrice > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
                       <DollarSign className="w-4 h-4" />
@@ -957,7 +821,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* Rest of the component remains exactly the same... */}
           {/* Notes Section */}
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
@@ -1004,198 +867,16 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* Sample Request Section - WITH CLIENT PRICES */}
-          <div className="mt-3 bg-amber-50 rounded-lg p-4 border border-amber-300">
-            <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
-              <AlertCircle className="w-4 h-4 mr-2" />
-              Sample Request
-            </h4>
+          {/* SAMPLE REQUEST SECTION REMOVED */}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-              <div className="opacity-60">
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample Price
-                </label>
-                <div className="relative">
-                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="text"
-                    value={samplePrice > 0 ? `$${samplePrice.toFixed(2)}` : 'Set by manufacturer'}
-                    disabled
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                  />
-                </div>
-              </div>
-
-              <div className="opacity-60">
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample ETA
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="text"
-                    value={(product as any).sample_eta ? new Date((product as any).sample_eta).toLocaleDateString() : 'Set by manufacturer'}
-                    disabled
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                  />
-                </div>
-              </div>
-
-              <div className="opacity-60">
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Status
-                </label>
-                <input
-                  type="text"
-                  value={(product as any).sample_status?.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) || 'Pending'}
-                  disabled
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                />
-              </div>
-            </div>
-
-            {/* Sample Notes */}
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-amber-800 mb-1">
-                Sample Notes / Instructions
-              </label>
-              
-              {(product as any).sample_notes && (
-                <div className="mb-2 p-2 bg-amber-100 rounded text-sm text-amber-800">
-                  <strong>Current note:</strong>
-                  <div className="whitespace-pre-wrap mt-1">{(product as any).sample_notes}</div>
-                </div>
-              )}
-              
-              <textarea
-                value={tempSampleNotes}
-                onChange={(e) => {
-                  setTempSampleNotes(e.target.value);
-                  setSampleSectionDirty(true);
-                }}
-                placeholder="Add sample-specific instructions, requirements, materials..."
-                rows={3}
-                className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white text-gray-900 font-medium text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-              />
-            </div>
-
-            {/* Sample Media */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-amber-800">
-                  Sample Media {sampleMedia.length > 0 && `(${sampleMedia.length})`}
-                </label>
-                <button 
-                  onClick={() => sampleFileInputRef.current?.click()}
-                  className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center gap-1 transition-colors"
-                >
-                  <Upload className="w-3 h-3" />
-                  Add Files
-                </button>
-              </div>
-              
-              <input
-                ref={sampleFileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
-                onChange={handleSampleFileUpload}
-                className="hidden"
-              />
-              
-              {sampleMedia.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {sampleMedia.map((file) => (
-                    <div key={file.id} className="group relative inline-flex">
-                      <button
-                        onClick={() => handleFileClick(file.file_url)}
-                        className="px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-700 hover:bg-amber-50 hover:border-amber-300 transition-colors flex items-center gap-1"
-                        title={file.display_name || file.original_filename || 'Sample File'}
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        <span>{file.display_name || file.original_filename || 'Sample File'}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMedia(file.id)}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                        title="Delete file"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {pendingSampleFiles.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-amber-700 mb-1">Files to upload (will save with section):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {pendingSampleFiles.map((file, index) => {
-                      // Generate display name for preview
-                      const existingSampleFiles = media.filter((m: any) =>
-                        m.file_type === 'sample_image' || m.file_type === 'sample_document'
-                      );
-                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-                      const displayName = `${productOrderNumber}-sample-${String(existingSampleFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
-
-                      return (
-                        <div key={index} className="group relative inline-flex">
-                          <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800 flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            <span>{displayName}</span>
-                          </div>
-                          <button
-                            onClick={() => removePendingSampleFile(index)}
-                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove file"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              
-              {sampleMedia.length === 0 && pendingSampleFiles.length === 0 && (
-                <p className="text-xs text-amber-600">No sample media uploaded yet</p>
-              )}
-            </div>
-            
-            {sampleSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 mt-3 border-t border-amber-200">
-                <button
-                  onClick={() => {
-                    setTempSampleNotes('');
-                    setPendingSampleFiles([]);
-                    setSampleSectionDirty(false);
-                  }}
-                  className="px-4 py-1.5 text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg hover:bg-amber-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveSampleSection}
-                  className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 flex items-center gap-1"
-                >
-                  <Save className="w-3 h-3" />
-                  Save Sample Section
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Bulk Order Information - WITH CLIENT PRICES */}
+          {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
               <Package className="w-4 h-4 mr-2" />
               Bulk Order Information
             </h4>
 
+            {/* Bulk Order Notes */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <h5 className="text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
               
@@ -1226,9 +907,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 </label>
                 <button 
                   onClick={() => bulkFileInputRef.current?.click()}
-                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 transition-colors"
+                  disabled={uploadingBulkMedia}
+                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50 transition-colors"
                 >
-                  <Upload className="w-3 h-3" />
+                  {uploadingBulkMedia ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Upload className="w-3 h-3" />
+                  )}
                   Add Files
                 </button>
               </div>
@@ -1271,7 +957,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
                   <div className="flex flex-wrap gap-1">
                     {pendingBulkFiles.map((file, index) => {
-                      // Generate display name for preview
                       const existingBulkFiles = media.filter((m: any) =>
                         m.file_type === 'image' || m.file_type === 'document'
                       );
@@ -1304,18 +989,18 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
             </div>
 
-            {/* Product Price and Production Info - WITH CLIENT PRICES */}
+            {/* Product Price and Production Info - READ-ONLY FOR NON-SUPER-ADMINS */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Price
+                  Product Price {!canEditPricing && '(Client Price)'}
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
                     value={unitPrice > 0 ? `$${unitPrice.toFixed(2)}` : 'Set by manufacturer'}
-                    disabled
+                    disabled={true}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
                 </div>
@@ -1330,68 +1015,114 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <input
                     type="text"
                     value={(product as any).production_time || 'Set by manufacturer'}
-                    disabled
+                    disabled={true}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Shipping Method Selection - WITH CLIENT PRICES */}
-            <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <h5 className="text-sm font-medium text-gray-700 mb-3">Select Shipping Method</h5>
+            {/* FIX: Shipping Method Selection - NOW WORKS FOR ADMIN/SUPER ADMIN */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
+              <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                Select Shipping Method {!canEditPricing && '(Client Prices)'}
+              </h5>
               
-              {/* FIXED: Show CLIENT shipping prices */}
               {((product as any).shipping_air_price || (product as any).shipping_boat_price) ? (
-                <div className="space-y-3">
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      name={`shipping-${(product as any).id}`}
-                      value="air"
-                      checked={(product as any).selected_shipping_method === 'air'}
-                      onChange={() => handleShippingMethodChange('air')}
-                      disabled={!(product as any).shipping_air_price}
-                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <div className="ml-3 flex items-center gap-2">
-                      <Plane className="w-4 h-4 text-gray-500" />
-                      <span className={`text-sm ${
-                        (product as any).selected_shipping_method === 'air' ? 'text-blue-700 font-medium' : 'text-gray-700'
-                      }`}>
-                        Air - ${calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)}
-                      </span>
-                    </div>
-                  </label>
-                  
-                  <label className="flex items-center cursor-pointer">
-                    <input
-                      type="radio"
-                      name={`shipping-${(product as any).id}`}
-                      value="boat"
-                      checked={(product as any).selected_shipping_method === 'boat'}
-                      onChange={() => handleShippingMethodChange('boat')}
-                      disabled={!(product as any).shipping_boat_price}
-                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                    <div className="ml-3 flex items-center gap-2">
-                      <Ship className="w-4 h-4 text-gray-500" />
-                      <span className={`text-sm ${
-                        (product as any).selected_shipping_method === 'boat' ? 'text-blue-700 font-medium' : 'text-gray-700'
-                      }`}>
-                        Boat - ${calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
-                      </span>
-                    </div>
-                  </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Air Shipping Option */}
+                  <div className="space-y-3">
+                    <label className={`flex items-center gap-3 p-3 border-2 rounded-lg transition-all cursor-pointer ${
+                      (product as any).selected_shipping_method === 'air' 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:bg-blue-50'
+                    } ${!(product as any).shipping_air_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <input
+                        type="radio"
+                        name={`shipping-${(product as any).id}`}
+                        value="air"
+                        checked={(product as any).selected_shipping_method === 'air'}
+                        onChange={() => handleShippingMethodChange('air')}
+                        disabled={!(product as any).shipping_air_price}
+                        className="w-4 h-4 text-blue-600"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Plane className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium text-gray-900">Air Shipping</span>
+                        </div>
+                        {(product as any).shipping_air_price ? (
+                          <div className="mt-1">
+                            <span className="text-sm text-gray-600">
+                              ${calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)}
+                            </span>
+                            {(product as any).shipping_air_days && (
+                              <span className="text-xs text-gray-500 ml-2">
+                                ({(product as any).shipping_air_days} days)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">Not priced yet</span>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Boat Shipping Option */}
+                  <div className="space-y-3">
+                    <label className={`flex items-center gap-3 p-3 border-2 rounded-lg transition-all cursor-pointer ${
+                      (product as any).selected_shipping_method === 'boat' 
+                        ? 'border-cyan-500 bg-cyan-50' 
+                        : 'border-gray-200 hover:bg-cyan-50'
+                    } ${!(product as any).shipping_boat_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                      <input
+                        type="radio"
+                        name={`shipping-${(product as any).id}`}
+                        value="boat"
+                        checked={(product as any).selected_shipping_method === 'boat'}
+                        onChange={() => handleShippingMethodChange('boat')}
+                        disabled={!(product as any).shipping_boat_price}
+                        className="w-4 h-4 text-cyan-600"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Ship className="w-5 h-5 text-cyan-600" />
+                          <span className="font-medium text-gray-900">Boat Shipping</span>
+                        </div>
+                        {(product as any).shipping_boat_price ? (
+                          <div className="mt-1">
+                            <span className="text-sm text-gray-600">
+                              ${calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
+                            </span>
+                            {(product as any).shipping_boat_days && (
+                              <span className="text-xs text-gray-500 ml-2">
+                                ({(product as any).shipping_boat_days} days)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-400">Not priced yet</span>
+                        )}
+                      </div>
+                    </label>
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-gray-500">Shipping prices not yet set by manufacturer</p>
               )}
               
+              {/* Show selected shipping badge */}
               {(product as any).selected_shipping_method && (
-                <p className="mt-2 text-xs text-blue-600">
-                  Selected: {(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'} shipping
-                </p>
+                <div className="mt-4 p-3 bg-white rounded-lg border-2 border-green-400 shadow-sm">
+                  <p className="text-sm font-medium text-green-800 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Selected: {(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'} Shipping 
+                    - ${(product as any).selected_shipping_method === 'air' 
+                      ? calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)
+                      : calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
+                  </p>
+                </div>
               )}
             </div>
             
@@ -1436,7 +1167,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <tbody>
                     {items.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
+                       <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
                         <td className="py-2 px-1 text-sm font-medium text-gray-900">{item.quantity}</td>
                         <td className="py-2 pl-2 pr-3">
                           <input

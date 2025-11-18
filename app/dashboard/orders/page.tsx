@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -10,7 +9,7 @@ import {
   ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign,
   Inbox, SendHorizontal, Factory, Truck, CheckCircle
 } from 'lucide-react';
-import { StatusBadge } from './[id]/components/shared/StatusBadge';
+import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
 interface Order {

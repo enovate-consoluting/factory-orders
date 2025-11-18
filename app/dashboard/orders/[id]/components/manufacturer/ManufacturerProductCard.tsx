@@ -1,4 +1,4 @@
-// ManufacturerProductCard.tsx - WITH MANUFACTURER TOTALS
+// ManufacturerProductCard.tsx - WITH MANUFACTURER TOTALS, SAMPLE UI REMOVED ONLY
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
@@ -9,7 +9,7 @@ import {
   Calculator
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
-import { ProductStatusBadge } from '../shared/StatusBadge';
+import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
 
@@ -92,7 +92,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
     const [editingVariants, setEditingVariants] = useState(false);
     
-    // State for sample section - convert to strings for inputs
+    // State for sample section - convert to strings for inputs (KEEP FOR BACKWARDS COMPATIBILITY)
     const [sampleFee, setSampleFee] = useState((product as any).sample_fee?.toString() || '');
     const [sampleEta, setSampleEta] = useState((product as any).sample_eta || '');
     const [sampleStatus, setSampleStatus] = useState((product as any).sample_status || 'pending');
@@ -125,7 +125,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     // Calculate total quantity
     const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
     
-    // CALCULATE MANUFACTURER TOTALS
+    // CALCULATE MANUFACTURER TOTALS (NO SAMPLE FEE SINCE IT'S AT ORDER LEVEL NOW)
     const calculateManufacturerTotal = () => {
       let total = 0;
       
@@ -133,9 +133,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       const unitPrice = parseFloat(productPrice) || 0;
       total += unitPrice * totalQuantity;
       
-      // Add sample fee if exists
-      const sampleAmount = parseFloat(sampleFee) || 0;
-      total += sampleAmount;
+      // Don't add sample fee here - it's at order level now
       
       // Add selected shipping price
       if ((product as any).selected_shipping_method === 'air') {
@@ -190,14 +188,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         console.log('SaveAll called for product:', (product as any).id);
         let changesMade = false;
         
-        // Check if sample section has any changes (not just dirty flag)
-        const hasSampleChanges = 
-          sampleSectionDirty || 
-          sampleFee !== originalValues.sampleFee || 
-          sampleEta !== originalValues.sampleEta || 
-          sampleStatus !== originalValues.sampleStatus ||
-          (tempSampleNotes && tempSampleNotes.trim() !== '') || 
-          pendingSampleFiles.length > 0;
+        // Skip sample section save since UI is hidden
+        // But keep the check in case data exists
+        const hasSampleChanges = false; // Disabled since no UI
           
         if (hasSampleChanges) {
           console.log('Saving sample section...');
@@ -367,176 +360,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
-    // FIXED: Save Sample Section - now properly saves all fields
+    // KEEP THIS FUNCTION FOR BACKWARDS COMPATIBILITY BUT IT WON'T BE CALLED
     const handleSaveSampleSection = async () => {
-      console.log('Starting sample save with:', { sampleFee, sampleEta, sampleStatus, tempSampleNotes });
-      
-      try {
-        const user = getCurrentUser();
-        const changes = [];
-        
-        // Validate no negative prices
-        const fee = parseFloat(sampleFee) || 0;
-        if (fee < 0) {
-          alert('Sample fee cannot be negative');
-          return;
-        }
-        
-        // Check what changed
-        if (sampleFee !== originalValues.sampleFee) {
-          changes.push(`Sample Fee: $${originalValues.sampleFee || '0'} → $${sampleFee || '0'}`);
-        }
-        if (sampleEta !== originalValues.sampleEta) {
-          changes.push(`Sample ETA: ${originalValues.sampleEta || 'not set'} → ${sampleEta || 'not set'}`);
-        }
-        if (sampleStatus !== originalValues.sampleStatus) {
-          changes.push(`Sample Status: ${originalValues.sampleStatus} → ${sampleStatus}`);
-        }
-        
-        // Handle sample notes - just replace, don't append
-        let finalSampleNotes = tempSampleNotes.trim() || (product as any).sample_notes || '';
-        
-        // Prepare update data - use empty string instead of null for text fields
-        const updateData: any = {
-          sample_fee: sampleFee ? parseFloat(sampleFee) : null,
-          sample_eta: sampleEta || null,
-          sample_status: sampleStatus || 'pending'  // Ensure we always have a status
-        };
-
-        // Only update notes if there's a new note
-        if (tempSampleNotes && tempSampleNotes.trim()) {
-          updateData.sample_notes = finalSampleNotes;
-        }
-        
-        console.log('Update data:', updateData);
-        
-        // Update database - don't use .select() to avoid relationship issues
-        const { error } = await supabase
-          .from('order_products')
-          .update(updateData)
-          .eq('id', (product as any).id);
-
-        if (error) {
-          console.error('Error updating sample section:', error);
-          console.error('Error details:', {
-            message: error.message,
-            details: (error as any).details,
-            hint: (error as any).hint,
-            code: (error as any).code
-          });
-          alert(`Failed to save sample section: ${error.message || 'Unknown error'}`);
-          return;
-        }
-        
-        console.log('Sample section updated successfully');
-
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
-        try {
-          const { data: orderData } = await supabase
-            .from('orders')
-            .select('status')
-            .eq('id', (product as any).order_id)
-            .single();
-
-          if (orderData && orderData.status === 'sent_to_manufacturer') {
-            await supabase
-              .from('orders')
-              .update({ status: 'in_progress' })
-              .eq('id', (product as any).order_id);
-            console.log('Order status updated to in_progress');
-          }
-        } catch (orderError) {
-          console.error('Error updating order status:', orderError);
-          // Don't fail the whole operation just because order status update failed
-        }
-
-        // Upload pending sample files if any
-        if (pendingSampleFiles.length > 0) {
-          console.log('Uploading sample files...');
-
-          // Count existing sample files to get the next counter
-          const existingSampleFiles = media.filter((m: any) =>
-            m.file_type === 'sample_image' || m.file_type === 'sample_document'
-          );
-          let sampleFileCounter = existingSampleFiles.length + 1;
-
-          for (const file of pendingSampleFiles) {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-
-            // Create display name using product code and sequential number
-            const displayName = `${productOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
-
-            const { error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(filePath, file);
-
-            if (!uploadError) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath);
-
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: (product as any).id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-                  uploaded_by: user.id,
-                  original_filename: file.name,
-                  display_name: displayName
-                });
-
-              sampleFileCounter++;
-            }
-          }
-          console.log('Files uploaded successfully');
-        }
-
-        // Log audit if there were changes - do this separately
-        if (changes.length > 0) {
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'sample_section_updated',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                old_value: JSON.stringify(originalValues),
-                new_value: changes.join(', '),
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-            // Don't fail the whole operation just because audit log failed
-          }
-        }
-
-        // Update original values to new values
-        setOriginalValues(prev => ({
-          ...prev,
-          sampleFee,
-          sampleEta,
-          sampleStatus,
-          sampleNotes: finalSampleNotes
-        }));
-        
-        // Clear temporary states
-        setTempSampleNotes('');
-        setPendingSampleFiles([]);
-        setSampleSectionDirty(false);
-        setShowNewHistoryDot(true);
-        
-        // Call onUpdate to refresh parent
-        await onUpdate();
-        
-      } catch (error) {
-        console.error('Error in handleSaveSampleSection:', error);
-        alert('An error occurred while saving. Please try again.');
-      }
+      console.log('Sample section save called but UI is hidden');
+      // Function kept for backwards compatibility but won't actually save since UI is removed
+      return;
     };
 
     // FIXED: Save Bulk Section - now includes shipping prices
@@ -757,18 +585,10 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
-    // Handle sample file selection
+    // Handle sample file selection (KEPT BUT WON'T BE USED)
     const handleSampleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const newFiles = Array.from(files);
-      setPendingSampleFiles(prev => [...prev, ...newFiles]);
-      setSampleSectionDirty(true);
-      
-      if (sampleFileInputRef.current) {
-        sampleFileInputRef.current.value = '';
-      }
+      // Function kept for backwards compatibility
+      return;
     };
 
     // Handle bulk file selection
@@ -980,7 +800,8 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     if (isCollapsed) {
       return <CollapsedHeader />;
     }
-// FULL EXPANDED VIEW WITH MANUFACTURER TOTAL BADGE
+
+    // FULL EXPANDED VIEW WITH MANUFACTURER TOTAL BADGE - SAMPLE UI SECTION REMOVED
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header with Collapse Button */}
@@ -1109,216 +930,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* Sample Request Section */}
-          <div className="mt-3 bg-amber-50 rounded-lg p-4 border border-amber-300">
-            <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
-              <AlertCircle className="w-4 h-4 mr-2" />
-              Sample Request
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample Price
-                </label>
-                <div className="relative">
-                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={sampleFee}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '' || parseFloat(val) >= 0) {
-                        setSampleFee(val);
-                        setSampleSectionDirty(true);
-                      }
-                    }}
-                    placeholder="Enter price"
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample ETA
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="date"
-                    value={sampleEta}
-                    onChange={(e) => {
-                      setSampleEta(e.target.value);
-                      setSampleSectionDirty(true);
-                    }}
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Status
-                </label>
-                <select
-                  value={sampleStatus}
-                  onChange={(e) => {
-                    setSampleStatus(e.target.value);
-                    setSampleSectionDirty(true);
-                  }}
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="in_production">In Production</option>
-                  <option value="ready">Ready</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Sample Notes */}
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-amber-800 mb-1">
-                Sample Notes / Instructions
-              </label>
-              
-              {(product as any).sample_notes && (
-                <div className="mb-2 p-2 bg-amber-100 rounded text-sm text-amber-800">
-                  <strong>Current notes:</strong>
-                  <div className="whitespace-pre-wrap mt-1">{(product as any).sample_notes}</div>
-                </div>
-              )}
-              
-              <textarea
-                value={tempSampleNotes}
-                onChange={(e) => {
-                  setTempSampleNotes(e.target.value);
-                  setSampleSectionDirty(true);
-                }}
-                placeholder="Add sample-specific instructions, requirements, materials..."
-                rows={3}
-                className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white text-gray-900 font-medium text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-              />
-            </div>
-
-            {/* Sample Media */}
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-amber-800">
-                  Sample Media {sampleMedia.length > 0 && `(${sampleMedia.length})`}
-                </label>
-                <button 
-                  onClick={() => sampleFileInputRef.current?.click()}
-                  disabled={uploadingMedia}
-                  className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center gap-1 disabled:opacity-50 transition-colors"
-                >
-                  {uploadingMedia ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  Add Files
-                </button>
-              </div>
-              
-              <input
-                ref={sampleFileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
-                onChange={handleSampleFileUpload}
-                className="hidden"
-              />
-              
-              {sampleMedia.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {sampleMedia.map((file) => (
-                    <div key={file.id} className="group relative inline-flex">
-                      <button
-                        onClick={() => handleFileClick(file.file_url)}
-                        className="px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-700 hover:bg-amber-50 hover:border-amber-300 transition-colors flex items-center gap-1"
-                        title={file.display_name || file.original_filename || 'Sample File'}
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        <span>{file.display_name || file.original_filename || 'Sample File'}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMedia(file.id)}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                        title="Delete file"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {pendingSampleFiles.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-amber-700 mb-1">Files to upload (will save with section):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {pendingSampleFiles.map((file, index) => {
-                      const existingSampleFiles = media.filter((m: any) =>
-                        m.file_type === 'sample_image' || m.file_type === 'sample_document'
-                      );
-                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-                      const displayName = `${productOrderNumber}-sample-${String(existingSampleFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
-
-                      return (
-                        <div key={index} className="group relative inline-flex">
-                          <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800 flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            <span>{displayName}</span>
-                          </div>
-                          <button
-                            onClick={() => removePendingSampleFile(index)}
-                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove file"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Save button for Sample Section */}
-            {sampleSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 border-t border-amber-200">
-                <button
-                  onClick={() => {
-                    setSampleFee(originalValues.sampleFee);
-                    setSampleEta(originalValues.sampleEta);
-                    setSampleStatus(originalValues.sampleStatus);
-                    setTempSampleNotes('');
-                    setPendingSampleFiles([]);
-                    setSampleSectionDirty(false);
-                  }}
-                  className="px-4 py-1.5 text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg hover:bg-amber-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveSampleSection}
-                  className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 flex items-center gap-1"
-                >
-                  <Save className="w-3 h-3" />
-                  Save Sample Section
-                </button>
-              </div>
-            )}
-          </div>
+          {/* SAMPLE REQUEST SECTION REMOVED - This is where it was */}
 
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
@@ -1583,12 +1195,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     <span className="font-semibold text-gray-900">${(parseFloat(productPrice) * totalQuantity).toFixed(2)}</span>
                   </div>
                 )}
-                {sampleFee && parseFloat(sampleFee) > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Sample Fee</span>
-                    <span className="font-semibold text-gray-900">${parseFloat(sampleFee).toFixed(2)}</span>
-                  </div>
-                )}
                 {(product as any).selected_shipping_method && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">
@@ -1709,4 +1315,4 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       </div>
     );
   }
-);   
+);
