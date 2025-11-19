@@ -78,10 +78,14 @@ export default function OrdersPage() {
     fetchOrders(user);
     loadMargins(); // Load margins for price calculations
 
-    // Load unread notifications for manufacturer
+    // Load unread notifications for manufacturer or admin
     let unsubscribe: (() => void) | undefined;
     if (user.role === 'manufacturer') {
       loadManufacturerData(user).then(cleanup => {
+        unsubscribe = cleanup;
+      });
+    } else if (user.role === 'admin' || user.role === 'super_admin') {
+      loadAdminData(user).then(cleanup => {
         unsubscribe = cleanup;
       });
     }
@@ -151,6 +155,63 @@ export default function OrdersPage() {
         },
         (payload) => {
           loadUnreadNotifications(manufacturerId);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  };
+
+  // Load admin data and unread notifications
+  const loadAdminData = async (user: any): Promise<(() => void) | undefined> => {
+    try {
+      // Load unread notifications for admin
+      await loadAdminUnreadNotifications(user.id);
+
+      // Subscribe to real-time updates and return cleanup function
+      return subscribeToAdminNotificationUpdates(user.id);
+    } catch (error) {
+      console.error('Error loading admin data:', error);
+      return undefined;
+    }
+  };
+
+  // Load unread notifications for admin
+  const loadAdminUnreadNotifications = async (userId: string) => {
+    try {
+      const { data: unreadNotifs } = await supabase
+        .from('notifications')
+        .select('order_id')
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .not('order_id', 'is', null);
+
+      if (unreadNotifs) {
+        const unreadOrderIds = new Set(unreadNotifs.map(n => n.order_id).filter(id => id !== null));
+        setOrdersWithUnreadNotifications(unreadOrderIds);
+        console.log('Admin unread order IDs:', Array.from(unreadOrderIds));
+      }
+    } catch (error) {
+      console.error('Error loading admin unread notifications:', error);
+    }
+  };
+
+  // Subscribe to admin notification changes
+  const subscribeToAdminNotificationUpdates = (userId: string): (() => void) => {
+    const channel = supabase
+      .channel(`orders-page-admin-notifications-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          loadAdminUnreadNotifications(userId);
         }
       )
       .subscribe();

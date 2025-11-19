@@ -91,6 +91,10 @@ export default function DashboardLayout({
         loadManufacturerData(parsedUser).then((cleanupFn) => {
           cleanup = cleanupFn;
         });
+      } else if (parsedUser.role === 'admin' || parsedUser.role === 'super_admin') {
+        console.log('User is admin, loading admin notifications...'); // DEBUG
+        loadAdminNotifications(parsedUser.id);
+        cleanup = subscribeToAdminNotifications(parsedUser.id);
       } else if (parsedUser.id) {
         loadNotificationCounts(parsedUser.id);
         cleanup = subscribeToNotifications(parsedUser.id);
@@ -257,6 +261,98 @@ export default function DashboardLayout({
     };
   };
 
+  // Load admin notifications
+  const loadAdminNotifications = async (userId: string) => {
+    try {
+      console.log('Loading notifications for admin user ID:', userId); // DEBUG
+
+      const { data: notifs, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false });
+
+      console.log('Admin notifications query result:', notifs, 'Error:', error); // DEBUG
+
+      if (error) {
+        console.error('Error loading admin notifications:', error);
+        return;
+      }
+
+      // Count by type
+      let orders = 0;
+      let products = 0;
+
+      notifs?.forEach(notif => {
+        if (notif.type === 'manufacturer_question' || notif.type === 'product_shipped' || notif.type === 'production_started') {
+          orders++;
+        }
+        if (notif.type === 'approval_needed') {
+          products++;
+        }
+      });
+
+      console.log('Admin notification counts - Total:', notifs?.length || 0, 'Orders:', orders, 'Products:', products); // DEBUG
+
+      setNotifications(notifs || []);
+      const newCounts = {
+        orders,
+        products,
+        total: notifs?.length || 0
+      };
+      console.log('Setting notificationCounts to:', newCounts); // DEBUG
+      setNotificationCounts(newCounts);
+    } catch (error) {
+      console.error('Error loading admin notifications:', error);
+    }
+  };
+
+  // Subscribe to admin notifications
+  const subscribeToAdminNotifications = (userId: string) => {
+    console.log('Setting up real-time subscription for admin user:', userId); // DEBUG
+
+    const channel = supabase
+      .channel(`admin-notifications-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('✅ INSERT event - New admin notification received:', payload);
+          loadAdminNotifications(userId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          console.log('✅ UPDATE event - Admin notification updated:', payload);
+          loadAdminNotifications(userId);
+        }
+      )
+      .subscribe((status, err) => {
+        console.log('📡 Admin subscription status:', status); // DEBUG
+        if (err) {
+          console.error('❌ Admin subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('🧹 Cleaning up admin subscription for user:', userId);
+      supabase.removeChannel(channel);
+    };
+  };
+
   // Close mobile menu when route changes
   useEffect(() => {
     setShowMobileMenu(false);
@@ -342,8 +438,17 @@ export default function DashboardLayout({
           .from('manufacturer_notifications')
           .update({ is_read: true, read_at: new Date().toISOString() })
           .eq('id', notificationId);
-        
+
         loadManufacturerNotifications(manufacturerId);
+      } else if (user?.role === 'admin' || user?.role === 'super_admin') {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('id', notificationId);
+
+        if (user?.id) {
+          loadAdminNotifications(user.id);
+        }
       } else {
         await supabase
           .from('notifications')
@@ -369,6 +474,18 @@ export default function DashboardLayout({
           .eq('is_read', false);
 
         loadManufacturerNotifications(manufacturerId);
+      } catch (error) {
+        console.error('Error marking all as read:', error);
+      }
+    } else if (user?.role === 'admin' || user?.role === 'super_admin') {
+      try {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('user_id', user.id)
+          .eq('is_read', false);
+
+        loadAdminNotifications(user.id);
       } catch (error) {
         console.error('Error marking all as read:', error);
       }

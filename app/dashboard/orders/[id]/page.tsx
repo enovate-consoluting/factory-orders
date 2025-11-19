@@ -192,9 +192,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [order]);
 
-  // Auto-mark manufacturer notifications as read
+  // Auto-mark manufacturer and admin notifications as read
   useEffect(() => {
     const markOrderNotificationsAsRead = async () => {
+      const userData = localStorage.getItem('user');
+      if (!userData) return;
+      const user = JSON.parse(userData);
+
       if (userRole === 'manufacturer' && manufacturerId && id) {
         try {
           const { data, error } = await supabase
@@ -206,10 +210,30 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             .select();
 
           if (error) {
-            console.error('Error marking notifications as read:', error);
+            console.error('Error marking manufacturer notifications as read:', error);
+          } else if (data && data.length > 0) {
+            console.log(`Marked ${data.length} manufacturer notifications as read for order ${id}`);
           }
         } catch (err) {
-          console.error('Error in markOrderNotificationsAsRead:', err);
+          console.error('Error in markOrderNotificationsAsRead (manufacturer):', err);
+        }
+      } else if ((userRole === 'admin' || userRole === 'super_admin') && user.id && id) {
+        try {
+          const { data, error } = await supabase
+            .from('notifications')
+            .update({ is_read: true })
+            .eq('user_id', user.id)
+            .eq('order_id', id)
+            .eq('is_read', false)
+            .select();
+
+          if (error) {
+            console.error('Error marking admin notifications as read:', error);
+          } else if (data && data.length > 0) {
+            console.log(`Marked ${data.length} admin notifications as read for order ${id}`);
+          }
+        } catch (err) {
+          console.error('Error in markOrderNotificationsAsRead (admin):', err);
         }
       }
     };

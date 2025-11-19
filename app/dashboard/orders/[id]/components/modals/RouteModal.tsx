@@ -28,7 +28,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
   const isManufacturer = userRole === 'manufacturer';
   const isInProduction = product?.is_locked || product?.product_status === 'in_production';
 
-  // Helper function to create admin notification
+  // Helper function to create admin notification for all admin users
   const createAdminNotification = async (
     orderId: string,
     productId: string,
@@ -38,20 +38,33 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
     try {
       const { data: orderData } = await supabase
         .from('orders')
-        .select('created_by, order_number')
+        .select('order_number')
         .eq('id', orderId)
         .single();
 
-      if (orderData?.created_by) {
+      // Get all admin and super_admin users
+      const { data: adminUsers } = await supabase
+        .from('users')
+        .select('id')
+        .in('role', ['admin', 'super_admin']);
+
+      if (adminUsers && adminUsers.length > 0 && orderData) {
+        // Create notification for each admin user
+        const notifications = adminUsers.map(admin => ({
+          user_id: admin.id,
+          order_id: orderId,
+          order_product_id: productId,
+          type: type,
+          message: `${message} - Order ${orderData.order_number}`,
+          is_read: false,
+          created_at: new Date().toISOString()
+        }));
+
         await supabase
           .from('notifications')
-          .insert({
-            user_id: orderData.created_by,
-            type: type,
-            message: `${message} - Order ${orderData.order_number}`,
-            is_read: false,
-            created_at: new Date().toISOString()
-          });
+          .insert(notifications);
+
+        console.log(`Created ${notifications.length} admin notifications for order ${orderData.order_number}`);
       }
     } catch (error) {
       console.error('Error creating admin notification:', error);
