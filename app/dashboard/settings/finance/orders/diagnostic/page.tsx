@@ -153,7 +153,7 @@ export default function MarginDiagnosticPage() {
         .select('*')
         .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
       
-      if (!configCheck || configCheck.length === 0) {
+      if (!configCheck || configCheck.length < 2) {  // Changed to check for both configs
         await supabase.from('system_config').upsert([
           {
             config_key: 'default_margin_percentage',
@@ -243,10 +243,6 @@ export default function MarginDiagnosticPage() {
     await runDiagnostics(); // Refresh diagnostic
   };
 
-  const calculateExpectedClientPrice = (manufacturerPrice: number, marginPercent: number) => {
-    return manufacturerPrice * (1 + marginPercent / 100);
-  };
-
   if (loading) {
     return (
       <div className="p-6">
@@ -280,28 +276,32 @@ export default function MarginDiagnosticPage() {
         </p>
       </div>
 
-      {/* Quick Actions */}
-      {issuesFound && (
-        <div className="bg-yellow-50 border border-yellow-200 p-4 rounded mb-6">
-          <h2 className="font-bold text-lg mb-2 text-yellow-800">Issues Detected</h2>
-          <p className="mb-4">The diagnostic found issues that may be causing margin calculation problems.</p>
-          <div className="flex gap-4">
-            <button
-              onClick={runFix}
-              disabled={fixing}
-              className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 disabled:bg-gray-400"
-            >
-              {fixing ? 'Fixing...' : 'Run Automatic Fix'}
-            </button>
-            <button
-              onClick={runDiagnostics}
-              className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
-            >
-              Re-run Diagnostic
-            </button>
-          </div>
+      {/* ALWAYS SHOW FIX BUTTON - Modified this section */}
+      <div className="bg-yellow-50 border border-yellow-200 p-4 rounded mb-6">
+        <h2 className="font-bold text-lg mb-2 text-yellow-800">
+          {issuesFound ? 'Issues Detected' : 'System Check'}
+        </h2>
+        <p className="mb-4">
+          {issuesFound 
+            ? 'The diagnostic found issues that may be causing margin calculation problems.'
+            : 'No issues detected, but you can run the fix to ensure everything is configured correctly.'}
+        </p>
+        <div className="flex gap-4">
+          <button
+            onClick={runFix}
+            disabled={fixing}
+            className="bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700 disabled:bg-gray-400"
+          >
+            {fixing ? 'Fixing...' : 'Run Automatic Fix'}
+          </button>
+          <button
+            onClick={runDiagnostics}
+            className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+          >
+            Re-run Diagnostic
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Fix Results */}
       {fixResults && (
@@ -364,7 +364,7 @@ export default function MarginDiagnosticPage() {
           <div key={order.id} className="mb-4 p-3 bg-gray-50 rounded">
             <div className="font-semibold mb-2">
               Order: {order.order_number} 
-              {order.client?.[0]?.name && ` - ${order.client[0].name}`}
+              {order.client?.name && ` - ${order.client.name}`}
             </div>
             {order.order_products?.length > 0 ? (
               <div className="space-y-2">
