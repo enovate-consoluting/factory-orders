@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
-  Plus, Search, Filter, Eye, Package, Users, 
+  Plus, Search, Eye, Package, Users, 
   Calendar, ChevronRight, Edit, Building,
-  ChevronDown, Send, AlertCircle, Trash2, Shield, DollarSign,
-  Inbox, SendHorizontal, Factory, Truck, CheckCircle
+  ChevronDown, AlertCircle, Trash2, Shield, DollarSign,
+  Inbox, SendHorizontal, Factory, Truck, CheckCircle,
+  EyeOff
 } from 'lucide-react';
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -43,13 +44,22 @@ interface Order {
 
 type TabType = 'my_orders' | 'sent_to_other' | 'approved_for_production' | 'in_production' | 'shipped';
 
+// Helper function to format currency with commas
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount);
+};
+
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [userRole, setUserRole] = useState<string | null>(null);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
@@ -57,6 +67,9 @@ export default function OrdersPage() {
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('my_orders');
+
+  // State for showing/hiding prices
+  const [showPrices, setShowPrices] = useState(false);
 
   // State for finance margins
   const [productMargin, setProductMargin] = useState(80); // Default 80%
@@ -137,32 +150,53 @@ export default function OrdersPage() {
     }
   };
 
-  // Subscribe to notification changes
+  // Subscribe to notification changes with better error handling
   const subscribeToNotificationUpdates = (manufacturerId: string): (() => void) => {
-    const channel = supabase
-      .channel(`orders-page-notifications-${manufacturerId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'manufacturer_notifications',
-          filter: `manufacturer_id=eq.${manufacturerId}`,
-        },
-        (payload) => {
-          loadUnreadNotifications(manufacturerId);
-        }
-      )
-      .subscribe();
+    try {
+      const channelName = `notifications_${manufacturerId.replace(/-/g, '_')}`;
+      
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'manufacturer_notifications',
+            filter: `manufacturer_id=eq.${manufacturerId}`,
+          },
+          (payload) => {
+            console.log('Notification change received:', payload);
+            if (payload.errors) {
+              console.error('Realtime error:', payload.errors);
+              return;
+            }
+            loadUnreadNotifications(manufacturerId);
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Successfully subscribed to notifications');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Failed to subscribe to notifications');
+          } else if (status === 'CLOSED') {
+            console.log('Subscription closed');
+          }
+        });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+      return () => {
+        console.log('Cleaning up subscription');
+        supabase.removeChannel(channel);
+      };
+    } catch (error) {
+      console.error('Error setting up notification subscription:', error);
+      return () => {};
+    }
   };
 
   useEffect(() => {
     filterOrders();
-  }, [searchTerm, statusFilter, orders, activeTab]);
+  }, [searchTerm, orders, activeTab]);
 
   // Load finance margins from database
   const loadMargins = async () => {
@@ -184,7 +218,7 @@ export default function OrdersPage() {
       setMarginsLoaded(true);
     } catch (error) {
       console.error('Error loading margins:', error);
-      setMarginsLoaded(true); // Use defaults
+      setMarginsLoaded(true);
     }
   };
 
@@ -279,11 +313,9 @@ export default function OrdersPage() {
           .eq('email', user.email)
           .single(); 
         if (manufacturerData) {
-          // Get ALL orders assigned to this manufacturer (including drafts now)
           query = query.eq('manufacturer_id', manufacturerData.id);
         }
       } else if (user.role === 'manufacturer_team_member') {
-        // Team members see same orders as manufacturer
         const { data: manufacturerUser } = await supabase
           .from('users')
           .select('created_by')
@@ -300,7 +332,6 @@ export default function OrdersPage() {
           }
         }
       } else if (user.role === 'sub_manufacturer') {
-        // Sub manufacturer sees only orders assigned to them
         query = query.eq('sub_manufacturer_id', user.id);
       } else if (user.role === 'client') {
         const { data: clientData } = await supabase
@@ -313,7 +344,6 @@ export default function OrdersPage() {
           query = query.eq('client_id', clientData.id);
         }
       }
-      // Admin and super_admin see all orders (no additional filtering)
 
       const { data, error } = await query;
       
@@ -328,12 +358,11 @@ export default function OrdersPage() {
     }
   };
 
-  // Filter orders based on tab - FIXED FOR ADMIN/MANUFACTURER DIFFERENCES
+  // FIXED: Filter orders based on tab - exclude production statuses from "sent_to_other"
   const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
     const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
     const isManufacturerUser = userRole === 'manufacturer';
     
-    // Skip filtering for other roles
     if (!isAdminUser && !isManufacturerUser) {
       return ordersToFilter;
     }
@@ -341,7 +370,6 @@ export default function OrdersPage() {
     switch (activeTab) {
       case 'my_orders':
         if (isAdminUser) {
-          // Admin: Show orders with products routed to ADMIN
           return ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
             return order.order_products.some(p => 
@@ -353,7 +381,6 @@ export default function OrdersPage() {
             );
           });
         } else {
-          // Manufacturer: Show orders with products routed to MANUFACTURER
           return ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
             return order.order_products.some(p => 
@@ -368,10 +395,16 @@ export default function OrdersPage() {
 
       case 'sent_to_other':
         if (isAdminUser) {
-          // Admin: Show orders sent to MANUFACTURER
+          // Admin: Show ONLY orders sent to manufacturer that are NOT in production statuses
           return ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
-            const hasProductsRoutedToManufacturer = order.order_products.some(p => p.routed_to === 'manufacturer');
+            const hasProductsRoutedToManufacturer = order.order_products.some(p => 
+              p.routed_to === 'manufacturer' &&
+              p.product_status !== 'approved_for_production' &&
+              p.product_status !== 'in_production' &&
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
             const hasNoProductsWithAdmin = !order.order_products.some(p => 
               p.routed_to === 'admin' && 
               p.product_status !== 'in_production' && 
@@ -381,10 +414,16 @@ export default function OrdersPage() {
             return hasProductsRoutedToManufacturer && hasNoProductsWithAdmin;
           });
         } else {
-          // Manufacturer: Show orders sent to ADMIN
+          // Manufacturer: Show ONLY orders sent to admin that are NOT in production statuses
           return ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
-            const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
+            const hasProductsRoutedToAdmin = order.order_products.some(p => 
+              p.routed_to === 'admin' &&
+              p.product_status !== 'approved_for_production' &&
+              p.product_status !== 'in_production' &&
+              p.product_status !== 'shipped' &&
+              p.product_status !== 'completed'
+            );
             const hasNoProductsWithManufacturer = !order.order_products.some(p => 
               p.routed_to === 'manufacturer' && 
               p.product_status !== 'in_production' && 
@@ -396,7 +435,6 @@ export default function OrdersPage() {
         }
 
       case 'approved_for_production':
-        // Show orders with products approved for production
         return ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
           return order.order_products.some(p => 
@@ -406,14 +444,12 @@ export default function OrdersPage() {
         });
 
       case 'in_production':
-        // Orders with products in production
         return ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
           return order.order_products.some(p => p.product_status === 'in_production');
         });
 
       case 'shipped':
-        // Orders with shipped/completed products
         return ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
           return order.order_products.some(p => 
@@ -438,109 +474,94 @@ export default function OrdersPage() {
       );
     }
     
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(order => order.status === statusFilter);
-    }
-    
-    // Apply tab filtering for manufacturers and admins
+    // Apply tab filtering
     filtered = getTabFilteredOrders(filtered);
     
     setFilteredOrders(filtered);
   };
 
-  // Get tab counts - FIXED FOR ADMIN/MANUFACTURER
+  // FIXED: Get tab counts - NOW COUNTING PRODUCTS INSTEAD OF ORDERS
   const getTabCounts = () => {
     const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
     const isManufacturerUser = userRole === 'manufacturer';
     
-    if (!isAdminUser && !isManufacturerUser) return {};
+    if (!isAdminUser && !isManufacturerUser) {
+  return {
+    my_orders: 0,
+    sent_to_other: 0,
+    approved_for_production: 0,
+    in_production: 0,
+    shipped: 0
+  };
+}
     
-    const baseOrders = orders.filter(o => statusFilter === 'all' || o.status === statusFilter);
-    
-    if (isAdminUser) {
-      return {
-        my_orders: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.routed_to === 'admin' && 
-            p.product_status !== 'approved_for_production' &&
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
-          );
-        }).length,
-        sent_to_other: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          const hasProductsRoutedToManufacturer = order.order_products.some(p => p.routed_to === 'manufacturer');
-          const hasNoProductsWithAdmin = !order.order_products.some(p => 
-            p.routed_to === 'admin' && 
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
-          );
-          return hasProductsRoutedToManufacturer && hasNoProductsWithAdmin;
-        }).length,
-        approved_for_production: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.product_status === 'approved_for_production' || 
-            p.product_status === 'ready_for_production'
-          );
-        }).length,
-        in_production: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => p.product_status === 'in_production');
-        }).length,
-        shipped: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.product_status === 'shipped' || p.product_status === 'completed'
-          );
-        }).length
-      };
-    } else {
-      // Manufacturer counts
-      return {
-        my_orders: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.routed_to === 'manufacturer' && 
-            p.product_status !== 'approved_for_production' &&
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
-          );
-        }).length,
-        sent_to_other: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          const hasProductsRoutedToAdmin = order.order_products.some(p => p.routed_to === 'admin');
-          const hasNoProductsWithManufacturer = !order.order_products.some(p => 
-            p.routed_to === 'manufacturer' && 
-            p.product_status !== 'in_production' && 
-            p.product_status !== 'shipped' &&
-            p.product_status !== 'completed'
-          );
-          return hasProductsRoutedToAdmin && hasNoProductsWithManufacturer;
-        }).length,
-        approved_for_production: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.product_status === 'approved_for_production' || 
-            p.product_status === 'ready_for_production'
-          );
-        }).length,
-        in_production: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => p.product_status === 'in_production');
-        }).length,
-        shipped: baseOrders.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
-          return order.order_products.some(p => 
-            p.product_status === 'shipped' || p.product_status === 'completed'
-          );
-        }).length
-      };
-    }
+    // Count PRODUCTS not orders
+    let productCounts = {
+      my_orders: 0,
+      sent_to_other: 0,
+      approved_for_production: 0,
+      in_production: 0,
+      shipped: 0
+    };
+
+    orders.forEach(order => {
+      if (!order.order_products) return;
+      
+      order.order_products.forEach(product => {
+        if (isAdminUser) {
+          // Admin counts
+          if (product.routed_to === 'admin' && 
+              product.product_status !== 'approved_for_production' &&
+              product.product_status !== 'in_production' && 
+              product.product_status !== 'shipped' &&
+              product.product_status !== 'completed') {
+            productCounts.my_orders++;
+          }
+          
+          if (product.routed_to === 'manufacturer' &&
+              product.product_status !== 'approved_for_production' &&
+              product.product_status !== 'in_production' &&
+              product.product_status !== 'shipped' &&
+              product.product_status !== 'completed') {
+            productCounts.sent_to_other++;
+          }
+        } else {
+          // Manufacturer counts
+          if (product.routed_to === 'manufacturer' && 
+              product.product_status !== 'approved_for_production' &&
+              product.product_status !== 'in_production' && 
+              product.product_status !== 'shipped' &&
+              product.product_status !== 'completed') {
+            productCounts.my_orders++;
+          }
+          
+          if (product.routed_to === 'admin' &&
+              product.product_status !== 'approved_for_production' &&
+              product.product_status !== 'in_production' &&
+              product.product_status !== 'shipped' &&
+              product.product_status !== 'completed') {
+            productCounts.sent_to_other++;
+          }
+        }
+        
+        // Production status counts (same for both roles)
+        if (product.product_status === 'approved_for_production' || 
+            product.product_status === 'ready_for_production') {
+          productCounts.approved_for_production++;
+        }
+        
+        if (product.product_status === 'in_production') {
+          productCounts.in_production++;
+        }
+        
+        if (product.product_status === 'shipped' || 
+            product.product_status === 'completed') {
+          productCounts.shipped++;
+        }
+      });
+    });
+
+    return productCounts;
   };
 
   const toggleOrderExpansion = (orderId: string) => {
@@ -555,28 +576,24 @@ export default function OrdersPage() {
     });
   };
 
-  // Navigate to order detail view
   const navigateToOrder = (orderId: string) => {
     router.push(`/dashboard/orders/${orderId}`);
   };
 
-  // Check if user can delete the order
   const canDeleteOrder = (order: Order): boolean => {
     if (userRole === 'super_admin') {
-      return true; // Super admins can delete any order
+      return true;
     }
     if (userRole === 'admin' && order.status === 'draft') {
-      return true; // Admins can only delete draft orders
+      return true;
     }
     return false;
   };
 
-  // Delete order function
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrder(orderId);
       
-      // First, get all order_products for this order
       const { data: orderProducts, error: fetchError } = await supabase
         .from('order_products')
         .select('id')
@@ -589,9 +606,6 @@ export default function OrdersPage() {
 
       const productIds = orderProducts?.map(p => p.id) || [];
 
-      // Delete in correct order to avoid foreign key constraints
-      
-      // 1. Delete order_media (files)
       if (productIds.length > 0) {
         const { error: mediaError } = await supabase
           .from('order_media')
@@ -603,7 +617,11 @@ export default function OrdersPage() {
         }
       }
 
-      // 2. Delete order_items (variants)
+      await supabase
+        .from('order_media')
+        .delete()
+        .eq('order_id', orderId);
+
       if (productIds.length > 0) {
         const { error: itemsError } = await supabase
           .from('order_items')
@@ -615,7 +633,6 @@ export default function OrdersPage() {
         }
       }
 
-      // 3. Delete audit_log entries related to this order
       const { error: auditError } = await supabase
         .from('audit_log')
         .delete()
@@ -625,7 +642,6 @@ export default function OrdersPage() {
         console.error('Error deleting audit logs:', auditError);
       }
 
-      // 4. Delete notifications
       const { error: notifError } = await supabase
         .from('notifications')
         .delete()
@@ -635,7 +651,6 @@ export default function OrdersPage() {
         console.error('Error deleting notifications:', notifError);
       }
 
-      // 5. Try to delete manufacturer_notifications (may not exist)
       try {
         await supabase
           .from('manufacturer_notifications')
@@ -645,7 +660,6 @@ export default function OrdersPage() {
         // Table might not exist, continue
       }
 
-      // 6. Try to delete workflow_log (may not exist)
       try {
         await supabase
           .from('workflow_log')
@@ -655,7 +669,6 @@ export default function OrdersPage() {
         // Table might not exist, continue
       }
 
-      // 7. Delete order_products
       const { error: productsError } = await supabase
         .from('order_products')
         .delete()
@@ -666,7 +679,6 @@ export default function OrdersPage() {
         throw productsError;
       }
 
-      // 8. Finally delete the order itself
       const { error: orderError } = await supabase
         .from('orders')
         .delete()
@@ -677,7 +689,6 @@ export default function OrdersPage() {
         throw orderError;
       }
 
-      // Remove from local state
       setOrders(prev => prev.filter(order => order.id !== orderId));
       setFilteredOrders(prev => prev.filter(order => order.id !== orderId));
       
@@ -685,7 +696,6 @@ export default function OrdersPage() {
     } catch (error: any) {
       console.error('Error deleting order:', error);
       
-      // Show more specific error message
       let errorMessage = 'Error deleting order. ';
       if (error?.message?.includes('foreign key')) {
         errorMessage += 'There are still related records that need to be deleted first.';
@@ -701,7 +711,6 @@ export default function OrdersPage() {
     }
   };
 
-  // Calculate order routing status
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
       return { status: 'no_products', label: 'No Products', color: 'gray' };
@@ -711,9 +720,23 @@ export default function OrdersPage() {
     const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
     const isManufacturerUser = userRole === 'manufacturer';
     
-    // Count product statuses
-    const withAdmin = products.filter(p => p.routed_to === 'admin').length;
-    const withManufacturer = products.filter(p => p.routed_to === 'manufacturer').length;
+    // FIXED: Exclude shipped/completed/production products from the counts
+    const withAdmin = products.filter(p => 
+      p.routed_to === 'admin' && 
+      p.product_status !== 'shipped' && 
+      p.product_status !== 'completed' &&
+      p.product_status !== 'approved_for_production' &&
+      p.product_status !== 'in_production'
+    ).length;
+    
+    const withManufacturer = products.filter(p => 
+      p.routed_to === 'manufacturer' && 
+      p.product_status !== 'shipped' && 
+      p.product_status !== 'completed' &&
+      p.product_status !== 'approved_for_production' &&
+      p.product_status !== 'in_production'
+    ).length;
+    
     const approvedForProduction = products.filter(p => 
       p.product_status === 'approved_for_production' || 
       p.product_status === 'ready_for_production'
@@ -723,7 +746,6 @@ export default function OrdersPage() {
       p.product_status === 'shipped' || p.product_status === 'completed'
     ).length;
     
-    // Return status based on tab and counts
     if (activeTab === 'my_orders') {
       if (isAdminUser) {
         return { 
@@ -772,7 +794,6 @@ export default function OrdersPage() {
       };
     }
     
-    // Default status
     return { 
       status: 'mixed', 
       label: `${products.length} Products`, 
@@ -780,7 +801,6 @@ export default function OrdersPage() {
     };
   };
 
-  // Get product routing badge
   const getProductRoutingBadge = (product: any) => {
     const isWithMe = (userRole === 'manufacturer' && product.routed_to === 'manufacturer') ||
                      (userRole !== 'manufacturer' && product.routed_to === 'admin');
@@ -822,6 +842,7 @@ export default function OrdersPage() {
     );
   };
 
+  // MOVED tabCounts CALCULATION HERE - BEFORE THE JSX
   const tabCounts = getTabCounts();
 
   if (loading) {
@@ -979,14 +1000,14 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* Filters */}
+        {/* Search and Price Toggle */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search orders..."
+                placeholder="Search orders, clients, or manufacturers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
@@ -994,21 +1015,30 @@ export default function OrdersPage() {
             </div>
           </div>
           
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-          >
-            <option value="all">All Order Status</option>
-            <option value="draft">Draft</option>
-            <option value="in_progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+          {/* Price visibility toggle for Admin/Super Admin */}
+          {(userRole === 'admin' || userRole === 'super_admin') && (
+            <button
+              onClick={() => setShowPrices(!showPrices)}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              title={showPrices ? "Hide prices" : "Show prices"}
+            >
+              {showPrices ? (
+                <>
+                  <EyeOff className="w-4 h-4 text-gray-600" />
+                  <span className="text-gray-700">Hide Prices</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 text-gray-600" />
+                  <span className="text-gray-700">Show Prices</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Orders Table - Rest remains the same */}
+      {/* Orders Table */}
       <div className="bg-white rounded-lg shadow">
         {/* Mobile View - Cards */}
         <div className="block lg:hidden">
@@ -1019,7 +1049,6 @@ export default function OrdersPage() {
             const orderTotal = calculateOrderTotal(order);
             const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
 
-            // Show all products in expanded view regardless of tab
             const visibleProducts = order.order_products;
 
             return (
@@ -1051,7 +1080,6 @@ export default function OrdersPage() {
                       </button>
                     )}
                     <div>
-                      {/* FIXED: Order name bold on top, number smaller below */}
                       <div className="font-bold text-gray-900 flex items-center gap-2">
                         {order.order_name || 'Untitled Order'}
                         {hasUnreadNotification && (
@@ -1068,7 +1096,7 @@ export default function OrdersPage() {
                       )}
                       {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
                         <div className="text-xs font-semibold text-green-600 mt-1">
-                          Est. Total: ${orderTotal.toFixed(2)}
+                          Est. Total: {showPrices ? formatCurrency(orderTotal) : 'XXXXX'}
                         </div>
                       )}
                     </div>
@@ -1122,10 +1150,6 @@ export default function OrdersPage() {
                     </div>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Status:</span>
-                    <StatusBadge status={order.status} />
-                  </div>
-                  <div className="flex justify-between items-center">
                     <span className="text-gray-500">Products:</span>
                     <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
                       {routingStatus.label}
@@ -1158,9 +1182,8 @@ export default function OrdersPage() {
                           </div>
                           <div className="flex items-center gap-2 ml-2">
                             {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                                <DollarSign className="w-3 h-3" />
-                                ${productTotal.toFixed(2)}
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                {showPrices ? formatCurrency(productTotal) : 'XXXXX'}
                               </span>
                             )}
                             <div className="flex flex-col items-end gap-1">
@@ -1191,9 +1214,6 @@ export default function OrdersPage() {
                     {userRole === 'manufacturer' ? 'Client' : 'Client/Mfr'}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Products
                   </th>
                   {(userRole === 'admin' || userRole === 'super_admin') && (
@@ -1217,7 +1237,6 @@ export default function OrdersPage() {
                   const orderTotal = calculateOrderTotal(order);
                   const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
 
-                  // Show all products in expanded view regardless of tab
                   const visibleProducts = order.order_products;
 
                   return (
@@ -1248,7 +1267,6 @@ export default function OrdersPage() {
                               </button>
                             )}
                             <div>
-                              {/* FIXED: Order name bold on top, number smaller below */}
                               <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                 {order.order_name || 'Untitled Order'}
                                 {hasUnreadNotification && (
@@ -1275,9 +1293,6 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <StatusBadge status={order.status} />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
                             {routingStatus.label}
                           </span>
@@ -1285,9 +1300,9 @@ export default function OrdersPage() {
                         {(userRole === 'admin' || userRole === 'super_admin') && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             {orderTotal > 0 && (
-                              <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1 inline-flex">
+                              <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1">
                                 <DollarSign className="w-3.5 h-3.5" />
-                                ${orderTotal.toFixed(2)}
+                                {showPrices ? formatCurrency(orderTotal).replace('$', '') : 'XXXXX'}
                               </span>
                             )}
                           </td>
@@ -1341,7 +1356,7 @@ export default function OrdersPage() {
                       {/* Expanded Products Row */}
                       {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                         <tr>
-                          <td colSpan={(userRole === 'admin' || userRole === 'super_admin') ? 7 : 6} className="px-6 py-2 bg-gray-50">
+                          <td colSpan={(userRole === 'admin' || userRole === 'super_admin') ? 6 : 5} className="px-6 py-2 bg-gray-50">
                             <div className="pl-8 space-y-1">
                               {visibleProducts.map((product) => {
                                 const productTotal = calculateProductTotal(product);
@@ -1361,9 +1376,8 @@ export default function OrdersPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
-                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1">
-                                          <DollarSign className="w-3 h-3" />
-                                          ${productTotal.toFixed(2)}
+                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                          {showPrices ? formatCurrency(productTotal) : 'XXXXX'}
                                         </span>
                                       )}
                                       <StatusBadge status={product.product_status} />
@@ -1393,8 +1407,8 @@ export default function OrdersPage() {
                 ? activeTab === 'my_orders' 
                   ? 'No orders need your action right now'
                   : `No orders in ${activeTab.replace('_', ' ')}`
-                : searchTerm || statusFilter !== 'all' 
-                  ? 'Try adjusting your filters'
+                : searchTerm
+                  ? 'Try adjusting your search'
                   : 'Get started by creating a new order'}
             </p>
           </div>

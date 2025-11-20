@@ -1,15 +1,21 @@
-// app/dashboard/orders/[id]/components/admin/AdminProductCard.tsx
-// FIXED VERSION - NO FILE RENAMING - Original filenames preserved
+/**
+ * Admin Product Card Component
+ * Product card for Admin/Super Admin users with client pricing
+ * Uses shared components for collapsed view and file display
+ * Last Modified: November 2024
+ */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
-  Package, Calendar, Clock, Lock, Unlock, Send, CheckCircle, 
-  XCircle, Loader2, MessageSquare, Save, History, AlertCircle,
-  DollarSign, CreditCard, Plane, Ship, Upload, X, Play, File,
-  RotateCcw, FileText, Image, Paperclip, ChevronDown, ChevronRight, Truck
+  Package, Clock, Lock, Unlock, Send, CheckCircle, 
+  Loader2, MessageSquare, Save, DollarSign, Plane, Ship, 
+  Upload, X, ChevronDown
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
+import { CollapsedProductHeader } from '../shared/CollapsedProductHeader';
+import { getProductStatusIcon } from '../shared/ProductStatusIcon';
+import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
 
@@ -44,37 +50,18 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const permissions = usePermissions() as any;
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
     const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'admin';
-    const canEditPricing = userRole === 'super_admin'; // ONLY super admin can edit pricing
+    const canEditPricing = userRole === 'super_admin';
     
     // State for finance margins
-    const [productMargin, setProductMargin] = useState(80); // Default 80%
-    const [shippingMargin, setShippingMargin] = useState(5); // Default 5%
+    const [productMargin, setProductMargin] = useState(80);
+    const [shippingMargin, setShippingMargin] = useState(5);
     const [marginsLoaded, setMarginsLoaded] = useState(false);
     
-    // State for editing client
-    const [isEditingClient, setIsEditingClient] = useState(false);
-    const [selectedClientId, setSelectedClientId] = useState('');
-    const [availableClients, setAvailableClients] = useState<any[]>([]);
-    const [savingClient, setSavingClient] = useState(false);
-    
-    // State for showing all products (super admin only)
-    const [showAllProducts, setShowAllProducts] = useState(false);
-    
-    // State for individual product selection
-    const [selectedProductId, setSelectedProductId] = useState<string>('all');
-    
-    // COLLAPSIBLE STATE - Updated to use forceExpanded
+    // Collapsible state
     const [isCollapsed, setIsCollapsed] = useState(() => {
-      // If forceExpanded is true, don't collapse
       if (forceExpanded) return false;
-      
-      // Auto-collapse takes priority when there are multiple products
       if (autoCollapse) return true;
-      
-      // For single products, check status
       const productStatus = (product as any)?.product_status;
-      
-      // Only auto-collapse for these specific statuses when NOT using autoCollapse
       return (productStatus === 'shipped' || productStatus === 'in_transit');
     });
     
@@ -82,13 +69,17 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const [tempNotes, setTempNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
     
+    // Loading states for save buttons
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [savingBulkSection, setSavingBulkSection] = useState(false);
+    const [savingVariantNotes, setSavingVariantNotes] = useState(false);
+    
     // State for tracking if sections have changes
     const [notesSectionDirty, setNotesSectionDirty] = useState(false);
     const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
     
     const [processingProduct, setProcessingProduct] = useState(false);
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
-    const [uploadingMedia, setUploadingMedia] = useState(false);
     const [uploadingBulkMedia, setUploadingBulkMedia] = useState(false);
     const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
     
@@ -129,7 +120,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           setMarginsLoaded(true);
         } catch (error) {
           console.error('Error loading margins:', error);
-          setMarginsLoaded(true); // Use defaults
+          setMarginsLoaded(true);
         }
       };
       loadMargins();
@@ -153,16 +144,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       setPendingBulkFiles([]);
     }, [product]);
     
-    // Auto-collapse when status changes (unless forceExpanded)
+    // Auto-collapse when status changes
     useEffect(() => {
-      // Don't collapse if forceExpanded
       if (forceExpanded) return;
-      
-      // Don't override autoCollapse behavior
       if (autoCollapse) return;
-      
       const productStatus = (product as any)?.product_status;
-      
       if (productStatus === 'shipped' || productStatus === 'in_transit') {
         setIsCollapsed(true);
       }
@@ -201,14 +187,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       (product as any).id
     ]);
     
-    // FIXED: Calculate with DYNAMIC margins for admins
+    // Calculate with DYNAMIC margins for admins
     const calculateClientPrice = (manufacturerPrice: number, isShipping: boolean = false) => {
       if (!manufacturerPrice || manufacturerPrice === 0) return 0;
       const margin = isShipping ? shippingMargin : productMargin;
       return manufacturerPrice * (1 + margin / 100);
     };
     
-    // FIXED: Calculate totals - ALWAYS use client prices for admin/super_admin
+    // Calculate totals - ALWAYS use client prices for admin/super_admin
     const unitPrice = (() => {
       const mfgPrice = (product as any).product_price || 0;
       if (!marginsLoaded && (product as any).client_product_price) {
@@ -261,39 +247,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       return 'Variant';
     };
 
-    const getProductStatusIcon = (status: string) => {
-      const normalizedStatus = status || 'pending';
-      switch (normalizedStatus) {
-        case 'completed':
-          return <CheckCircle className="w-5 h-5 text-green-500" />;
-        case 'in_production':
-          return <Package className="w-5 h-5 text-blue-500" />;
-        case 'shipped':
-        case 'in_transit':
-          return <Truck className="w-5 h-5 text-purple-500" />;
-        case 'sample_requested':
-          return <AlertCircle className="w-5 h-5 text-yellow-500" />;
-        case 'revision_requested':
-          return <RotateCcw className="w-5 h-5 text-orange-500" />;
-        case 'pending_client_approval':
-          return <Clock className="w-5 h-5 text-purple-500" />;
-        case 'rejected':
-          return <XCircle className="w-5 h-5 text-red-500" />;
-        case 'submitted_to_manufacturer':
-        case 'sent_to_manufacturer':
-          return <Send className="w-5 h-5 text-blue-500" />;
-        case 'pending_admin':
-          return <MessageSquare className="w-5 h-5 text-orange-500" />;
-        default:
-          return <Clock className="w-5 h-5 text-gray-500" />;
-      }
-    };
-
-    const getCorrectProductStatus = () => {
-      return (product as any).product_status || 'pending';
-    };
-
-    const displayStatus = getCorrectProductStatus();
+    const displayStatus = (product as any).product_status || 'pending';
 
     const getCurrentUser = () => {
       const userData = localStorage.getItem('user');
@@ -349,6 +303,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const handleSaveNotesSection = async () => {
       if (!tempNotes || tempNotes.trim() === '') return;
       
+      setSavingNotes(true);
       try {
         const user = getCurrentUser();
         
@@ -384,17 +339,19 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         setNotesSectionDirty(false);
         setShowNewHistoryDot(true);
         
-        // Call onExpand to keep card expanded after save
         if (onExpand) onExpand();
         
         await onUpdate();
       } catch (error) {
         console.error('Error saving notes:', error);
         alert('Failed to save note. Please try again.');
+      } finally {
+        setSavingNotes(false);
       }
     };
 
     const handleSaveBulkSection = async () => {
+      setSavingBulkSection(true);
       try {
         const user = getCurrentUser();
         
@@ -427,12 +384,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           }
         }
 
-        // FIXED: NO FILE RENAMING - Keep original filenames
+        // NO FILE RENAMING - Keep original filenames
         if (pendingBulkFiles.length > 0) {
           console.log('Starting bulk file uploads...', pendingBulkFiles.length, 'files');
 
           for (const file of pendingBulkFiles) {
-            // Generate unique storage path but keep original filename for display
             const timestamp = Date.now();
             const randomStr = Math.random().toString(36).substring(2, 8);
             const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
@@ -464,8 +420,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 file_url: publicUrl,
                 file_type: file.type.startsWith('image/') ? 'image' : 'document',
                 uploaded_by: user.id,
-                original_filename: file.name,  // KEEP ORIGINAL NAME
-                display_name: file.name        // KEEP ORIGINAL NAME
+                original_filename: file.name,
+                display_name: file.name
               })
               .select();
 
@@ -484,17 +440,17 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         setBulkSectionDirty(false);
         setShowNewHistoryDot(true);
         
-        // Call onExpand to keep card expanded after save
         if (onExpand) onExpand();
         
         await onUpdate();
       } catch (error) {
         console.error('Error saving bulk section:', error);
         alert('Failed to save bulk section. Please try again.');
+      } finally {
+        setSavingBulkSection(false);
       }
     };
 
-    // FIX: Shipping method change handler - NOW WORKS FOR ADMIN/SUPER ADMIN
     const handleShippingMethodChange = async (method: 'air' | 'boat') => {
       try {
         const user = getCurrentUser();
@@ -510,7 +466,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           return;
         }
 
-        // Log audit
         await supabase
           .from('audit_log')
           .insert({
@@ -576,6 +531,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     };
 
     const handleSaveVariantNotes = async () => {
+      setSavingVariantNotes(true);
       try {
         for (const item of items) {
           const newNote = variantNotes[item.id] || '';
@@ -591,15 +547,9 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         await onUpdate();
       } catch (error) {
         console.error('Error saving variant notes:', error);
+      } finally {
+        setSavingVariantNotes(false);
       }
-    };
-
-    const truncateFilename = (filename: string, maxLength: number = 15) => {
-      if (!filename) return 'File';
-      if (filename.length <= maxLength) return filename;
-      const ext = filename.split('.').pop();
-      const name = filename.substring(0, maxLength - 5);
-      return `${name}...${ext}`;
     };
 
     // Handle expand/collapse with onExpand callback
@@ -612,115 +562,25 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       setIsCollapsed(true);
     };
 
-    // COLLAPSED HEADER COMPONENT
-    const CollapsedHeader = () => (
-      <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
-        <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              <button
-                onClick={handleExpand}
-                className="p-1 hover:bg-gray-200 rounded transition-colors"
-                title="Expand details"
-              >
-                <ChevronRight className="w-5 h-5 text-gray-600" />
-              </button>
-              
-              {getProductStatusIcon(displayStatus)}
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg text-gray-900">
-                    {(product as any).description || (product as any).product?.title || 'Product'}
-                  </h3>
-                  <ProductStatusBadge status={displayStatus} />
-                  {(product as any).payment_status === 'paid' && (
-                    <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      Paid
-                    </span>
-                  )}
-                  {(product as any).product_status === 'shipped' && (
-                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                      📦 Shipped
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                  <span>{(product as any).product_order_number}</span>
-                  <span>•</span>
-                  <span>Qty: {totalQuantity}</span>
-                  {totalPrice > 0 && (
-                    <>
-                      <span>•</span>
-                      <span className="font-semibold text-green-600">
-                        Total: ${totalPrice.toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                  {(product as any).tracking_number && (
-                    <>
-                      <span>•</span>
-                      <span className="text-purple-600 font-medium">
-                        Tracking: {(product as any).tracking_number}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {onViewHistory && (
-                <button
-                  onClick={handleViewHistory}
-                  className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
-                >
-                  <History className="w-4 h-4" />
-                  {showNewHistoryDot && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                  )}
-                </button>
-              )}
-              
-              {(userRole === 'admin' || userRole === 'super_admin') && onRoute && (
-                <button
-                  onClick={() => onRoute(product)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                >
-                  Route
-                </button>
-              )}
-              
-              {canLockProducts && (product as any).product_status !== 'shipped' && (
-                <button
-                  onClick={handleToggleLock}
-                  disabled={processingProduct}
-                  className={`p-2 rounded-lg transition-colors ${
-                    (product as any).is_locked 
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                      : 'bg-green-50 text-green-600 hover:bg-green-100'
-                  } disabled:opacity-50`}
-                  title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
-                >
-                  {processingProduct ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (product as any).is_locked ? (
-                    <Lock className="w-4 h-4" />
-                  ) : (
-                    <Unlock className="w-4 h-4" />
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-
+    // Use shared CollapsedProductHeader when collapsed
     if (isCollapsed) {
-      return <CollapsedHeader />;
+      return (
+        <CollapsedProductHeader
+          product={product}
+          totalQuantity={totalQuantity}
+          totalPrice={totalPrice}
+          isManufacturerView={false}
+          onExpand={handleExpand}
+          onViewHistory={handleViewHistory}
+          onRoute={onRoute ? () => onRoute(product) : undefined}
+          onToggleLock={handleToggleLock}
+          isLocked={(product as any).is_locked}
+          processingLock={processingProduct}
+          hasNewHistory={showNewHistoryDot}
+          userRole={userRole}
+          trackingNumber={(product as any).tracking_number}
+        />
+      );
     }
 
     // MAIN EXPANDED VIEW
@@ -730,7 +590,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              {/* Collapse Button - ALWAYS show when multiple products (autoCollapse=true) */}
+              {/* Collapse Button */}
               {autoCollapse && (
                 <button
                   onClick={handleCollapse}
@@ -804,7 +664,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   onClick={handleViewHistory}
                   className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
                 >
-                  <History className="w-4 h-4" />
+                  <MessageSquare className="w-4 h-4" />
                   <span className="hidden sm:inline">History</span>
                   {showNewHistoryDot && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
@@ -874,23 +734,32 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       setTempNotes('');
                       setNotesSectionDirty(false);
                     }}
-                    className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    disabled={savingNotes}
+                    className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveNotesSection}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1"
+                    disabled={savingNotes}
+                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
                   >
-                    <Save className="w-3 h-3" />
-                    Save Notes
+                    {savingNotes ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3 h-3" />
+                        Save Notes
+                      </>
+                    )}
                   </button>
                 </div>
               )}
             </div>
           </div>
-
-          {/* SAMPLE REQUEST SECTION REMOVED */}
 
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
@@ -922,89 +791,28 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               />
             </div>
 
-            {/* Bulk Order Media */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-700">
-                  Bulk Order Media {referenceMedia.length > 0 && `(${referenceMedia.length})`}
-                </label>
-                <button 
-                  onClick={() => bulkFileInputRef.current?.click()}
-                  disabled={uploadingBulkMedia}
-                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50 transition-colors"
-                >
-                  {uploadingBulkMedia ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  Add Files
-                </button>
-              </div>
-              
-              <input
-                ref={bulkFileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
-                onChange={handleBulkFileUpload}
-                className="hidden"
-              />
-              
-              {referenceMedia.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {referenceMedia.map((file) => (
-                    <div key={file.id} className="group relative inline-flex">
-                      <button
-                        onClick={() => handleFileClick(file.file_url)}
-                        className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center gap-1"
-                        title={file.display_name || file.original_filename || 'Product File'}
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        <span>{file.display_name || file.original_filename || 'Product File'}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMedia(file.id)}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                        title="Delete file"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* FIXED: Display pending files with ORIGINAL NAMES */}
-              {pendingBulkFiles.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {pendingBulkFiles.map((file, index) => (
-                      <div key={index} className="group relative inline-flex">
-                        <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
-                          <Upload className="w-3 h-3" />
-                          <span>{file.name}</span> {/* SHOW ORIGINAL FILENAME */}
-                        </div>
-                        <button
-                          onClick={() => removePendingBulkFile(index)}
-                          className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                          title="Remove file"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              
-              {referenceMedia.length === 0 && pendingBulkFiles.length === 0 && (
-                <p className="text-xs text-gray-500">No bulk order media uploaded yet</p>
-              )}
-            </div>
+            {/* Bulk Order Media - Using Shared Component */}
+            <input
+              ref={bulkFileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
+              onChange={handleBulkFileUpload}
+              className="hidden"
+            />
+            
+            <FileUploadDisplay
+              files={referenceMedia}
+              pendingFiles={pendingBulkFiles}
+              onFileClick={handleFileClick}
+              onDeleteFile={handleDeleteMedia}
+              onRemovePending={removePendingBulkFile}
+              onAddFiles={() => bulkFileInputRef.current?.click()}
+              title="Bulk Order Media"
+              loading={uploadingBulkMedia}
+            />
 
-            {/* Product Price and Production Info - READ-ONLY FOR NON-SUPER-ADMINS */}
+            {/* Product Price and Production Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1037,7 +845,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             </div>
 
-            {/* FIX: Shipping Method Selection - NOW WORKS FOR ADMIN/SUPER ADMIN */}
+            {/* Shipping Method Selection */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
               <h5 className="text-sm font-semibold text-gray-800 mb-3">
                 Select Shipping Method {!canEditPricing && '(Client Prices)'}
@@ -1149,21 +957,32 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     setPendingBulkFiles([]);
                     setBulkSectionDirty(false);
                   }}
-                  className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={savingBulkSection}
+                  className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveBulkSection}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1"
+                  disabled={savingBulkSection}
+                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
                 >
-                  <Save className="w-3 h-3" />
-                  Save Bulk Section
+                  {savingBulkSection ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3 h-3" />
+                      Save Bulk Section
+                    </>
+                  )}
                 </button>
               </div>
             )}
 
-            {/* Variant Details Table */}
+            {/* Variant Details Table - Keep inline since it's specific to each card */}
             <div className="mb-4">
               <h5 className="text-sm font-medium text-gray-700 mb-2">
                 {getVariantTypeName()} Details
@@ -1182,7 +1001,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <tbody>
                     {items.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                       <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
                         <td className="py-2 px-1 text-sm font-medium text-gray-900">{item.quantity}</td>
                         <td className="py-2 pl-2 pr-3">
                           <input
@@ -1216,16 +1035,27 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       setVariantNotes(originalNotes);
                       setEditingVariants(false);
                     }}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    disabled={savingVariantNotes}
+                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveVariantNotes}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1"
+                    disabled={savingVariantNotes}
+                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
                   >
-                    <Save className="w-3 h-3" />
-                    Save Variant Notes
+                    {savingVariantNotes ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3 h-3" />
+                        Save Variant Notes
+                      </>
+                    )}
                   </button>
                 </div>
               )}

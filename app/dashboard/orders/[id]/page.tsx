@@ -1,8 +1,7 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * FIXED: Proper file naming (original_sample_001) and no refresh after save
- * Roles: Admin, Super Admin, Manufacturer, Client
- * Last Modified: December 2024
+ * Main order view for all roles - Refactored with extracted components
+ * Last Modified: November 2025
  */
 
 'use client';
@@ -11,16 +10,27 @@ import { use, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
+
+// Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
-import { StatusBadge } from '../shared-components/StatusBadge';
 import { OrderSampleRequest } from '../shared-components/OrderSampleRequest';
+import { ProductDistributionBar } from './components/shared/ProductDistributionBar';
+
+// Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
+
+// Modals
 import { HistoryModal } from './components/modals/HistoryModal';
 import { RouteModal } from './components/modals/RouteModal';
+import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
+
+// Utilities
+import { calculateOrderTotal, getProductCounts } from '../utils/orderCalculations';
+
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, AlertCircle, Send, Loader2, Edit2, Eye, EyeOff, X, Check } from 'lucide-react';
+import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer } from 'lucide-react';
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -55,65 +65,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([]);
   const [savingOrderSample, setSavingOrderSample] = useState(false);
   
-  // Calculate total amount with CLIENT prices
-  const calculateOrderTotal = () => {
-    if (!order?.order_products) return 0;
-    
-    let total = 0;
-    const isManufacturer = userRole === 'manufacturer';
-    
-    order.order_products.forEach((product: any) => {
-      const totalQty = product.order_items?.reduce((sum: number, item: any) => 
-        sum + (item.quantity || 0), 0) || 0;
-      
-      let productPrice = 0;
-      let sampleFee = 0;
-      let shippingPrice = 0;
-      
-      if (isManufacturer) {
-        productPrice = parseFloat(product.product_price || 0);
-        sampleFee = parseFloat(product.sample_fee || 0);
-        
-        if (product.selected_shipping_method === 'air') {
-          shippingPrice = parseFloat(product.shipping_air_price || 0);
-        } else if (product.selected_shipping_method === 'boat') {
-          shippingPrice = parseFloat(product.shipping_boat_price || 0);
-        }
-      } else {
-        const mfgProductPrice = parseFloat(product.product_price || 0);
-        const mfgSampleFee = parseFloat(product.sample_fee || 0);
-        
-        productPrice = mfgProductPrice * (1 + productMargin / 100);
-        sampleFee = mfgSampleFee * (1 + productMargin / 100);
-        
-        if (product.selected_shipping_method === 'air') {
-          const mfgShipping = parseFloat(product.shipping_air_price || 0);
-          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
-        } else if (product.selected_shipping_method === 'boat') {
-          const mfgShipping = parseFloat(product.shipping_boat_price || 0);
-          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
-        }
-      }
-      
-      total += productPrice * totalQty;
-      total += sampleFee;
-      total += shippingPrice;
-    });
-    
-    // Add order-level sample fee
-    if (order.sample_fee) {
-      const orderSampleAmount = parseFloat(order.sample_fee);
-      if (isManufacturer) {
-        total += orderSampleAmount;
-      } else {
-        total += orderSampleAmount * (1 + productMargin / 100);
-      }
-    }
-    
-    return total;
-  };
-  
-  const totalAmount = calculateOrderTotal();
   const [workflowUpdating, setWorkflowUpdating] = useState(false);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
@@ -136,14 +87,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     product: null
   });
 
-  // Master Route Modal State
-  const [masterRouteModal, setMasterRouteModal] = useState({
+  // Save All Route Modal State
+  const [saveAllRouteModal, setSaveAllRouteModal] = useState({
     isOpen: false,
     isSaving: false
   });
 
-  // Track dirty state for manufacturer cards
+  // Track manufacturer card refs
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
+
+  // Calculate total using the extracted utility
+  const totalAmount = calculateOrderTotal(order, userRole || '', productMargin, shippingMargin);
 
   useEffect(() => {
     const fetchSubManufacturers = async () => {
@@ -317,8 +271,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         });
 
       setIsEditingClient(false);
-      
-      // Refresh data without page reload
       await refetch();
     } catch (error) {
       console.error('Error updating client:', error);
@@ -397,7 +349,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           });
       }
       
-      // Just update the local state, don't refresh entire page
       await refetch();
     } catch (error) {
       console.error('Error deleting media:', error);
@@ -405,7 +356,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // FIXED: Save order sample data with proper file naming and NO PAGE REFRESH
+  // Save order sample data
   const saveOrderSampleData = async () => {
     if (!order) return;
     
@@ -413,25 +364,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      // Use correct field names for the update
-      const updateData: any = {};
-      
-      // Only update fields that have values
-      if (orderSampleFee !== '') {
-        updateData.sample_fee = parseFloat(orderSampleFee) || null;
-      }
-      if (orderSampleETA !== '') {
-        updateData.sample_eta = orderSampleETA || null;
-      }
-      if (orderSampleStatus && orderSampleStatus !== '') {
-        updateData.sample_status = orderSampleStatus;
-      }
-      if (orderSampleNotes !== '') {
-        updateData.sample_notes = orderSampleNotes || null;
-      }
-      
-      // Set sample_required if any sample data exists
-      updateData.sample_required = !!(orderSampleNotes || orderSampleFee || orderSampleFiles.length > 0 || order.sample_required);
+      // Build update data
+      const updateData: any = {
+        sample_required: true,
+        sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+        sample_eta: orderSampleETA || null,
+        sample_status: orderSampleStatus || 'pending',
+        sample_notes: orderSampleNotes || null
+      };
       
       console.log('Saving order sample data:', updateData);
       
@@ -446,89 +386,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         throw updateError;
       }
       
-      console.log('Order sample data saved successfully');
-      
-      // Upload sample files if any - FIXED FILE NAMING
+      // Upload sample files if any
       if (orderSampleFiles.length > 0) {
-        console.log('Uploading', orderSampleFiles.length, 'sample files...');
-        
         for (let i = 0; i < orderSampleFiles.length; i++) {
           const file = orderSampleFiles[i];
           const timestamp = Date.now();
           const randomStr = Math.random().toString(36).substring(2, 8);
           
-          // PROPER FILE NAMING: originalname_sample_001
           const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
           const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-          const sequenceNumber = String(i + 1).padStart(3, '0'); // 001, 002, etc.
-          const uniqueFileName = `${fileNameWithoutExt}_sample_${sequenceNumber}_${timestamp}_${randomStr}.${fileExt}`;
+          const uniqueFileName = `${fileNameWithoutExt}_sample_${timestamp}_${randomStr}.${fileExt}`;
           const filePath = `${order.id}/${uniqueFileName}`;
           
-          console.log(`Uploading file ${i + 1}:`, file.name, 'as:', uniqueFileName);
-          
-          // Try upload with upsert to handle duplicates
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          const { error: uploadError } = await supabase.storage
             .from('order-media')
-            .upload(filePath, file, {
-              upsert: true  // This will overwrite if file exists
-            });
+            .upload(filePath, file);
           
-          if (uploadError) {
-            console.error('Storage upload error:', uploadError);
-            
-            // If still fails, try with a different name
-            if (uploadError.message?.includes('already exists')) {
-              const altSequenceNumber = String(i + 1).padStart(3, '0');
-              const altFileName = `${fileNameWithoutExt}_sample_${altSequenceNumber}_v2_${timestamp}_${randomStr}.${fileExt}`;
-              const altFilePath = `${order.id}/${altFileName}`;
-              
-              const { data: retryData, error: retryError } = await supabase.storage
-                .from('order-media')
-                .upload(altFilePath, file, {
-                  upsert: true
-                });
-              
-              if (retryError) {
-                console.error('Retry upload failed:', retryError);
-                alert(`Failed to upload "${file.name}". Please try renaming the file.`);
-                continue;
-              }
-              
-              // Use the alternative path if retry succeeded
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(altFilePath);
-              
-              // Save to database with ORIGINAL filename preserved
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_id: order.id,
-                  order_product_id: null,
-                  file_url: publicUrl,
-                  file_type: 'order_sample',
-                  uploaded_by: user.id || crypto.randomUUID(),
-                  original_filename: file.name,  // Keep original name
-                  display_name: file.name,       // Show original name
-                  is_sample: true,
-                  created_at: new Date().toISOString()
-                });
-            } else {
-              alert(`Error uploading "${file.name}": ${uploadError.message}`);
-              continue;
-            }
-          } else {
-            console.log('Upload successful:', uploadData);
-            
-            // Get the public URL
+          if (!uploadError) {
             const { data: { publicUrl } } = supabase.storage
               .from('order-media')
               .getPublicUrl(filePath);
             
-            console.log('Public URL:', publicUrl);
-            
-            // Save to database with ORIGINAL filename preserved
-            const { error: dbError } = await supabase
+            await supabase
               .from('order_media')
               .insert({
                 order_id: order.id,
@@ -536,72 +415,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 file_url: publicUrl,
                 file_type: 'order_sample',
                 uploaded_by: user.id || crypto.randomUUID(),
-                original_filename: file.name,  // Keep original name for display
-                display_name: file.name,       // Show original name to user
+                original_filename: file.name,
+                display_name: file.name,
                 is_sample: true,
                 created_at: new Date().toISOString()
               });
-            
-            if (dbError) {
-              console.error('Database insert error:', dbError);
-            } else {
-              console.log('File saved to database with original name:', file.name);
-            }
           }
         }
       }
       
-      // Log audit
-      const changes = [];
-      
-      const previousFee = order.sample_fee?.toString() || '';
-      const previousStatus = order.sample_status || 'pending';
-      const previousETA = order.sample_eta || '';
-      const previousNotes = order.sample_notes || '';
-      
-      if (orderSampleFee !== previousFee) {
-        changes.push(`Fee: $${previousFee || '0'} → $${orderSampleFee || '0'}`);
-      }
-      if (orderSampleStatus !== previousStatus) {
-        changes.push(`Status: ${previousStatus} → ${orderSampleStatus}`);
-      }
-      if (orderSampleETA !== previousETA) {
-        changes.push(`ETA: ${previousETA || 'not set'} → ${orderSampleETA || 'not set'}`);
-      }
-      if (orderSampleNotes !== previousNotes) {
-        changes.push(`Notes updated`);
-      }
-      if (orderSampleFiles.length > 0) {
-        changes.push(`${orderSampleFiles.length} file(s) uploaded`);
-      }
-      
-      if (changes.length > 0) {
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: user.id || crypto.randomUUID(),
-            user_name: user.name || user.email || 'Unknown User',
-            action_type: 'order_sample_updated',
-            target_type: 'order',
-            target_id: order.id,
-            new_value: changes.join(' | '),
-            timestamp: new Date().toISOString()
-          });
-        
-        console.log('Audit log created');
-      }
-      
-      // Clear temp files
       setOrderSampleFiles([]);
-      
-      // IMPORTANT: Don't use full page refresh, just update the data
-      await refetch(); // This updates the data without refreshing the page
-      
-      // Show success message without alert (which can cause page issues)
-      console.log('Sample request saved successfully!');
-      
-      // Optional: Add a success toast/notification here instead of alert
-      // For now, just a subtle indication
+      await refetch();
       setSavingOrderSample(false);
       
     } catch (error) {
@@ -635,7 +459,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      // Just refresh data, not the page
       await refetch();
     } catch (error) {
       console.error('Error updating status:', error);
@@ -666,7 +489,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      // Just refresh data, not the page
       await refetch();
     } catch (error) {
       console.error('Error updating payment status:', error);
@@ -694,141 +516,246 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleSaveAllAndRoute = async () => {
-    setMasterRouteModal({
+    setSaveAllRouteModal({
       isOpen: true,
       isSaving: false
     });
   };
 
-  // FIX: Add redirect for manufacturers after routing
-  const handleMasterRoute = async (selectedRoute: string, notes?: string) => {
-    setMasterRouteModal(prev => ({ ...prev, isSaving: true }));
+  // COMPLETELY SIMPLIFIED SAVE ALL & ROUTE
+  const handleSaveAllRoute = async (selectedRoute: string, notes?: string) => {
+    setSaveAllRouteModal(prev => ({ ...prev, isSaving: true }));
     
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const visibleProducts = getVisibleProducts();
       const isManufacturer = userRole === 'manufacturer';
       
-      // Save all pending changes in manufacturer cards (if manufacturer)
-      if (isManufacturer) {
-        for (const [productId, cardRef] of manufacturerCardRefs.current) {
-          if (cardRef && cardRef.saveAll) {
-            await cardRef.saveAll();
-          }
-        }
+      console.log('=== STARTING SAVE ALL & ROUTE ===');
+      console.log(`Processing ${visibleProducts.length} products`);
+      
+      // STEP 1: Save order-level sample data
+      if (isManufacturer && (orderSampleFee || orderSampleETA || orderSampleNotes)) {
+        console.log('Step 1: Saving order-level sample data...');
+        const updateData: any = {
+          sample_required: true,
+          sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+          sample_eta: orderSampleETA || null,
+          sample_status: orderSampleStatus || 'pending',
+          sample_notes: orderSampleNotes || null
+        };
+        
+        await supabase
+          .from('orders')
+          .update(updateData)
+          .eq('id', order.id);
+        
+        console.log('Order sample saved');
       }
       
-      // Apply the selected route to ALL visible products
-      for (const product of visibleProducts) {
-        let updates: any = {};
-        
-        if (isManufacturer) {
-          switch (selectedRoute) {
-            case 'send_to_admin':
-              updates.product_status = 'pending_admin';
-              updates.routed_to = 'admin';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              break;
-            case 'in_production':
-              updates.product_status = 'in_production';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.is_locked = true;
-              break;
-            case 'shipped':
-              updates.product_status = 'shipped';
-              updates.routed_to = 'admin';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.shipped_date = new Date().toISOString();
-              break;
+      // STEP 2: Get all product states and save them
+      if (isManufacturer) {
+        for (let i = 0; i < visibleProducts.length; i++) {
+          const product = visibleProducts[i];
+          console.log(`\nStep 2.${i + 1}: Processing product ${product.product_order_number}`);
+          
+          // Get the card ref
+          const cardRef = manufacturerCardRefs.current.get(product.id);
+          
+          if (cardRef && typeof cardRef.getState === 'function') {
+            const state = cardRef.getState();
+            console.log('Card state:', state);
+            
+            // Save product data
+            const productUpdate: any = {
+              product_price: state.productPrice ? parseFloat(state.productPrice) : null,
+              production_time: state.productionTime || null,
+              shipping_air_price: state.shippingAir ? parseFloat(state.shippingAir) : null,
+              shipping_boat_price: state.shippingBoat ? parseFloat(state.shippingBoat) : null,
+              sample_fee: state.sampleFee ? parseFloat(state.sampleFee) : null,
+              sample_eta: state.sampleETA || null,
+              manufacturer_notes: state.manufacturerNotes || null
+            };
+            
+            // Add routing info
+            switch (selectedRoute) {
+              case 'send_to_admin':
+                productUpdate.product_status = 'pending_admin';
+                productUpdate.routed_to = 'admin';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                break;
+              case 'in_production':
+                productUpdate.product_status = 'in_production';
+                productUpdate.routed_to = 'manufacturer';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                productUpdate.is_locked = true;
+                break;
+              case 'shipped':
+                productUpdate.product_status = 'shipped';
+                productUpdate.routed_to = 'admin';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                productUpdate.shipped_date = new Date().toISOString();
+                break;
+            }
+            
+            // Add routing notes
+            if (notes) {
+              const timestamp = new Date().toLocaleDateString();
+              const existing = productUpdate.manufacturer_notes || product.manufacturer_notes || '';
+              productUpdate.manufacturer_notes = existing 
+                ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
+                : `[${timestamp} - Manufacturer] ${notes}`;
+            }
+            
+            console.log('Saving product with:', productUpdate);
+            
+            // Save the product
+            const { error: productError } = await supabase
+              .from('order_products')
+              .update(productUpdate)
+              .eq('id', product.id);
+            
+            if (productError) {
+              console.error('Error saving product:', productError);
+            } else {
+              console.log('Product saved successfully');
+            }
+            
+            // Save variants
+            if (state.itemQuantities && product.order_items) {
+              console.log('Saving variants...');
+              for (const item of product.order_items) {
+                const qty = state.itemQuantities[item.id];
+                const note = state.variantNotes?.[item.id] || '';
+                
+                if (qty !== undefined) {
+                  await supabase
+                    .from('order_items')
+                    .update({ 
+                      quantity: parseInt(qty) || 0,
+                      notes: note || ''
+                    })
+                    .eq('id', item.id);
+                  
+                  console.log(`Saved variant ${item.variant_combo}: qty=${qty}`);
+                }
+              }
+            }
+          } else {
+            // No state from card, just apply routing
+            console.log('No card state, applying routing only');
+            
+            let productUpdate: any = {};
+            
+            switch (selectedRoute) {
+              case 'send_to_admin':
+                productUpdate.product_status = 'pending_admin';
+                productUpdate.routed_to = 'admin';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                break;
+              case 'in_production':
+                productUpdate.product_status = 'in_production';
+                productUpdate.routed_to = 'manufacturer';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                productUpdate.is_locked = true;
+                break;
+              case 'shipped':
+                productUpdate.product_status = 'shipped';
+                productUpdate.routed_to = 'admin';
+                productUpdate.routed_at = new Date().toISOString();
+                productUpdate.routed_by = user.id || null;
+                productUpdate.shipped_date = new Date().toISOString();
+                break;
+            }
+            
+            if (notes) {
+              const timestamp = new Date().toLocaleDateString();
+              const existing = product.manufacturer_notes || '';
+              productUpdate.manufacturer_notes = existing 
+                ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
+                : `[${timestamp} - Manufacturer] ${notes}`;
+            }
+            
+            await supabase
+              .from('order_products')
+              .update(productUpdate)
+              .eq('id', product.id);
           }
-        } else {
+        }
+      } else {
+        // Admin routing
+        for (const product of visibleProducts) {
+          let productUpdate: any = {};
+          
           switch (selectedRoute) {
             case 'approve_for_production':
-              updates.product_status = 'approved_for_production';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.is_locked = false;
+              productUpdate.product_status = 'approved_for_production';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.is_locked = false;
               break;
             case 'request_sample':
-              updates.sample_required = true;
-              updates.product_status = 'sample_requested';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
+              productUpdate.sample_required = true;
+              productUpdate.product_status = 'sample_requested';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
               break;
             case 'send_for_approval':
-              updates.requires_client_approval = true;
-              updates.product_status = 'pending_client_approval';
-              updates.routed_to = 'admin';
-              break;
-            case 'send_back_to_manufacturer':
-              updates.product_status = 'revision_requested';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
+              productUpdate.requires_client_approval = true;
+              productUpdate.product_status = 'pending_client_approval';
+              productUpdate.routed_to = 'admin';
               break;
           }
+          
+          if (notes) {
+            const timestamp = new Date().toLocaleDateString();
+            const existing = product.manufacturer_notes || '';
+            productUpdate.manufacturer_notes = existing 
+              ? `${existing}\n\n[${timestamp} - Admin] ${notes}`
+              : `[${timestamp} - Admin] ${notes}`;
+          }
+          
+          await supabase
+            .from('order_products')
+            .update(productUpdate)
+            .eq('id', product.id);
         }
-        
-        if (notes) {
-          const timestamp = new Date().toLocaleDateString();
-          const userIdentifier = isManufacturer ? 'Manufacturer' : 'Admin';
-          updates.manufacturer_notes = product.manufacturer_notes 
-            ? `${product.manufacturer_notes}\n\n[${timestamp} - ${userIdentifier}] ${notes}`
-            : `[${timestamp} - ${userIdentifier}] ${notes}`;
-        }
-        
-        await supabase
-          .from('order_products')
-          .update(updates)
-          .eq('id', product.id);
-        
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: user.id || crypto.randomUUID(),
-            user_name: user.name || user.email || (isManufacturer ? 'Manufacturer' : 'Admin'),
-            action_type: `product_routed_${selectedRoute}`,
-            target_type: 'order_product',
-            target_id: product.id,
-            old_value: `${product.product_status || 'pending'} / routed_to: ${product.routed_to || (isManufacturer ? 'manufacturer' : 'admin')}`,
-            new_value: `${updates.product_status} / routed_to: ${updates.routed_to}`,
-            timestamp: new Date().toISOString()
-          });
       }
       
-      setMasterRouteModal({ isOpen: false, isSaving: false });
+      console.log('=== SAVE ALL & ROUTE COMPLETED ===');
+      setSaveAllRouteModal({ isOpen: false, isSaving: false });
       
-      // FIX: Redirect manufacturers to listing page after routing back to admin
+      // Redirect manufacturers
       if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
-        // Small delay to ensure modal closes smoothly
         setTimeout(() => {
           router.push('/dashboard/orders');
-        }, 300);
+        }, 500);
       } else {
-        // For other cases, just refresh the current page data
         await refetch();
       }
       
     } catch (error) {
-      console.error('Error in master route:', error);
-      alert('An error occurred. Please try again.');
-      setMasterRouteModal(prev => ({ ...prev, isSaving: false }));
+      console.error('ERROR IN SAVE ALL & ROUTE:', error);
+      alert('Error occurred while saving. Please try again.');
+      setSaveAllRouteModal(prev => ({ ...prev, isSaving: false }));
     }
   };
-const handlePrintAll = () => {
+
+  // Print handler
+  const handlePrintAll = () => {
     const visibleProducts = getVisibleProducts();
     
     const printHTML = visibleProducts.map((product: any, index: number) => {
       const items = product.order_items || [];
       const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
       
-      // Build variants rows
       const variantsRows = items.length > 0 
         ? items.map((item: any) => 
             `<tr>
@@ -853,54 +780,6 @@ const handlePrintAll = () => {
               <div>Product: <strong>${product.product_order_number}</strong></div>
               <div>Client: <strong>${order.client?.name || 'N/A'}</strong></div>
               <div>Date: <strong>${new Date().toLocaleDateString()}</strong></div>
-            </div>
-          </div>
-          
-          <div class="section">
-            <h2>SAMPLE INFORMATION</h2>
-            <div class="sample-row">
-              <div class="sample-field">
-                <span class="small-label">Sample Fee: $</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="sample-field">
-                <span class="small-label">Sample Date:</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="sample-field">
-                <span class="small-label">Status:</span>
-                <span class="blank-line">_________________</span>
-              </div>
-            </div>
-          </div>
-          
-          <div class="section">
-            <h2>PRICING & PRODUCTION</h2>
-            <div class="pricing-grid">
-              <div class="pricing-field">
-                <span class="small-label">Unit Price: $</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="pricing-field">
-                <span class="small-label">Quantity:</span>
-                <span class="filled-value">${totalQty} units</span>
-              </div>
-              <div class="pricing-field">
-                <span class="small-label">Prod. Time:</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="pricing-field">
-                <span class="small-label">Air Ship: $</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="pricing-field">
-                <span class="small-label">Boat Ship: $</span>
-                <span class="blank-line">_________________</span>
-              </div>
-              <div class="pricing-field">
-                <span class="small-label">Total: $</span>
-                <span class="blank-line">_________________</span>
-              </div>
             </div>
           </div>
           
@@ -948,7 +827,6 @@ const handlePrintAll = () => {
               page-break-after: always;
             }
           }
-          
           body { 
             font-family: 'Helvetica Neue', Arial, sans-serif;
             color: #000;
@@ -956,7 +834,6 @@ const handlePrintAll = () => {
             padding: 0;
             font-size: 11pt;
           }
-          
           .product-sheet { 
             padding: 0;
             max-width: 100%;
@@ -964,28 +841,24 @@ const handlePrintAll = () => {
             display: flex;
             flex-direction: column;
           }
-          
           .header { 
             text-align: center;
             margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 2px solid #000;
           }
-          
           .header-title {
             font-size: 10pt;
             letter-spacing: 2px;
             color: #666;
             margin-bottom: 8px;
           }
-          
           .product-name { 
             font-size: 22pt;
             font-weight: bold;
             margin: 10px 0;
             color: #000;
           }
-          
           .header-details {
             display: flex;
             justify-content: center;
@@ -994,17 +867,6 @@ const handlePrintAll = () => {
             color: #333;
             margin-top: 10px;
           }
-          
-          .section {
-            margin-bottom: 15px;
-          }
-          
-          .section:last-child {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-          }
-          
           h2 {
             font-size: 11pt;
             margin: 15px 0 8px 0;
@@ -1014,58 +876,12 @@ const handlePrintAll = () => {
             letter-spacing: 1px;
             font-weight: bold;
           }
-          
-          .sample-row {
-            display: flex;
-            gap: 20px;
-            margin: 8px 0;
-          }
-          
-          .sample-field {
-            display: flex;
-            align-items: center;
-            flex: 1;
-          }
-          
-          .pricing-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin: 8px 0;
-          }
-          
-          .pricing-field {
-            display: flex;
-            align-items: center;
-          }
-          
-          .small-label {
-            font-size: 10pt;
-            font-weight: bold;
-            margin-right: 5px;
-            white-space: nowrap;
-          }
-          
-          .blank-line {
-            flex: 1;
-            font-size: 10pt;
-            color: #999;
-            padding-left: 3px;
-          }
-          
-          .filled-value {
-            font-weight: bold;
-            padding-left: 8px;
-            font-size: 10pt;
-          }
-          
           table { 
             width: 100%; 
             border-collapse: collapse;
             margin-top: 8px;
             font-size: 10pt;
           }
-          
           th { 
             background: #f0f0f0;
             border: 1px solid #666;
@@ -1074,18 +890,15 @@ const handlePrintAll = () => {
             font-weight: bold;
             font-size: 10pt;
           }
-          
           td { 
             border: 1px solid #666;
             padding: 5px;
             font-size: 10pt;
           }
-          
           .total-row {
             background: #f0f0f0;
             font-weight: bold;
           }
-          
           .notes-box { 
             border: 1px solid #666;
             min-height: 200px;
@@ -1160,23 +973,8 @@ const handlePrintAll = () => {
     return allProducts;
   };
 
-  const getProductCounts = () => {
-    if (!order?.order_products) {
-      return { total: 0, withAdmin: 0, withManufacturer: 0, inProduction: 0, completed: 0, visible: 0 };
-    }
-    
-    const products = order.order_products;
-    const visibleProducts = getVisibleProducts();
-    
-    return {
-      total: products.length,
-      withAdmin: products.filter((p: any) => (p.routed_to === 'admin' || !p.routed_to) && p.product_status !== 'completed' && p.product_status !== 'in_production').length,
-      withManufacturer: products.filter((p: any) => p.routed_to === 'manufacturer' && p.product_status !== 'in_production' && p.product_status !== 'completed').length,
-      inProduction: products.filter((p: any) => p.product_status === 'in_production').length,
-      completed: products.filter((p: any) => p.product_status === 'completed').length,
-      visible: visibleProducts.length
-    };
-  };
+  // Use the extracted utility function
+  const productCounts = getProductCounts(order);
 
   const allProductsPaid = order?.order_products?.length > 0 && 
     order.order_products.every((p: any) => p.payment_status === 'paid');
@@ -1201,7 +999,6 @@ const handlePrintAll = () => {
 
   const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
-  const productCounts = getProductCounts();
   const isManufacturer = userRole === 'manufacturer';
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'admin';
@@ -1385,66 +1182,16 @@ const handlePrintAll = () => {
           />
         )}
 
-        {/* Product Location Summary */}
-        {productCounts.total > 0 && (
-          <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">Product Distribution</h3>
-              
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">Show All Products ({allProducts.length})</option>
-                  {allProducts.map((product: any) => (
-                    <option key={product.id} value={product.id}>
-                      {product.product_order_number || 'PRD-0000'} - {product.description || product.product?.title || 'Unnamed Product'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            <div className="flex flex-wrap gap-2 mt-2">
-              {productCounts.withAdmin > 0 && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                  {productCounts.withAdmin} with Admin
-                </span>
-              )}
-              {productCounts.withManufacturer > 0 && (
-                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
-                  {productCounts.withManufacturer} with Manufacturer
-                </span>
-              )}
-              {productCounts.inProduction > 0 && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                  {productCounts.inProduction} in Production
-                </span>
-              )}
-              {productCounts.completed > 0 && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                  {productCounts.completed} Completed
-                </span>
-              )}
-            </div>
-            
-            {selectedProductId !== 'all' && (
-              <p className="text-xs text-blue-600 mt-2">
-                <Eye className="w-3 h-3 inline mr-1" />
-                Viewing single product
-              </p>
-            )}
-            
-            {isSuperAdmin && showAllProducts && (
-              <p className="text-xs text-blue-600 mt-2">
-                <Eye className="w-3 h-3 inline mr-1" />
-                Showing all {productCounts.total} products (Super Admin view)
-              </p>
-            )}
-          </div>
-        )}
+        {/* Product Distribution Bar */}
+        <ProductDistributionBar
+          products={allProducts}
+          selectedProductId={selectedProductId}
+          onProductSelect={setSelectedProductId}
+          showAllProducts={showAllProducts}
+          onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
+          isSuperAdmin={isSuperAdmin}
+          counts={productCounts}
+        />
 
         {/* Products Section */}
         <div className="space-y-4 sm:space-y-6">
@@ -1557,16 +1304,15 @@ const handlePrintAll = () => {
         userRole={userRole || undefined}
       />
 
-      {/* Master Route Modal for Save All & Route */}
-      {masterRouteModal.isOpen && (
-        <MasterRouteModal
-          isOpen={masterRouteModal.isOpen}
-          isSaving={masterRouteModal.isSaving}
-          onClose={() => setMasterRouteModal({ isOpen: false, isSaving: false })}
-          onRoute={handleMasterRoute}
-          productCount={visibleProducts.length}
-        />
-      )}
+      {/* Save All Route Modal */}
+      <SaveAllRouteModal
+        isOpen={saveAllRouteModal.isOpen}
+        isSaving={saveAllRouteModal.isSaving}
+        onClose={() => setSaveAllRouteModal({ isOpen: false, isSaving: false })}
+        onRoute={handleSaveAllRoute}
+        productCount={visibleProducts.length}
+        userRole={userRole || undefined}
+      />
 
       {/* History Modal */}
       <HistoryModal
@@ -1575,186 +1321,6 @@ const handlePrintAll = () => {
         productId={historyModal.productId}
         productName={historyModal.productName}
       />
-    </div>
-  );
-}
-
-// Master Route Modal Component
-function MasterRouteModal({ 
-  isOpen, 
-  isSaving,
-  onClose, 
-  onRoute,
-  productCount 
-}: { 
-  isOpen: boolean;
-  isSaving: boolean;
-  onClose: () => void;
-  onRoute: (route: string, notes?: string) => void;
-  productCount: number;
-}) {
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const userRole = getUserRole();
-
-  if (!isOpen) return null;
-
-  const handleSubmit = () => {
-    if (!selectedRoute) return;
-    onRoute(selectedRoute, notes);
-  };
-
-  const isManufacturer = userRole === 'manufacturer';
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Save All & Route {productCount} Products
-        </h2>
-        <p className="text-sm text-gray-500 mb-6">
-          This will save all pending changes and route all {productCount} products
-        </p>
-
-        <div className="space-y-3 mb-6">
-          {isManufacturer ? (
-            <>
-              <button
-                onClick={() => setSelectedRoute('send_to_admin')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'send_to_admin'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-500 hover:bg-blue-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Send className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Send to Admin</h3>
-                    <p className="text-xs text-gray-500">Send all products to admin for review</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('in_production')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'in_production'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Package className="w-5 h-5 text-green-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Mark In Production</h3>
-                    <p className="text-xs text-gray-500">Mark all products as in production</p>
-                  </div>
-                </div>
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setSelectedRoute('approve_for_production')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'approve_for_production'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Package className="w-5 h-5 text-green-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Approve for Production</h3>
-                    <p className="text-xs text-gray-500">Send all to manufacturer for production</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('request_sample')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'request_sample'
-                    ? 'border-yellow-500 bg-yellow-50'
-                    : 'border-gray-200 hover:border-yellow-500 hover:bg-yellow-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Request Samples</h3>
-                    <p className="text-xs text-gray-500">Request samples for all products</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('send_back_to_manufacturer')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'send_back_to_manufacturer'
-                    ? 'border-orange-500 bg-orange-50'
-                    : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Send className="w-5 h-5 text-orange-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Back to Manufacturer</h3>
-                    <p className="text-xs text-gray-500">Request revisions from manufacturer</p>
-                  </div>
-                </div>
-              </button>
-            </>
-          )}
-        </div>
-
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Notes (Optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={isSaving}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            rows={3}
-            placeholder={isManufacturer ? "Add any notes for admin..." : "Add routing instructions..."}
-          />
-        </div>
-
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedRoute || isSaving}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Save All & Route
-              </>
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
