@@ -138,7 +138,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
 
     setSavingVariant(variantTypeId);
     try {
-      const newOptions = [];
+      const newOptions: any[] = []; // Fixed: explicitly typed as any[]
       
       for (const value of values) {
         // Fixed: using 'type_id' instead of 'variant_type_id'
