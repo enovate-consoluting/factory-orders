@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Save, Percent, AlertCircle, CheckCircle, Package, 
-  ChevronDown, ChevronRight, Edit, DollarSign
+  ChevronDown, ChevronRight, Edit, DollarSign, TrendingUp, Truck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -33,9 +33,18 @@ interface OrderWithMargins {
     product_margin_override: number | null;
     shipping_margin_override: number | null;
     margin_applied: number;
+    shipping_air_price?: number;
+    shipping_boat_price?: number;
+    selected_shipping_method?: string;
+    client_shipping_air_price?: number;
+    client_shipping_boat_price?: number;
     product?: {
       title: string;
     };
+    // Need to fetch order_items for quantities
+    order_items?: Array<{
+      quantity: number;
+    }>;
   }>;
 }
 
@@ -52,9 +61,10 @@ export default function FinanceOrdersPage() {
   const [message, setMessage] = useState<Record<string, string>>({});
   const [defaultProductMargin, setDefaultProductMargin] = useState(80);
   const [defaultShippingMargin, setDefaultShippingMargin] = useState(0);
-useEffect(() => {
+
+  useEffect(() => {
     checkUserRole();
-    loadDefaultMargins(); // ADDED: Load margins from system_config
+    loadDefaultMargins();
     fetchOrders();
   }, []);
 
@@ -70,7 +80,6 @@ useEffect(() => {
     }
   };
 
-  // ADDED: Load default margins from system_config
   const loadDefaultMargins = async () => {
     try {
       const { data } = await supabase
@@ -112,7 +121,13 @@ useEffect(() => {
             product_margin_override,
             shipping_margin_override,
             margin_applied,
-            product:products(title)
+            shipping_air_price,
+            shipping_boat_price,
+            selected_shipping_method,
+            client_shipping_air_price,
+            client_shipping_boat_price,
+            product:products(title),
+            order_items(quantity)
           )
         `)
         .order('created_at', { ascending: false });
@@ -124,7 +139,7 @@ useEffect(() => {
         .from('order_margins')
         .select('order_id, margin_percentage, shipping_margin_percentage');
 
-      // Combine data - FIX: Handle client and product as arrays from Supabase
+      // Combine data
       const ordersWithMargins = (data || []).map(order => {
         const orderMargin = marginData?.find(m => m.order_id === order.id);
         return {
@@ -133,16 +148,15 @@ useEffect(() => {
           order_name: order.order_name,
           status: order.status,
           created_at: order.created_at,
-          // FIX: Handle client being an array from Supabase
           client: Array.isArray(order.client) ? order.client[0] : order.client,
-          // FIX: Handle products array and nested product arrays
           order_products: (order.order_products || []).map((p: any) => ({
             ...p,
-            product: Array.isArray(p.product) ? p.product[0] : p.product
+            product: Array.isArray(p.product) ? p.product[0] : p.product,
+            order_items: p.order_items || []
           })),
           order_margin: orderMargin
         };
- });
+      });
 
       setOrders(ordersWithMargins);
 
@@ -158,7 +172,8 @@ useEffect(() => {
         
         order.order_products?.forEach(product => {
           prodMargins[product.id] = product.product_margin_override?.toString() || 
-                                     order.order_margin?.margin_percentage?.toString() || defaultProductMargin.toString();
+                                     order.order_margin?.margin_percentage?.toString() || 
+                                     defaultProductMargin.toString();
         });
       });
       
@@ -181,6 +196,34 @@ useEffect(() => {
       }
       return newSet;
     });
+  };
+
+  // Calculate order totals including quantities
+  const calculateOrderTotals = (order: OrderWithMargins) => {
+    let mfrTotal = 0;
+    let clientTotal = 0;
+    let shippingTotal = 0;
+
+    order.order_products?.forEach(product => {
+      // Get total quantity for this product
+      const totalQuantity = product.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+      
+      // Calculate product totals
+      mfrTotal += (product.product_price || 0) * totalQuantity;
+      clientTotal += (product.client_product_price || 0) * totalQuantity;
+      
+      // Add shipping (not multiplied by quantity, shipping is per product not per unit)
+      if (product.selected_shipping_method === 'air') {
+        shippingTotal += product.client_shipping_air_price || 0;
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingTotal += product.client_shipping_boat_price || 0;
+      }
+    });
+
+    const grandTotal = clientTotal + shippingTotal;
+    const margin = mfrTotal > 0 ? ((clientTotal - mfrTotal) / mfrTotal * 100).toFixed(1) : '0';
+
+    return { mfrTotal, clientTotal, shippingTotal, grandTotal, margin };
   };
 
   const handleSaveOrderMargin = async (orderId: string) => {
@@ -229,6 +272,16 @@ useEffect(() => {
 
       if (clearError) throw clearError;
 
+      // Force recalculation of all products in this order
+      const { error: recalcError } = await supabase
+        .from('order_products')
+        .update({
+          margin_percentage: productMargin
+        })
+        .eq('order_id', orderId);
+
+      if (recalcError) throw recalcError;
+
       setMessage({ [orderId]: 'Saved!' });
       setEditingOrder(null);
       await fetchOrders();
@@ -257,11 +310,12 @@ useEffect(() => {
         return;
       }
 
-      // Save product-specific margin override
+      // Save product-specific margin override and trigger recalculation
       const { error } = await supabase
         .from('order_products')
         .update({
-          product_margin_override: margin
+          product_margin_override: margin,
+          margin_percentage: margin
         })
         .eq('id', productId);
 
@@ -280,10 +334,6 @@ useEffect(() => {
     } finally {
       setSaving(null);
     }
-  };
-
-  const calculateClientPrice = (manufacturerPrice: number, marginPercent: number) => {
-    return manufacturerPrice * (1 + marginPercent / 100);
   };
 
   if (loading) {
@@ -311,7 +361,8 @@ useEffect(() => {
           View and override margin percentages for specific orders and products
         </p>
       </div>
-{/* Orders List */}
+
+      {/* Orders List */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
@@ -327,8 +378,8 @@ useEffect(() => {
             const isExpanded = expandedOrders.has(order.id);
             const isEditingOrder = editingOrder === order.id;
             const totalProducts = order.order_products?.length || 0;
-            const totalValue = order.order_products?.reduce((sum, p) => 
-              sum + (p.client_product_price || 0), 0) || 0;
+            const totals = calculateOrderTotals(order);
+            
             return (
               <div key={order.id} className="hover:bg-gray-50">
                 {/* Order Row */}
@@ -346,7 +397,7 @@ useEffect(() => {
                           <ChevronRight className="w-4 h-4 text-gray-500" />
                         )}
                       </button>
- <div className="flex-1">
+                      <div className="flex-1">
                         <div className="flex items-center gap-4">
                           <div>
                             <div className="font-medium text-gray-900">
@@ -358,8 +409,39 @@ useEffect(() => {
                               )}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {order.client?.name} • {totalProducts} products • 
-                              Total: ${totalValue.toFixed(2)}
+                              {order.client?.name} • {totalProducts} products
+                            </div>
+                            {/* NEW: Detailed totals display */}
+                            <div className="text-xs text-gray-600 mt-1 flex items-center gap-3">
+                              <span className="flex items-center gap-1">
+                                <span className="text-gray-500">Mfr Cost:</span>
+                                <span className="font-medium">${totals.mfrTotal.toFixed(2)}</span>
+                              </span>
+                              <span className="text-gray-400">→</span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-gray-500">Client:</span>
+                                <span className="font-medium">${totals.clientTotal.toFixed(2)}</span>
+                              </span>
+                              {totals.shippingTotal > 0 && (
+                                <>
+                                  <span className="text-gray-400">+</span>
+                                  <span className="flex items-center gap-1">
+                                    <Truck className="w-3 h-3 text-gray-400" />
+                                    <span className="text-gray-500">Ship:</span>
+                                    <span className="font-medium">${totals.shippingTotal.toFixed(2)}</span>
+                                  </span>
+                                </>
+                              )}
+                              <span className="text-gray-400">=</span>
+                              <span className="flex items-center gap-1">
+                                <span className="text-gray-500">Total:</span>
+                                <span className="font-semibold text-green-600">
+                                  ${totals.grandTotal.toFixed(2)}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  ({totals.margin}% margin)
+                                </span>
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -463,6 +545,7 @@ useEffect(() => {
                         const isEditingProduct = editingProduct === product.id;
                         const effectiveMargin = product.product_margin_override || 
                                                orderMargins[order.id]?.product || '80';
+                        const totalQuantity = product.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
                         
                         return (
                           <div key={product.id} className="bg-white p-3 rounded border border-gray-200">
@@ -480,8 +563,16 @@ useEffect(() => {
                                 
                                 {product.product_price && (
                                   <div className="text-xs text-gray-500 ml-4">
-                                    Mfr: ${product.product_price.toFixed(2)} → 
-                                    Client: ${(product.client_product_price || 0).toFixed(2)}
+                                    <div>
+                                      Unit: ${product.product_price.toFixed(2)} → ${(product.client_product_price || 0).toFixed(2)}
+                                    </div>
+                                    {totalQuantity > 0 && (
+                                      <div className="text-gray-600">
+                                        Qty: {totalQuantity} | 
+                                        Total: ${(product.product_price * totalQuantity).toFixed(2)} → 
+                                        ${((product.client_product_price || 0) * totalQuantity).toFixed(2)}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -525,7 +616,7 @@ useEffect(() => {
                                           ...prev,
                                           [product.id]: e.target.value
                                         }))}
-                                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded"
+                                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
                                         min="0"
                                         max="500"
                                       />
@@ -586,6 +677,7 @@ useEffect(() => {
               <li><strong>Order-level margins:</strong> Click Edit on any order to set margins for ALL products in that order</li>
               <li><strong>Product-level margins:</strong> Expand an order and edit individual products for custom margins</li>
               <li><strong>Orange text:</strong> Indicates a custom product margin that overrides the order default</li>
+              <li><strong>Totals:</strong> Show manufacturer cost, client price (with margins), shipping, and grand total</li>
               <li><strong>Changes are instant:</strong> Margins recalculate client prices immediately upon saving</li>
             </ul>
           </div>
