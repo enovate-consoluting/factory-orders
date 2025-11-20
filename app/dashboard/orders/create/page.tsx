@@ -899,37 +899,38 @@ export default function CreateOrderPage() {
         </div>
       )}
 
-      {/* Step 2: Product Selection using new component */}
+      {/* Step 2: Product Selection using new component with refresh callback */}
       {currentStep === 2 && (
-        <>
-          <ProductSelector
-            products={products}
-            selectedProducts={selectedProducts}
-            searchQuery={productSearch}
-            onSearchChange={setProductSearch}
-            onProductQuantityChange={handleProductQuantityChange}
-            onProductClick={handleProductClick}
-            showNotification={showNotification}
-          />
-          
-          <div className="mt-6 flex justify-between">
-            <button
-              onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Previous
-            </button>
-            <button
-              onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-            >
-              Next
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </button>
-          </div>
-        </>
-      )}
+      <>
+        <ProductSelector
+          products={products}
+          selectedProducts={selectedProducts}
+          searchQuery={productSearch}
+          onSearchChange={setProductSearch}
+          onProductQuantityChange={handleProductQuantityChange}
+          onProductClick={handleProductClick}
+          showNotification={showNotification}
+          onProductsRefresh={fetchInitialData}
+        />
+        
+        <div className="mt-6 flex justify-between">
+          <button
+            onClick={prevStep}
+            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Previous
+          </button>
+          <button
+            onClick={nextStep}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+          >
+            Next
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </button>
+        </div>
+      </>
+    )}
 
       {/* Step 3: Order Details with new components */}
       {currentStep === 3 && (
