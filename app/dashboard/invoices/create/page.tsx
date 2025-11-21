@@ -68,6 +68,7 @@ export default function CreateInvoicePage() {
           order_products (
             *,
             product:products(*),
+            routed_to,
             order_items (
               quantity
             )
@@ -78,32 +79,57 @@ export default function CreateInvoicePage() {
 
       if (error) throw error;
 
-      const approvedProducts = orderData.order_products.filter((p: any) => 
-        p.product_status === 'approved_for_production' || 
-        p.product_status === 'in_production' ||
-        p.product_status === 'completed'
-      );
-
-      let subtotal = 0;
-      approvedProducts.forEach((product: any) => {
-        const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        const productTotal = (product.sample_fee || 0) + ((product.product_price || 0) * totalQty);
-        subtotal += productTotal;
+      // UPDATED LOGIC: Include products that are either:
+      // 1. Approved for production/in production/completed OR
+      // 2. Routed to admin with fees (sample fee or product price)
+      const invoiceableProducts = orderData.order_products.filter((p: any) => {
+        // Check if product has fees and is routed to admin
+        // Use CLIENT prices for checking if invoiceable
+        const hasFeesAndRoutedToAdmin = 
+          p.routed_to === 'admin' && 
+          (parseFloat(p.client_product_price || p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
+        
+        // Include if it meets either condition
+        return hasFeesAndRoutedToAdmin ||
+               p.product_status === 'approved_for_production' || 
+               p.product_status === 'in_production' ||
+               p.product_status === 'completed';
       });
 
+      // Calculate subtotal for all invoiceable products using CLIENT PRICES
+      let subtotal = 0;
+      invoiceableProducts.forEach((product: any) => {
+        const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        // Include sample fee (this stays the same - it's what client pays)
+        subtotal += (product.sample_fee || 0);
+        // Include production cost using CLIENT PRICE
+        const clientPrice = product.client_product_price || product.product_price || 0;
+        subtotal += (clientPrice * totalQty);
+        // Include CLIENT shipping prices
+        if (product.selected_shipping_method === 'air') {
+          const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
+          subtotal += clientAirPrice;
+        } else if (product.selected_shipping_method === 'boat') {
+          const clientBoatPrice = product.client_shipping_boat_price || product.shipping_boat_price || 0;
+          subtotal += clientBoatPrice;
+        }
+      });
+
+      // Get invoice count for numbering
       const invoiceCount = await supabase
         .from('invoices')
         .select('id', { count: 'exact', head: true });
       
       const invoiceNumber = `INV-${String((invoiceCount.count || 0) + 1).padStart(4, '0')}`;
       
+      // Set default due date to 30 days from now
       const defaultDueDate = new Date();
       defaultDueDate.setDate(defaultDueDate.getDate() + 30);
       setDueDate(defaultDueDate.toISOString().split('T')[0]);
 
       setInvoiceData({
         order: orderData,
-        products: approvedProducts,
+        products: invoiceableProducts,
         client: orderData.client,
         subtotal: subtotal,
         tax: 0,
@@ -112,7 +138,10 @@ export default function CreateInvoicePage() {
         dueDate: defaultDueDate.toISOString().split('T')[0]
       });
 
-      setSelectedProducts(approvedProducts.map((p: any) => p.id));
+      // Pre-select all invoiceable products
+      setSelectedProducts(invoiceableProducts.map((p: any) => p.id));
+      
+      // Set bill-to information
       setBillToName(orderData.client.name || '');
       setBillToEmail(orderData.client.email || '');
     } catch (error) {
@@ -130,7 +159,25 @@ export default function CreateInvoicePage() {
       .filter(p => selectedProducts.includes(p.id))
       .reduce((sum, product) => {
         const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
-        return sum + (product.sample_fee || 0) + ((product.product_price || 0) * totalQty);
+        let productSum = 0;
+        
+        // Add sample fee (same for client)
+        productSum += (product.sample_fee || 0);
+        
+        // Add production cost using CLIENT PRICE
+        const clientPrice = product.client_product_price || product.product_price || 0;
+        productSum += (clientPrice * totalQty);
+        
+        // Add CLIENT shipping prices
+        if (product.selected_shipping_method === 'air') {
+          const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
+          productSum += clientAirPrice;
+        } else if (product.selected_shipping_method === 'boat') {
+          const clientBoatPrice = product.client_shipping_boat_price || product.shipping_boat_price || 0;
+          productSum += clientBoatPrice;
+        }
+        
+        return sum + productSum;
       }, 0);
       
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
@@ -184,21 +231,43 @@ export default function CreateInvoicePage() {
         if (product) {
           const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
           
+          // Use CLIENT prices for invoices - NEVER manufacturer prices
+          const clientUnitPrice = product.client_product_price || 0;
+          
+          // Add sample fee as separate line item if exists
           if (product.sample_fee > 0) {
             invoiceItems.push({
               invoice_id: invoice.id,
               order_product_id: productId,
-              description: `${product.product.title} - Sample Fee`,
+              description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
               amount: product.sample_fee
             });
           }
           
-          if (product.product_price > 0) {
+          // Add production cost using CLIENT PRICE
+          if (clientUnitPrice > 0 && totalQty > 0) {
             invoiceItems.push({
               invoice_id: invoice.id,
               order_product_id: productId,
-              description: `${product.product.title} - Production (${totalQty} units)`,
-              amount: product.product_price * totalQty
+              description: `${product.description || product.product?.title || 'Product'} - Production (${totalQty} units)`,
+              amount: clientUnitPrice * totalQty
+            });
+          }
+          
+          // Add CLIENT shipping price as line item (only if selected)
+          if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              order_product_id: productId,
+              description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
+              amount: product.client_shipping_air_price
+            });
+          } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+            invoiceItems.push({
+              invoice_id: invoice.id,
+              order_product_id: productId,
+              description: `${product.description || product.product?.title || 'Product'} - Boat Shipping`,
+              amount: product.client_shipping_boat_price
             });
           }
         }
@@ -521,17 +590,46 @@ export default function CreateInvoicePage() {
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-3 px-2 text-sm font-medium text-gray-700">Select</th>
                   <th className="text-left py-3 px-2 text-sm font-medium text-gray-700">Product</th>
+                  <th className="text-left py-3 px-2 text-sm font-medium text-gray-700">Status</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Qty</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Unit Price</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Sample Fee</th>
+                  <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Shipping</th>
                   <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {invoiceData.products.map((product) => {
                   const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-                  const productTotal = (product.sample_fee || 0) + ((product.product_price || 0) * totalQty);
+                  
+                  // ALWAYS USE CLIENT PRICES FOR INVOICES - NEVER SHOW MANUFACTURER COSTS
+                  const clientUnitPrice = product.client_product_price || 0;
+                  
+                  // Calculate product total using CLIENT prices
+                  let productTotal = (product.sample_fee || 0) + (clientUnitPrice * totalQty);
+                  let shippingAmount = 0;
+                  
+                  // Use CLIENT shipping prices only
+                  if (product.selected_shipping_method === 'air') {
+                    shippingAmount = product.client_shipping_air_price || 0;
+                  } else if (product.selected_shipping_method === 'boat') {
+                    shippingAmount = product.client_shipping_boat_price || 0;
+                  }
+                  
+                  productTotal += shippingAmount;
+                  
                   const isSelected = selectedProducts.includes(product.id);
+                  
+                  // Determine status badge color
+                  const getStatusColor = (status: string) => {
+                    if (status === 'approved_for_production' || status === 'in_production' || status === 'completed') {
+                      return 'bg-green-100 text-green-800';
+                    }
+                    if (product.routed_to === 'admin' && (product.sample_fee > 0 || clientUnitPrice > 0)) {
+                      return 'bg-amber-100 text-amber-800';
+                    }
+                    return 'bg-gray-100 text-gray-800';
+                  };
                   
                   return (
                     <tr key={product.id} className={`border-b ${!isSelected ? 'opacity-50' : ''}`}>
@@ -551,16 +649,37 @@ export default function CreateInvoicePage() {
                       </td>
                       <td className="py-3 px-2">
                         <div>
-                          <p className="font-medium text-gray-900">{product.product.title}</p>
+                          {/* USE DESCRIPTION INSTEAD OF GENERIC PRODUCT NAME */}
+                          <p className="font-medium text-gray-900">{product.description || product.product?.title || 'Product'}</p>
                           <p className="text-sm text-gray-600">{product.product_order_number}</p>
                         </div>
                       </td>
+                      <td className="py-3 px-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(product.product_status)}`}>
+                          {product.product_status === 'pending_admin' && product.routed_to === 'admin' && (product.sample_fee > 0 || clientUnitPrice > 0) 
+                            ? 'Ready to Invoice' 
+                            : product.product_status.replace(/_/g, ' ')}
+                        </span>
+                      </td>
                       <td className="py-3 px-2 text-right text-gray-900 font-medium">{totalQty}</td>
                       <td className="py-3 px-2 text-right text-gray-900">
-                        ${(product.product_price || 0).toFixed(2)}
+                        {/* SHOW CLIENT PRICE NOT MANUFACTURER PRICE */}
+                        ${clientUnitPrice.toFixed(2)}
                       </td>
                       <td className="py-3 px-2 text-right text-gray-900">
                         ${(product.sample_fee || 0).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-2 text-right text-gray-900">
+                        {shippingAmount > 0 && product.selected_shipping_method && (
+                          <div>
+                            <span className="text-xs text-gray-500">
+                              {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'}:
+                            </span>
+                            <br />
+                            ${shippingAmount.toFixed(2)}
+                          </div>
+                        )}
+                        {(!product.selected_shipping_method || shippingAmount === 0) && '-'}
                       </td>
                       <td className="py-3 px-2 text-right font-semibold text-gray-900">
                         ${productTotal.toFixed(2)}
@@ -593,6 +712,7 @@ export default function CreateInvoicePage() {
                         className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
                       />
                     </td>
+                    <td className="py-3 px-2">-</td>
                     <td className="py-3 px-2">
                       <input
                         type="number"
@@ -618,6 +738,7 @@ export default function CreateInvoicePage() {
                         className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right text-gray-900"
                       />
                     </td>
+                    <td className="py-3 px-2 text-right text-gray-900">-</td>
                     <td className="py-3 px-2 text-right text-gray-900">-</td>
                     <td className="py-3 px-2 text-right font-semibold text-gray-900">
                       ${(item.quantity * item.price).toFixed(2)}
@@ -720,8 +841,8 @@ export default function CreateInvoicePage() {
         {/* Action Info */}
         <div className="mt-6 p-4 bg-blue-50 rounded-lg">
           <p className="text-sm text-blue-900">
-            <strong>Note:</strong> Only approved products are shown. This invoice will be created as a draft. 
-            You can send it to the client after reviewing.
+            <strong>Note:</strong> Products that have been priced by the manufacturer and routed back are now invoiceable. 
+            This includes sample fees and production costs. You can send this invoice for client approval before moving to production.
           </p>
         </div>
 
@@ -759,7 +880,7 @@ export default function CreateInvoicePage() {
             const total = subtotal + taxAmount;
             const user = JSON.parse(localStorage.getItem('user') || '{}');
             
-            // Step 1: Create invoice with minimal required fields (like test button)
+            // Step 1: Create invoice with minimal required fields
             console.log('Creating invoice with minimal fields...');
             const { data: invoice, error } = await supabase
               .from('invoices')
@@ -783,7 +904,7 @@ export default function CreateInvoicePage() {
             
             console.log('Invoice created successfully:', invoice.id);
             
-            // Step 2: Send email (we know this works)
+            // Step 2: Send email
             console.log('Sending email...');
             const response = await fetch('/api/invoices/send', {
               method: 'POST',
@@ -800,7 +921,6 @@ export default function CreateInvoicePage() {
             if (!response.ok) {
               console.error('Email send failed:', result);
               notify.error('Failed to send email');
-              // Don't return - still update the invoice
             } else {
               console.log('Email sent successfully');
               notify.success(`Invoice ${invoiceData?.invoiceNumber} sent successfully!`);
@@ -822,7 +942,6 @@ export default function CreateInvoicePage() {
               
             if (updateError) {
               console.error('Update error:', updateError);
-              // Don't fail - invoice is already created
             }
             
             // Step 4: Create invoice items
@@ -833,21 +952,41 @@ export default function CreateInvoicePage() {
               if (product) {
                 const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
                 
+                // ALWAYS USE CLIENT PRICES FOR INVOICES
+                const clientUnitPrice = product.client_product_price || 0;
+                
                 if (product.sample_fee > 0) {
                   invoiceItems.push({
                     invoice_id: invoice.id,
                     order_product_id: productId,
-                    description: `${product.product.title} - Sample Fee`,
+                    description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
                     amount: product.sample_fee
                   });
                 }
                 
-                if (product.product_price > 0 && totalQty > 0) {
+                if (clientUnitPrice > 0 && totalQty > 0) {
                   invoiceItems.push({
                     invoice_id: invoice.id,
                     order_product_id: productId,
-                    description: `${product.product.title} - Production (${totalQty} units)`,
-                    amount: product.product_price * totalQty
+                    description: `${product.description || product.product?.title || 'Product'} - Production (${totalQty} units)`,
+                    amount: clientUnitPrice * totalQty
+                  });
+                }
+                
+                // Add CLIENT shipping prices
+                if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+                  invoiceItems.push({
+                    invoice_id: invoice.id,
+                    order_product_id: productId,
+                    description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
+                    amount: product.client_shipping_air_price
+                  });
+                } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+                  invoiceItems.push({
+                    invoice_id: invoice.id,
+                    order_product_id: productId,
+                    description: `${product.description || product.product?.title || 'Product'} - Boat Shipping`,
+                    amount: product.client_shipping_boat_price
                   });
                 }
               }
@@ -870,7 +1009,6 @@ export default function CreateInvoicePage() {
                 
               if (itemsError) {
                 console.error('Invoice items error:', itemsError);
-                // Don't fail - invoice is already created
               }
             }
             
@@ -881,7 +1019,17 @@ export default function CreateInvoicePage() {
                 const product = invoiceData?.products.find(p => p.id === productId);
                 if (product) {
                   const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
-                  const productAmount = (product.sample_fee || 0) + ((product.product_price || 0) * totalQty);
+                  
+                  // USE CLIENT PRICES FOR PAYMENT AMOUNTS
+                  const clientUnitPrice = product.client_product_price || 0;
+                  let productAmount = (product.sample_fee || 0) + (clientUnitPrice * totalQty);
+                  
+                  // Add CLIENT shipping to paid amount
+                  if (product.selected_shipping_method === 'air') {
+                    productAmount += (product.client_shipping_air_price || 0);
+                  } else if (product.selected_shipping_method === 'boat') {
+                    productAmount += (product.client_shipping_boat_price || 0);
+                  }
                   
                   await supabase
                     .from('order_products')
