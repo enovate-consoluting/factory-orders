@@ -2,14 +2,14 @@
  * Admin Product Card Component
  * Product card for Admin/Super Admin users with client pricing
  * Uses shared components for collapsed view and file display
- * Last Modified: November 2024
+ * Last Modified: Nov 21 2025
  */
 
-import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { 
   Package, Clock, Lock, Unlock, Send, CheckCircle, 
   Loader2, MessageSquare, Save, DollarSign, Plane, Ship, 
-  Upload, X, ChevronDown
+  Upload, X, ChevronDown, Edit2, Eye, EyeOff
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
@@ -65,14 +65,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       return (productStatus === 'shipped' || productStatus === 'in_transit');
     });
     
-    // State for notes
+    // State for notes (KEEPING BUT WILL COMMENT OUT DISPLAY)
     const [tempNotes, setTempNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
     
     // Loading states for save buttons
     const [savingNotes, setSavingNotes] = useState(false);
     const [savingBulkSection, setSavingBulkSection] = useState(false);
-    const [savingVariantNotes, setSavingVariantNotes] = useState(false);
+    const [savingVariants, setSavingVariants] = useState(false);
     
     // State for tracking if sections have changes
     const [notesSectionDirty, setNotesSectionDirty] = useState(false);
@@ -83,9 +83,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const [uploadingBulkMedia, setUploadingBulkMedia] = useState(false);
     const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
     
-    // State for variant notes
+    // State for variant editing
     const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
+    const [variantQuantities, setVariantQuantities] = useState<{[key: string]: number}>({});
     const [editingVariants, setEditingVariants] = useState(false);
+    const [showAllVariants, setShowAllVariants] = useState(false);
     
     // State for pending file uploads
     const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
@@ -126,13 +128,16 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       loadMargins();
     }, []);
     
-    // Initialize variant notes from items
+    // Initialize variant data from items
     useEffect(() => {
       const initialNotes: {[key: string]: string} = {};
+      const initialQuantities: {[key: string]: number} = {};
       items.forEach(item => {
         initialNotes[item.id] = item.notes || '';
+        initialQuantities[item.id] = item.quantity || 0;
       });
       setVariantNotes(initialNotes);
+      setVariantQuantities(initialQuantities);
     }, [items]);
     
     // Update original values when product changes
@@ -171,7 +176,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         }
         
         if (editingVariants) {
-          await handleSaveVariantNotes();
+          await handleSaveVariants();
           changesMade = true;
         }
         
@@ -187,42 +192,40 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       (product as any).id
     ]);
     
-    // Calculate with DYNAMIC margins for admins
+    // FIX: Use proper memoization for price calculations
     const calculateClientPrice = (manufacturerPrice: number, isShipping: boolean = false) => {
       if (!manufacturerPrice || manufacturerPrice === 0) return 0;
       const margin = isShipping ? shippingMargin : productMargin;
       return manufacturerPrice * (1 + margin / 100);
     };
     
-    // Calculate totals - ALWAYS use client prices for admin/super_admin
-    const unitPrice = (() => {
-      const mfgPrice = (product as any).product_price || 0;
-      if (!marginsLoaded && (product as any).client_product_price) {
-        return (product as any).client_product_price;
+    // FIXED: Calculate prices with memoization to prevent cross-contamination
+    const { unitPrice, productPrice, shippingPrice, totalPrice } = useMemo(() => {
+      // Always use the CLIENT prices from database if available
+      const clientUnitPrice = (product as any).client_product_price || 0;
+      const calculatedProductPrice = clientUnitPrice * totalQuantity;
+      
+      let calculatedShippingPrice = 0;
+      if ((product as any).selected_shipping_method === 'air') {
+        calculatedShippingPrice = (product as any).client_shipping_air_price || 0;
+      } else if ((product as any).selected_shipping_method === 'boat') {
+        calculatedShippingPrice = (product as any).client_shipping_boat_price || 0;
       }
-      return calculateClientPrice(mfgPrice, false);
-    })();
-    
-    const productPrice = unitPrice * totalQuantity;
-    
-    let shippingPrice = 0;
-    if ((product as any).selected_shipping_method === 'air') {
-      const mfgShipping = (product as any).shipping_air_price || 0;
-      if (!marginsLoaded && (product as any).client_shipping_air_price) {
-        shippingPrice = (product as any).client_shipping_air_price;
-      } else {
-        shippingPrice = calculateClientPrice(mfgShipping, true);
-      }
-    } else if ((product as any).selected_shipping_method === 'boat') {
-      const mfgShipping = (product as any).shipping_boat_price || 0;
-      if (!marginsLoaded && (product as any).client_shipping_boat_price) {
-        shippingPrice = (product as any).client_shipping_boat_price;
-      } else {
-        shippingPrice = calculateClientPrice(mfgShipping, true);
-      }
-    }
-    
-    const totalPrice = productPrice + shippingPrice;
+      
+      return {
+        unitPrice: clientUnitPrice,
+        productPrice: calculatedProductPrice,
+        shippingPrice: calculatedShippingPrice,
+        totalPrice: calculatedProductPrice + calculatedShippingPrice
+      };
+    }, [
+      (product as any).client_product_price,
+      (product as any).client_shipping_air_price,
+      (product as any).client_shipping_boat_price,
+      (product as any).selected_shipping_method,
+      totalQuantity,
+      (product as any).id // Include product ID to ensure recalculation on product change
+    ]);
 
     // Separate media types
     const referenceMedia = media.filter(m => m.file_type === 'document' || m.file_type === 'image');
@@ -318,22 +321,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           return;
         }
 
-        try {
-          await supabase
-            .from('audit_log')
-            .insert({
-              user_id: user.id,
-              user_name: user.name,
-              action_type: 'note_added',
-              target_type: 'order_product',
-              target_id: (product as any).id,
-              new_value: `General Note: "${tempNotes.trim()}"`,
-              timestamp: new Date().toISOString()
-            });
-        } catch (auditError) {
-          console.error('Failed to log audit:', auditError);
-        }
-
         setOriginalValues(prev => ({ ...prev, internalNotes: tempNotes.trim() }));
         setTempNotes('');
         setNotesSectionDirty(false);
@@ -366,35 +353,16 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             alert('Failed to save bulk note. Please try again.');
             return;
           }
-
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'bulk_note_added',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                new_value: `Bulk Note: "${tempBulkNotes.trim()}"`,
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-          }
         }
 
-        // NO FILE RENAMING - Keep original filenames
+        // Handle file uploads
         if (pendingBulkFiles.length > 0) {
-          console.log('Starting bulk file uploads...', pendingBulkFiles.length, 'files');
-
           for (const file of pendingBulkFiles) {
             const timestamp = Date.now();
             const randomStr = Math.random().toString(36).substring(2, 8);
             const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
 
-            console.log('Uploading file to storage:', storagePath);
-            const { data: uploadData, error: uploadError } = await supabase.storage
+            const { error: uploadError } = await supabase.storage
               .from('order-media')
               .upload(storagePath, file, {
                 cacheControl: '3600',
@@ -406,14 +374,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               alert(`Failed to upload ${file.name}: ${uploadError.message}`);
               continue;
             }
-            console.log('File uploaded successfully:', uploadData);
 
             const { data: { publicUrl } } = supabase.storage
               .from('order-media')
               .getPublicUrl(storagePath);
 
-            // KEEP ORIGINAL FILENAME IN DATABASE
-            const { data: insertData, error: insertError } = await supabase
+            await supabase
               .from('order_media')
               .insert({
                 order_product_id: (product as any).id,
@@ -422,15 +388,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 uploaded_by: user.id,
                 original_filename: file.name,
                 display_name: file.name
-              })
-              .select();
-
-            if (insertError) {
-              console.error('Database insert error:', insertError);
-              alert(`Failed to save ${file.name} to database: ${insertError.message}`);
-            } else {
-              console.log('File saved to database with original name:', file.name);
-            }
+              });
           }
         }
 
@@ -530,25 +488,31 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
-    const handleSaveVariantNotes = async () => {
-      setSavingVariantNotes(true);
+    const handleSaveVariants = async () => {
+      setSavingVariants(true);
       try {
         for (const item of items) {
           const newNote = variantNotes[item.id] || '';
-          if (newNote !== (item.notes || '')) {
+          const newQty = variantQuantities[item.id] || 0;
+          
+          if (newNote !== (item.notes || '') || newQty !== (item.quantity || 0)) {
             await supabase
               .from('order_items')
-              .update({ notes: newNote })
+              .update({ 
+                notes: newNote,
+                quantity: newQty
+              })
               .eq('id', item.id);
           }
         }
         
         setEditingVariants(false);
+        setShowAllVariants(false);
         await onUpdate();
       } catch (error) {
-        console.error('Error saving variant notes:', error);
+        console.error('Error saving variants:', error);
       } finally {
-        setSavingVariantNotes(false);
+        setSavingVariants(false);
       }
     };
 
@@ -561,6 +525,13 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const handleCollapse = () => {
       setIsCollapsed(true);
     };
+
+    // Filter variants for display
+    const visibleVariants = showAllVariants || editingVariants 
+      ? items 
+      : items.filter(item => item.quantity > 0);
+    
+    const hasHiddenVariants = items.some(item => item.quantity === 0);
 
     // Use shared CollapsedProductHeader when collapsed
     if (isCollapsed) {
@@ -614,11 +585,19 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     </span>
                   )}
                   
-                  {/* GREEN TOTAL BADGE */}
+                  {/* IMPROVED TOTAL BADGE WITH COLOR CODING */}
                   {totalPrice > 0 && (
-                    <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
+                    <span className={`px-3 py-1 text-sm font-semibold rounded-full flex items-center gap-1 ${
+                      shippingPrice > 0 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
                       <DollarSign className="w-4 h-4" />
-                      Total: ${totalPrice.toFixed(2)}
+                      Total {shippingPrice > 0 ? (
+                        <span className="text-green-700">(w/ shipping)</span>
+                      ) : (
+                        <span className="text-red-600">(w/o shipping)</span>
+                      )}: ${totalPrice.toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -704,7 +683,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* Notes Section */}
+          {/* COMMENTED OUT Notes Section - Keeping for potential future use */}
+          {/* 
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
             
@@ -760,6 +740,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
             </div>
           </div>
+          */}
 
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
@@ -851,7 +832,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 Select Shipping Method {!canEditPricing && '(Client Prices)'}
               </h5>
               
-              {((product as any).shipping_air_price || (product as any).shipping_boat_price) ? (
+              {((product as any).client_shipping_air_price || (product as any).client_shipping_boat_price) ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Air Shipping Option */}
                   <div className="space-y-3">
@@ -859,14 +840,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       (product as any).selected_shipping_method === 'air' 
                         ? 'border-blue-500 bg-blue-50' 
                         : 'border-gray-200 hover:bg-blue-50'
-                    } ${!(product as any).shipping_air_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    } ${!(product as any).client_shipping_air_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
                       <input
                         type="radio"
                         name={`shipping-${(product as any).id}`}
                         value="air"
                         checked={(product as any).selected_shipping_method === 'air'}
                         onChange={() => handleShippingMethodChange('air')}
-                        disabled={!(product as any).shipping_air_price}
+                        disabled={!(product as any).client_shipping_air_price}
                         className="w-4 h-4 text-blue-600"
                       />
                       <div className="flex-1">
@@ -874,10 +855,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                           <Plane className="w-5 h-5 text-blue-600" />
                           <span className="font-medium text-gray-900">Air Shipping</span>
                         </div>
-                        {(product as any).shipping_air_price ? (
+                        {(product as any).client_shipping_air_price ? (
                           <div className="mt-1">
                             <span className="text-sm text-gray-600">
-                              ${calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)}
+                              ${((product as any).client_shipping_air_price || 0).toFixed(2)}
                             </span>
                             {(product as any).shipping_air_days && (
                               <span className="text-xs text-gray-500 ml-2">
@@ -898,14 +879,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       (product as any).selected_shipping_method === 'boat' 
                         ? 'border-cyan-500 bg-cyan-50' 
                         : 'border-gray-200 hover:bg-cyan-50'
-                    } ${!(product as any).shipping_boat_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    } ${!(product as any).client_shipping_boat_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
                       <input
                         type="radio"
                         name={`shipping-${(product as any).id}`}
                         value="boat"
                         checked={(product as any).selected_shipping_method === 'boat'}
                         onChange={() => handleShippingMethodChange('boat')}
-                        disabled={!(product as any).shipping_boat_price}
+                        disabled={!(product as any).client_shipping_boat_price}
                         className="w-4 h-4 text-cyan-600"
                       />
                       <div className="flex-1">
@@ -913,10 +894,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                           <Ship className="w-5 h-5 text-cyan-600" />
                           <span className="font-medium text-gray-900">Boat Shipping</span>
                         </div>
-                        {(product as any).shipping_boat_price ? (
+                        {(product as any).client_shipping_boat_price ? (
                           <div className="mt-1">
                             <span className="text-sm text-gray-600">
-                              ${calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
+                              ${((product as any).client_shipping_boat_price || 0).toFixed(2)}
                             </span>
                             {(product as any).shipping_boat_days && (
                               <span className="text-xs text-gray-500 ml-2">
@@ -942,8 +923,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     <CheckCircle className="w-4 h-4" />
                     Selected: {(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'} Shipping 
                     - ${(product as any).selected_shipping_method === 'air' 
-                      ? calculateClientPrice((product as any).shipping_air_price || 0, true).toFixed(2)
-                      : calculateClientPrice((product as any).shipping_boat_price || 0, true).toFixed(2)}
+                      ? ((product as any).client_shipping_air_price || 0).toFixed(2)
+                      : ((product as any).client_shipping_boat_price || 0).toFixed(2)}
                   </p>
                 </div>
               )}
@@ -982,27 +963,91 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             )}
 
-            {/* Variant Details Table - Keep inline since it's specific to each card */}
+            {/* IMPROVED Variant Details Table with WIDER QUANTITY FIELD */}
             <div className="mb-4">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">
-                {getVariantTypeName()} Details
-              </h5>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="text-sm font-medium text-gray-700">
+                  {getVariantTypeName()} Details
+                  {!showAllVariants && hasHiddenVariants && !editingVariants && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      (Showing {visibleVariants.length} of {items.length})
+                    </span>
+                  )}
+                </h5>
+                <div className="flex items-center gap-2">
+                  {!editingVariants && hasHiddenVariants && (
+                    <button
+                      onClick={() => setShowAllVariants(!showAllVariants)}
+                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded flex items-center gap-1"
+                    >
+                      {showAllVariants ? (
+                        <>
+                          <EyeOff className="w-3 h-3" />
+                          Hide Empty
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3 h-3" />
+                          Show All
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {!editingVariants ? (
+                    <button
+                      onClick={() => {
+                        setEditingVariants(true);
+                        setShowAllVariants(true);
+                      }}
+                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded flex items-center gap-1"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '25%'}}>
+                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '30%'}}>
                         {getVariantTypeName()}
                       </th>
-                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '10%'}}>Qty</th>
-                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '65%'}}>Notes</th>
+                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '20%'}}>
+                        Qty
+                      </th>
+                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '50%'}}>
+                        Notes
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
+                    {visibleVariants.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
-                        <td className="py-2 px-1 text-sm font-medium text-gray-900">{item.quantity}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">
+                          {item.variant_combo}
+                        </td>
+                        <td className="py-2 px-1">
+                          {editingVariants ? (
+                            <input
+                              type="number"
+                              value={variantQuantities[item.id] || 0}
+                              onChange={(e) => {
+                                setVariantQuantities(prev => ({
+                                  ...prev,
+                                  [item.id]: parseInt(e.target.value) || 0
+                                }));
+                              }}
+                              className="w-24 px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                              min="0"
+                              max="999999"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-900">{item.quantity}</span>
+                          )}
+                        </td>
                         <td className="py-2 pl-2 pr-3">
                           <input
                             type="text"
@@ -1015,7 +1060,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                               if (!editingVariants) setEditingVariants(true);
                             }}
                             placeholder="Add note..."
-                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            disabled={!editingVariants}
+                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-700"
                           />
                         </td>
                       </tr>
@@ -1028,24 +1074,29 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 <div className="mt-3 flex justify-end gap-2">
                   <button
                     onClick={() => {
+                      // Reset to original values
                       const originalNotes: {[key: string]: string} = {};
+                      const originalQtys: {[key: string]: number} = {};
                       items.forEach(item => {
                         originalNotes[item.id] = item.notes || '';
+                        originalQtys[item.id] = item.quantity || 0;
                       });
                       setVariantNotes(originalNotes);
+                      setVariantQuantities(originalQtys);
                       setEditingVariants(false);
+                      setShowAllVariants(false);
                     }}
-                    disabled={savingVariantNotes}
+                    disabled={savingVariants}
                     className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
-                    onClick={handleSaveVariantNotes}
-                    disabled={savingVariantNotes}
+                    onClick={handleSaveVariants}
+                    disabled={savingVariants}
                     className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
                   >
-                    {savingVariantNotes ? (
+                    {savingVariants ? (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin" />
                         Saving...
@@ -1053,7 +1104,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     ) : (
                       <>
                         <Save className="w-3 h-3" />
-                        Save Variant Notes
+                        Save Variants
                       </>
                     )}
                   </button>
