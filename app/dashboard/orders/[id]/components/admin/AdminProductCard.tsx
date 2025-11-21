@@ -2,7 +2,7 @@
  * Admin Product Card Component - FIXED VERSION
  * Product card for Admin/Super Admin users with CLIENT pricing
  * FIXED: Removed all margin calculations - uses client prices directly
- * Last Modified: December 2024
+ * Last Modified: Nov 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
@@ -197,11 +197,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       (product as any).id
     ]);
 
-    // Separate media types - FIXED to include product_sample
+    // Separate media types - FIXED to include ALL file types for display
     const referenceMedia = media.filter(m => 
       m.file_type === 'document' || 
       m.file_type === 'image' || 
-      m.file_type === 'product_sample'
+      m.file_type === 'product_sample' ||
+      m.file_type === 'order_sample' ||
+      m.file_type === 'pdf' ||  // In case someone uses 'pdf' as type
+      !m.file_type // Include files with no type set
     );
 
     // Get variant type name
@@ -720,7 +723,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               ref={bulkFileInputRef}
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
+              accept=".pdf,.PDF,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,application/pdf"
               onChange={handleBulkFileUpload}
               className="hidden"
             />
