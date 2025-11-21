@@ -1,7 +1,8 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
  * Main order view for all roles - Refactored with extracted components
- * Last Modified: November 2025
+ * Last Modified: December 2024
+ * UPDATED: Pass allOrderProducts to ManufacturerProductCard for shipping allocation
  */
 
 'use client';
@@ -1389,6 +1390,7 @@ const handlePrintAll = () => {
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
                     autoCollapse={shouldAutoCollapse}
+                    allOrderProducts={allProducts}  // ✅ ADDED THIS LINE - Pass all products for shipping allocation
                   />
                 );
               }
