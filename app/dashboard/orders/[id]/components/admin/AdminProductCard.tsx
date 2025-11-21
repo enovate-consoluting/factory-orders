@@ -17,6 +17,7 @@ import { CollapsedProductHeader } from '../shared/CollapsedProductHeader';
 import { getProductStatusIcon } from '../shared/ProductStatusIcon';
 import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
+import { formatCurrency } from '../../../utils/orderCalculations';
 import { supabase } from '@/lib/supabase';
 
 interface AdminProductCardProps {
@@ -585,7 +586,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     </span>
                   )}
                   
-                  {/* IMPROVED TOTAL BADGE WITH COLOR CODING */}
+                  {/* IMPROVED TOTAL BADGE WITH COLOR CODING - USING formatCurrency */}
                   {totalPrice > 0 && (
                     <span className={`px-3 py-1 text-sm font-semibold rounded-full flex items-center gap-1 ${
                       shippingPrice > 0 
@@ -597,7 +598,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         <span className="text-green-700">(w/ shipping)</span>
                       ) : (
                         <span className="text-red-600">(w/o shipping)</span>
-                      )}: ${totalPrice.toFixed(2)}
+                      )}: ${formatCurrency(totalPrice)}
                     </span>
                   )}
                 </div>
@@ -793,7 +794,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               loading={uploadingBulkMedia}
             />
 
-            {/* Product Price and Production Info */}
+            {/* Product Price and Production Info - USING formatCurrency */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -803,7 +804,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={unitPrice > 0 ? `$${unitPrice.toFixed(2)}` : 'Set by manufacturer'}
+                    value={unitPrice > 0 ? `$${formatCurrency(unitPrice)}` : 'Set by manufacturer'}
                     disabled={true}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
@@ -826,7 +827,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             </div>
 
-            {/* Shipping Method Selection */}
+            {/* Shipping Method Selection - USING formatCurrency */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
               <h5 className="text-sm font-semibold text-gray-800 mb-3">
                 Select Shipping Method {!canEditPricing && '(Client Prices)'}
@@ -858,7 +859,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         {(product as any).client_shipping_air_price ? (
                           <div className="mt-1">
                             <span className="text-sm text-gray-600">
-                              ${((product as any).client_shipping_air_price || 0).toFixed(2)}
+                              ${formatCurrency((product as any).client_shipping_air_price || 0)}
                             </span>
                             {(product as any).shipping_air_days && (
                               <span className="text-xs text-gray-500 ml-2">
@@ -897,7 +898,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         {(product as any).client_shipping_boat_price ? (
                           <div className="mt-1">
                             <span className="text-sm text-gray-600">
-                              ${((product as any).client_shipping_boat_price || 0).toFixed(2)}
+                              ${formatCurrency((product as any).client_shipping_boat_price || 0)}
                             </span>
                             {(product as any).shipping_boat_days && (
                               <span className="text-xs text-gray-500 ml-2">
@@ -916,15 +917,15 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 <p className="text-sm text-gray-500">Shipping prices not yet set by manufacturer</p>
               )}
               
-              {/* Show selected shipping badge */}
+              {/* Show selected shipping badge - USING formatCurrency */}
               {(product as any).selected_shipping_method && (
                 <div className="mt-4 p-3 bg-white rounded-lg border-2 border-green-400 shadow-sm">
                   <p className="text-sm font-medium text-green-800 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" />
                     Selected: {(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'} Shipping 
-                    - ${(product as any).selected_shipping_method === 'air' 
-                      ? ((product as any).client_shipping_air_price || 0).toFixed(2)
-                      : ((product as any).client_shipping_boat_price || 0).toFixed(2)}
+                    - ${formatCurrency((product as any).selected_shipping_method === 'air' 
+                      ? ((product as any).client_shipping_air_price || 0)
+                      : ((product as any).client_shipping_boat_price || 0))}
                   </p>
                 </div>
               )}
