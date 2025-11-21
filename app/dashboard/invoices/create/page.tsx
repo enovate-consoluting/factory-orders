@@ -6,10 +6,11 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { 
   ArrowLeft, Building, Calendar, Package, Download,
   Mail, Phone, MapPin, FileText, DollarSign, Save,
-  Send, ChevronRight, Plus, X, AlertCircle
+  Send, ChevronRight, Plus, X, AlertCircle, QrCode
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 import EmailPreviewModal from '../EmailPreviewModal';
+// Note: You'll need to install qrcode package: npm install qrcode @types/qrcode
 
 interface InvoiceData {
   order: any;
@@ -21,6 +22,93 @@ interface InvoiceData {
   invoiceNumber: string;
   dueDate: string;
 }
+
+// QR Code Modal Component
+const QRCodeModal = ({ 
+  isOpen, 
+  onClose, 
+  invoiceUrl,
+  invoiceNumber 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  invoiceUrl: string;
+  invoiceNumber: string;
+}) => {
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  
+  useEffect(() => {
+    if (isOpen && invoiceUrl) {
+      // Generate QR code when modal opens
+      generateQRCode();
+    }
+  }, [isOpen, invoiceUrl]);
+  
+  const generateQRCode = async () => {
+    try {
+      // Dynamically import QRCode to avoid build issues
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl = await QRCode.toDataURL(invoiceUrl, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodeDataUrl(dataUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Scan to Download Invoice</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="text-center">
+          <div className="bg-gray-50 p-6 rounded-lg mb-4">
+            {qrCodeDataUrl ? (
+              <img 
+                src={qrCodeDataUrl} 
+                alt="QR Code"
+                className="mx-auto"
+              />
+            ) : (
+              <div className="w-[300px] h-[300px] flex items-center justify-center text-gray-500">
+                Generating QR Code...
+              </div>
+            )}
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-2">
+            Scan this QR code with your phone's camera to download
+          </p>
+          <p className="text-xs text-gray-500">
+            Invoice #{invoiceNumber}
+          </p>
+          
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-800">
+              <strong>Tip:</strong> On iPhone, use the Camera app. On Android, use Google Lens or your camera app.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function CreateInvoicePage() {
   const router = useRouter();
@@ -51,6 +139,8 @@ export default function CreateInvoicePage() {
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [markAsPaidOnSend, setMarkAsPaidOnSend] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [invoiceDownloadUrl, setInvoiceDownloadUrl] = useState('');
   
   useEffect(() => {
     if (orderId) {
@@ -183,6 +273,21 @@ export default function CreateInvoicePage() {
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
     
     return productTotal + customTotal;
+  };
+
+  const handleShowQRCode = () => {
+    if (selectedProducts.length === 0 && customItems.length === 0) {
+      notify.error('Please select at least one product or add a custom item');
+      return;
+    }
+
+    // Generate a temporary URL that will serve the invoice
+    // In production, this would be your actual invoice URL
+    const baseUrl = window.location.origin;
+    const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${invoiceData?.invoiceNumber}&temp=true`;
+    
+    setInvoiceDownloadUrl(invoiceUrl);
+    setShowQRCode(true);
   };
 
   const handleDownloadInvoice = () => {
@@ -722,6 +827,14 @@ export default function CreateInvoicePage() {
                 Cancel
               </button>
               <button
+                onClick={handleShowQRCode}
+                className="px-4 py-2 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                title="Generate QR code for mobile download"
+              >
+                <QrCode className="w-4 h-4" />
+                QR Code
+              </button>
+              <button
                 onClick={handleDownloadInvoice}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
               >
@@ -1226,6 +1339,14 @@ export default function CreateInvoicePage() {
           </p>
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      <QRCodeModal 
+        isOpen={showQRCode}
+        onClose={() => setShowQRCode(false)}
+        invoiceUrl={invoiceDownloadUrl}
+        invoiceNumber={invoiceData?.invoiceNumber || ''}
+      />
 
       {/* Email Preview Modal - SIMPLIFIED WORKING VERSION */}
       <EmailPreviewModal
