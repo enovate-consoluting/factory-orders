@@ -27,7 +27,7 @@ interface InvoiceableOrder {
   has_samples: boolean;
   sample_total: number;
   production_total: number;
-  invoices?: any[]; // Add this to fix TypeScript error
+  invoices?: any[];
 }
 
 export default function InvoicesPage() {
@@ -53,6 +53,7 @@ export default function InvoicesPage() {
           order_products (
             id,
             product_status,
+            routed_to,
             sample_fee,
             product_price,
             shipping_air_price,
@@ -73,16 +74,25 @@ export default function InvoicesPage() {
       if (error) throw error;
 
       const processedOrders = ordersData?.map(order => {
-        // Look for products that are approved or in production
+        // UPDATED LOGIC: Include products that are either:
+        // 1. Approved for production/in production/completed OR
+        // 2. Routed to admin with fees (sample fee or product price)
         const approvedProducts = order.order_products.filter(
           (p: any) => {
-            return p.product_status === 'approved_for_production' || 
+            // Check if product has fees and is routed to admin
+            const hasFeesAndRoutedToAdmin = 
+              p.routed_to === 'admin' && 
+              (parseFloat(p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
+            
+            // Include if it meets either condition
+            return hasFeesAndRoutedToAdmin ||
+                   p.product_status === 'approved_for_production' || 
                    p.product_status === 'in_production' ||
                    p.product_status === 'completed';
           }
         );
         
-        // Calculate totals for APPROVED products only
+        // Calculate totals for invoiceable products
         let sampleTotal = 0;
         let productionTotal = 0;
         
@@ -91,30 +101,28 @@ export default function InvoicesPage() {
           const fee = parseFloat(product.sample_fee || 0);
           sampleTotal += fee;
           
-          // Calculate production total (product price × quantity + BOTH shipping)
+          // Calculate production total (product price × quantity + shipping)
           const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
           const productPrice = parseFloat(product.product_price || 0);
           const airShipping = parseFloat(product.shipping_air_price || 0);
           const boatShipping = parseFloat(product.shipping_boat_price || 0);
           
+          // Note: Including both shipping prices as per your calculation method
           productionTotal += (totalQty * productPrice) + airShipping + boatShipping;
         });
         
         const totalValue = sampleTotal + productionTotal;  // For invoice calculations
         
-        // Calculate ENTIRE order total (ALL products, not just approved) - INCLUDING BOTH SHIPPING
+        // Calculate ENTIRE order total (ALL products, not just approved)
         let orderTotal = 0;
         order.order_products.forEach((product: any) => {
-          // Add sample fee + BOTH shipping for ALL products
           const sampleFee = parseFloat(product.sample_fee || 0);
           const airShipping = parseFloat(product.shipping_air_price || 0);
           const boatShipping = parseFloat(product.shipping_boat_price || 0);
           
-          // Calculate production cost using product_price
           const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
           const productPrice = parseFloat(product.product_price || 0);
           
-          // Add everything together
           orderTotal += sampleFee + (totalQty * productPrice) + airShipping + boatShipping;
         });
         
@@ -132,8 +140,8 @@ export default function InvoicesPage() {
           order_name: order.order_name,
           status: order.status,
           client: order.client,
-          total_value: totalValue,      // Approved products total (for calculations)
-          order_total: orderTotal,       // ENTIRE order total (for display) - should be $2,528
+          total_value: totalValue,      // Invoiceable products total
+          order_total: orderTotal,       // ENTIRE order total
           invoiced_amount: invoicedAmount,
           ready_to_invoice: Math.max(0, totalValue - invoicedAmount),
           approved_products: approvedProducts.length,
@@ -141,7 +149,7 @@ export default function InvoicesPage() {
           has_samples: sampleTotal > 0,
           sample_total: sampleTotal,
           production_total: productionTotal,
-          invoices: order.invoices || [] // Include invoices in the processed data
+          invoices: order.invoices || []
         };
       }).filter(order => order.approved_products > 0) || [];
 
@@ -313,7 +321,7 @@ export default function InvoicesPage() {
                       </div>
                       <span className="text-gray-400">•</span>
                       <span>
-                        {order.approved_products} of {order.total_products} products approved
+                        {order.approved_products} of {order.total_products} products invoiceable
                       </span>
                     </div>
 
