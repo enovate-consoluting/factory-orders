@@ -6,7 +6,7 @@
  * - Added display for shipping_link_note field
  * - Shows when shipping is linked from/to other products
  * - Visual indicators for shipping allocation
- * Last Modified: December 2024
+ * Last Modified: Nov 21 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
