@@ -2,11 +2,11 @@
  * Collapsed Product Header Component
  * Shared collapsed view for both Admin and Manufacturer product cards
  * Shows product summary with expand button
- * Created: November 2025
+ * Last Modified: Nov 21 2025
  */
 
 import React from 'react';
-import { ChevronRight, History, Lock, Unlock, Loader2, CheckCircle, DollarSign, Calculator } from 'lucide-react';
+import { ChevronRight, History, Lock, Unlock, Loader2, CheckCircle, DollarSign, AlertTriangle } from 'lucide-react';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
 import { getProductStatusIcon } from './ProductStatusIcon';
 
@@ -44,6 +44,12 @@ export function CollapsedProductHeader({
   const displayStatus = product.product_status || 'pending';
   const productionTime = product.production_time;
   
+  // Determine shipping status for admins
+  const hasShippingPrices = !isManufacturerView && 
+    (product.client_shipping_air_price > 0 || product.client_shipping_boat_price > 0);
+  const hasSelectedShipping = product.selected_shipping_method === 'air' || product.selected_shipping_method === 'boat';
+  const needsShippingSelection = hasShippingPrices && !hasSelectedShipping;
+  
   return (
     <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
       <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
@@ -71,6 +77,14 @@ export function CollapsedProductHeader({
                   <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
                     Paid
+                  </span>
+                )}
+                
+                {/* Shipping selection needed warning */}
+                {needsShippingSelection && (
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    Select Shipping
                   </span>
                 )}
                 
@@ -102,12 +116,24 @@ export function CollapsedProductHeader({
                   </>
                 )}
                 
-                {/* Total price */}
+                {/* Total price with shipping indicator */}
                 {totalPrice && totalPrice > 0 && (
                   <>
                     <span>•</span>
-                    <span className="font-semibold text-green-600">
-                      {isManufacturerView ? 'Total' : 'Total'}: ${totalPrice.toFixed(2)}
+                    <span className="font-semibold">
+                      {isManufacturerView ? (
+                        <span className="text-green-600">Total: ${totalPrice.toFixed(2)}</span>
+                      ) : (
+                        <>
+                          <span className="text-green-600">Total: ${totalPrice.toFixed(2)}</span>
+                          {!hasSelectedShipping && (
+                            <span className="text-red-600 ml-1">(w/o shipping)</span>
+                          )}
+                          {hasSelectedShipping && (
+                            <span className="text-green-600 ml-1">(w/ shipping)</span>
+                          )}
+                        </>
+                      )}
                     </span>
                   </>
                 )}
