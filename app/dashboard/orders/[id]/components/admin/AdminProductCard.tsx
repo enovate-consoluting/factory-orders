@@ -197,8 +197,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       (product as any).id
     ]);
 
-    // Separate media types
-    const referenceMedia = media.filter(m => m.file_type === 'document' || m.file_type === 'image');
+    // Separate media types - FIXED to include product_sample
+    const referenceMedia = media.filter(m => 
+      m.file_type === 'document' || 
+      m.file_type === 'image' || 
+      m.file_type === 'product_sample'
+    );
 
     // Get variant type name
     const getVariantTypeName = () => {
