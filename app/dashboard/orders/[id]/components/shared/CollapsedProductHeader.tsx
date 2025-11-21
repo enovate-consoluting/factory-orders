@@ -9,6 +9,7 @@ import React from 'react';
 import { ChevronRight, History, Lock, Unlock, Loader2, CheckCircle, DollarSign, AlertTriangle } from 'lucide-react';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
 import { getProductStatusIcon } from './ProductStatusIcon';
+import { formatCurrency } from '../../../utils/orderCalculations';
 
 interface CollapsedProductHeaderProps {
   product: any;
@@ -116,16 +117,16 @@ export function CollapsedProductHeader({
                   </>
                 )}
                 
-                {/* Total price with shipping indicator */}
+                {/* Total price with shipping indicator - USING formatCurrency */}
                 {totalPrice && totalPrice > 0 && (
                   <>
                     <span>•</span>
                     <span className="font-semibold">
                       {isManufacturerView ? (
-                        <span className="text-green-600">Total: ${totalPrice.toFixed(2)}</span>
+                        <span className="text-green-600">Total: ${formatCurrency(totalPrice)}</span>
                       ) : (
                         <>
-                          <span className="text-green-600">Total: ${totalPrice.toFixed(2)}</span>
+                          <span className="text-green-600">Total: ${formatCurrency(totalPrice)}</span>
                           {!hasSelectedShipping && (
                             <span className="text-red-600 ml-1">(w/o shipping)</span>
                           )}

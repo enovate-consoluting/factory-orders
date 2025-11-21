@@ -1,7 +1,7 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * Main order view for all roles - Refactored with extracted components
- * Last Modified: November 2025
+ * FIXED: Admins/Super Admins see CLIENT prices (no margins applied)
+ * Last Modified: Nov 21 2025
  */
 
 'use client';
@@ -27,10 +27,61 @@ import { RouteModal } from './components/modals/RouteModal';
 import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
 
 // Utilities
-import { calculateOrderTotal, getProductCounts } from '../utils/orderCalculations';
+import { getProductCounts } from '../utils/orderCalculations';
 
 import { supabase } from '@/lib/supabase';
 import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer } from 'lucide-react';
+
+// FIXED: Calculate order total WITHOUT margins for admins
+const calculateOrderTotal = (order: any, userRole: string): number => {
+  if (!order?.order_products) return 0;
+  
+  let total = 0;
+  
+  order.order_products.forEach((product: any) => {
+    // Get quantities
+    const totalQty = product.order_items?.reduce((sum: number, item: any) => 
+      sum + (item.quantity || 0), 0) || 0;
+    
+    let productPrice = 0;
+    let shippingPrice = 0;
+    
+    // FIXED: Admin and Super Admin ALWAYS see CLIENT prices directly
+    if (userRole === 'admin' || userRole === 'super_admin') {
+      // Use CLIENT prices - these already have margins built in
+      productPrice = parseFloat(product.client_product_price || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.client_shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
+      }
+    } else if (userRole === 'manufacturer') {
+      // Manufacturer sees their cost prices only
+      productPrice = parseFloat(product.product_price || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.shipping_boat_price || 0);
+      }
+    } else if (userRole === 'client') {
+      // Client sees client prices
+      productPrice = parseFloat(product.client_product_price || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.client_shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
+      }
+    }
+    
+    const productTotal = (productPrice * totalQty) + shippingPrice;
+    total += productTotal;
+  });
+  
+  return total;
+};
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -39,11 +90,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
-  
-  // State for finance margins
-  const [productMargin, setProductMargin] = useState(80);
-  const [shippingMargin, setShippingMargin] = useState(5);
-  const [marginsLoaded, setMarginsLoaded] = useState(false);
   
   // State for editing client
   const [isEditingClient, setIsEditingClient] = useState(false);
@@ -96,8 +142,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // Track manufacturer card refs
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
-  // Calculate total using the extracted utility
-  const totalAmount = calculateOrderTotal(order, userRole || '', productMargin, shippingMargin);
+  // FIXED: Calculate total WITHOUT margins for admins
+  const totalAmount = calculateOrderTotal(order, userRole || '');
 
   useEffect(() => {
     const fetchSubManufacturers = async () => {
@@ -170,33 +216,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
     markOrderNotificationsAsRead();
   }, [userRole, manufacturerId, id]);
-
-  // Load finance margins
-  useEffect(() => {
-    const loadMargins = async () => {
-      try {
-        const { data } = await supabase
-          .from('system_config')
-          .select('config_key, config_value')
-          .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
-        
-        if (data) {
-          data.forEach(config => {
-            if (config.config_key === 'default_margin_percentage') {
-              setProductMargin(parseFloat(config.config_value) || 80);
-            } else if (config.config_key === 'default_shipping_margin_percentage') {
-              setShippingMargin(parseFloat(config.config_value) || 0);
-            }
-          });
-        }
-        setMarginsLoaded(true);
-      } catch (error) {
-        console.error('Error loading margins:', error);
-        setMarginsLoaded(true);
-      }
-    };
-    loadMargins();
-  }, []);
 
   const fetchManufacturerId = async (user: any) => {
     try {
@@ -522,7 +541,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     });
   };
 
-  // COMPLETELY SIMPLIFIED SAVE ALL & ROUTE
+  // SAVE ALL & ROUTE handler
   const handleSaveAllRoute = async (selectedRoute: string, notes?: string) => {
     setSaveAllRouteModal(prev => ({ ...prev, isSaving: true }));
     
@@ -553,7 +572,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         console.log('Order sample saved');
       }
       
-      // STEP 2: Get all product states and save them
+      // STEP 2: Process all products
       if (isManufacturer) {
         for (let i = 0; i < visibleProducts.length; i++) {
           const product = visibleProducts[i];
@@ -562,125 +581,50 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           // Get the card ref
           const cardRef = manufacturerCardRefs.current.get(product.id);
           
-          if (cardRef && typeof cardRef.getState === 'function') {
-            const state = cardRef.getState();
-            console.log('Card state:', state);
-            
-            // Save product data
-            const productUpdate: any = {
-              product_price: state.productPrice ? parseFloat(state.productPrice) : null,
-              production_time: state.productionTime || null,
-              shipping_air_price: state.shippingAir ? parseFloat(state.shippingAir) : null,
-              shipping_boat_price: state.shippingBoat ? parseFloat(state.shippingBoat) : null,
-              sample_fee: state.sampleFee ? parseFloat(state.sampleFee) : null,
-              sample_eta: state.sampleETA || null,
-              manufacturer_notes: state.manufacturerNotes || null
-            };
-            
-            // Add routing info
-            switch (selectedRoute) {
-              case 'send_to_admin':
-                productUpdate.product_status = 'pending_admin';
-                productUpdate.routed_to = 'admin';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                break;
-              case 'in_production':
-                productUpdate.product_status = 'in_production';
-                productUpdate.routed_to = 'manufacturer';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                productUpdate.is_locked = true;
-                break;
-              case 'shipped':
-                productUpdate.product_status = 'shipped';
-                productUpdate.routed_to = 'admin';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                productUpdate.shipped_date = new Date().toISOString();
-                break;
+          if (cardRef && typeof cardRef.saveAll === 'function') {
+            // Call the saveAll function which handles client price calculations
+            console.log('Calling saveAll on manufacturer card...');
+            const success = await cardRef.saveAll();
+            if (!success) {
+              console.error('Failed to save product data');
             }
-            
-            // Add routing notes
-            if (notes) {
-              const timestamp = new Date().toLocaleDateString();
-              const existing = productUpdate.manufacturer_notes || product.manufacturer_notes || '';
-              productUpdate.manufacturer_notes = existing 
-                ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
-                : `[${timestamp} - Manufacturer] ${notes}`;
-            }
-            
-            console.log('Saving product with:', productUpdate);
-            
-            // Save the product
-            const { error: productError } = await supabase
-              .from('order_products')
-              .update(productUpdate)
-              .eq('id', product.id);
-            
-            if (productError) {
-              console.error('Error saving product:', productError);
-            } else {
-              console.log('Product saved successfully');
-            }
-            
-            // Save variants
-            if (state.itemQuantities && product.order_items) {
-              console.log('Saving variants...');
-              for (const item of product.order_items) {
-                const qty = state.itemQuantities[item.id];
-                const note = state.variantNotes?.[item.id] || '';
-                
-                if (qty !== undefined) {
-                  await supabase
-                    .from('order_items')
-                    .update({ 
-                      quantity: parseInt(qty) || 0,
-                      notes: note || ''
-                    })
-                    .eq('id', item.id);
-                  
-                  console.log(`Saved variant ${item.variant_combo}: qty=${qty}`);
-                }
-              }
-            }
-          } else {
-            // No state from card, just apply routing
-            console.log('No card state, applying routing only');
-            
-            let productUpdate: any = {};
-            
-            switch (selectedRoute) {
-              case 'send_to_admin':
-                productUpdate.product_status = 'pending_admin';
-                productUpdate.routed_to = 'admin';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                break;
-              case 'in_production':
-                productUpdate.product_status = 'in_production';
-                productUpdate.routed_to = 'manufacturer';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                productUpdate.is_locked = true;
-                break;
-              case 'shipped':
-                productUpdate.product_status = 'shipped';
-                productUpdate.routed_to = 'admin';
-                productUpdate.routed_at = new Date().toISOString();
-                productUpdate.routed_by = user.id || null;
-                productUpdate.shipped_date = new Date().toISOString();
-                break;
-            }
-            
-            if (notes) {
-              const timestamp = new Date().toLocaleDateString();
-              const existing = product.manufacturer_notes || '';
-              productUpdate.manufacturer_notes = existing 
-                ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
-                : `[${timestamp} - Manufacturer] ${notes}`;
-            }
-            
+          }
+          
+          // Apply routing after save
+          let productUpdate: any = {};
+          
+          switch (selectedRoute) {
+            case 'send_to_admin':
+              productUpdate.product_status = 'pending_admin';
+              productUpdate.routed_to = 'admin';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              break;
+            case 'in_production':
+              productUpdate.product_status = 'in_production';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.is_locked = true;
+              break;
+            case 'shipped':
+              productUpdate.product_status = 'shipped';
+              productUpdate.routed_to = 'admin';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.shipped_date = new Date().toISOString();
+              break;
+          }
+          
+          if (notes) {
+            const timestamp = new Date().toLocaleDateString();
+            const existing = product.manufacturer_notes || '';
+            productUpdate.manufacturer_notes = existing 
+              ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
+              : `[${timestamp} - Manufacturer] ${notes}`;
+          }
+          
+          if (Object.keys(productUpdate).length > 0) {
             await supabase
               .from('order_products')
               .update(productUpdate)
@@ -748,299 +692,294 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-const handlePrintAll = () => {
-  const visibleProducts = getVisibleProducts();
-  
-  const printHTML = visibleProducts.map((product: any, index: number) => {
-    const items = product.order_items || [];
-    const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+  const handlePrintAll = () => {
+    const visibleProducts = getVisibleProducts();
     
-    // Build variants rows with better spacing
-    const variantsRows = items.length > 0 
-      ? items.map((item: any) => 
-          `<tr>
-            <td style="width: 30%;">${item.variant_combo || 'N/A'}</td>
-            <td style="width: 15%; text-align: center;">${item.quantity || 0}</td>
-            <td style="width: 55%;">${item.notes || ''}</td>
-          </tr>`
-        ).join('')
-      : `<tr>
-          <td colspan="3" style="text-align: center; color: #999;">
-            No variants configured
-          </td>
-        </tr>`;
+    const printHTML = visibleProducts.map((product: any, index: number) => {
+      const items = product.order_items || [];
+      const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+      
+      const variantsRows = items.length > 0 
+        ? items.map((item: any) => 
+            `<tr>
+              <td style="width: 30%;">${item.variant_combo || 'N/A'}</td>
+              <td style="width: 15%; text-align: center;">${item.quantity || 0}</td>
+              <td style="width: 55%;">${item.notes || ''}</td>
+            </tr>`
+          ).join('')
+        : `<tr>
+            <td colspan="3" style="text-align: center; color: #999;">
+              No variants configured
+            </td>
+          </tr>`;
 
-    return `
-      <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
-        <div class="header">
-          <div class="header-title">MANUFACTURING SHEET</div>
-          <div class="product-name">${product.description || product.product?.title || 'Product'}</div>
-          <div class="header-details">
-            <span>Order: <strong>${order.order_number}</strong></span>
-            <span>Product: <strong>${product.product_order_number}</strong></span>
-            <span>Client: <strong>${order.client?.name || 'N/A'}</strong></span>
-          </div>
-        </div>
-        
-        <div class="section" style="margin-top: 40px;">
-          <div class="section-header">SAMPLE INFORMATION</div>
-          <div class="sample-row" style="margin-top: 30px; margin-bottom: 25px;">
-            <div class="field-group">
-              <label>Sample Fee: $</label>
-              <input type="text" class="field-line" />
-            </div>
-            <div class="field-group">
-              <label>Sample ETA:</label>
-              <input type="text" class="field-line" />
-            </div>
-            <div class="field-group">
-              <label>Status:</label>
-              <input type="text" class="field-line" />
+      return `
+        <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
+          <div class="header">
+            <div class="header-title">MANUFACTURING SHEET</div>
+            <div class="product-name">${product.description || product.product?.title || 'Product'}</div>
+            <div class="header-details">
+              <span>Order: <strong>${order.order_number}</strong></span>
+              <span>Product: <strong>${product.product_order_number}</strong></span>
+              <span>Client: <strong>${order.client?.name || 'N/A'}</strong></span>
             </div>
           </div>
-        </div>
-        
-        <div class="section" style="margin-top: 45px;">
-          <div class="section-header">PRICING & PRODUCTION</div>
-          <div class="pricing-row" style="margin-top: 30px;">
-            <div class="field-group">
-              <label>Unit Price: $</label>
-              <input type="text" class="field-line" />
-            </div>
-            <div class="field-group">
-              <label>Total Quantity:</label>
-              <span class="filled-value">${totalQty} units</span>
-            </div>
-            <div class="field-group">
-              <label>Prod. Time:</label>
-              <input type="text" class="field-line" />
-            </div>
-          </div>
-          <div class="pricing-row" style="margin-top: 25px; margin-bottom: 25px;">
-            <div class="field-group">
-              <label>Shipping Air: $</label>
-              <input type="text" class="field-line" />
-            </div>
-            <div class="field-group">
-              <label>Shipping Boat: $</label>
-              <input type="text" class="field-line" />
-            </div>
-            <div class="field-group">
-              <label>Total Cost: $</label>
-              <input type="text" class="field-line" />
+          
+          <div class="section" style="margin-top: 40px;">
+            <div class="section-header">SAMPLE INFORMATION</div>
+            <div class="sample-row" style="margin-top: 30px; margin-bottom: 25px;">
+              <div class="field-group">
+                <label>Sample Fee: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Sample ETA:</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Status:</label>
+                <input type="text" class="field-line" />
+              </div>
             </div>
           </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <div class="section-header">PRICING & PRODUCTION</div>
+            <div class="pricing-row" style="margin-top: 30px;">
+              <div class="field-group">
+                <label>Unit Price: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Total Quantity:</label>
+                <span class="filled-value">${totalQty} units</span>
+              </div>
+              <div class="field-group">
+                <label>Prod. Time:</label>
+                <input type="text" class="field-line" />
+              </div>
+            </div>
+            <div class="pricing-row" style="margin-top: 25px; margin-bottom: 25px;">
+              <div class="field-group">
+                <label>Shipping Air: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Shipping Boat: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Total Cost: $</label>
+                <input type="text" class="field-line" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <h2>VARIANTS & QUANTITIES</h2>
+            <table style="margin-top: 15px;">
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Variant/Size</th>
+                  <th style="width: 15%;">Qty</th>
+                  <th style="width: 55%;">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${variantsRows}
+                <tr class="total-row">
+                  <td><strong>TOTAL</strong></td>
+                  <td style="text-align: center;"><strong>${totalQty}</strong></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <h2>PRODUCTION NOTES</h2>
+            <div class="notes-box"></div>
+          </div>
         </div>
-        
-        <div class="section" style="margin-top: 45px;">
-          <h2>VARIANTS & QUANTITIES</h2>
-          <table style="margin-top: 15px;">
-            <thead>
-              <tr>
-                <th style="width: 30%;">Variant/Size</th>
-                <th style="width: 15%;">Qty</th>
-                <th style="width: 55%;">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${variantsRows}
-              <tr class="total-row">
-                <td><strong>TOTAL</strong></td>
-                <td style="text-align: center;"><strong>${totalQty}</strong></td>
-                <td></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        
-        <div class="section" style="margin-top: 45px;">
-          <h2>PRODUCTION NOTES</h2>
-          <div class="notes-box"></div>
-        </div>
-      </div>
+      `;
+    }).join('');
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Order ${order.order_number} - Manufacturing Sheets</title>
+        <style>
+          @page { 
+            size: letter portrait; 
+            margin: 0.75in;
+          }
+          
+          @media print { 
+            .page-break { 
+              page-break-after: always;
+            }
+          }
+          
+          body { 
+            font-family: Arial, sans-serif;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            font-size: 12pt;
+            background: white;
+          }
+          
+          .product-sheet { 
+            padding: 0;
+            max-width: 100%;
+            min-height: 100%;
+          }
+          
+          .header { 
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000;
+          }
+          
+          .header-title {
+            font-size: 13pt;
+            letter-spacing: 2px;
+            color: #333;
+            margin-bottom: 12px;
+            font-weight: 600;
+          }
+          
+          .product-name { 
+            font-size: 20pt;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #000;
+          }
+          
+          .header-details {
+            display: flex;
+            justify-content: center;
+            gap: 35px;
+            font-size: 11pt;
+            color: #333;
+            margin-top: 12px;
+          }
+          
+          .section {
+            margin-bottom: 30px;
+          }
+          
+          .section-header {
+            background: #e8f4f8;
+            padding: 10px;
+            text-align: center;
+            font-size: 13pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            color: #2c5282;
+            border-radius: 4px;
+          }
+          
+          h2 {
+            font-size: 12pt;
+            margin: 0 0 8px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #333;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: bold;
+          }
+          
+          .sample-row, .pricing-row {
+            display: flex;
+            gap: 35px;
+            margin: 20px 0;
+            padding: 0 10px;
+          }
+          
+          .field-group {
+            flex: 1;
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+          }
+          
+          .field-group label {
+            font-size: 12pt;
+            font-weight: 600;
+            white-space: nowrap;
+          }
+          
+          .field-line {
+            border: none;
+            border-bottom: 1px solid #333;
+            outline: none;
+            flex: 1;
+            min-width: 60px;
+            font-size: 11pt;
+            background: transparent;
+            padding-bottom: 3px;
+          }
+          
+          .filled-value {
+            font-weight: bold;
+            padding-left: 5px;
+            font-size: 12pt;
+          }
+          
+          table { 
+            width: 100%; 
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 11pt;
+          }
+          
+          th { 
+            background: #f5f5f5;
+            border: 1px solid #333;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: bold;
+          }
+          
+          td { 
+            border: 1px solid #333;
+            padding: 12px 8px;
+          }
+          
+          .total-row {
+            background: #f5f5f5;
+            font-weight: bold;
+          }
+          
+          .notes-box { 
+            border: 1px solid #333;
+            min-height: 280px;
+            padding: 15px;
+            background: white;
+            margin-top: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        ${printHTML}
+      </body>
+      </html>
     `;
-  }).join('');
-
-  const printContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Order ${order.order_number} - Manufacturing Sheets</title>
-      <style>
-        @page { 
-          size: letter portrait; 
-          margin: 0.75in;
-        }
-        
-        @media print { 
-          .page-break { 
-            page-break-after: always;
-          }
-          @page {
-            @top-center { content: none; }
-            @bottom-center { content: none; }
-          }
-        }
-        
-        body { 
-          font-family: Arial, sans-serif;
-          color: #000;
-          margin: 0;
-          padding: 0;
-          font-size: 12pt;
-          background: white;
-        }
-        
-        .product-sheet { 
-          padding: 0;
-          max-width: 100%;
-          min-height: 100%;
-        }
-        
-        .header { 
-          text-align: center;
-          margin-bottom: 20px;
-          padding-bottom: 15px;
-          border-bottom: 2px solid #000;
-        }
-        
-        .header-title {
-          font-size: 13pt;
-          letter-spacing: 2px;
-          color: #333;
-          margin-bottom: 12px;
-          font-weight: 600;
-        }
-        
-        .product-name { 
-          font-size: 20pt;
-          font-weight: bold;
-          margin: 15px 0;
-          color: #000;
-        }
-        
-        .header-details {
-          display: flex;
-          justify-content: center;
-          gap: 35px;
-          font-size: 11pt;
-          color: #333;
-          margin-top: 12px;
-        }
-        
-        .section {
-          margin-bottom: 30px;
-        }
-        
-        .section-header {
-          background: #e8f4f8;
-          padding: 10px;
-          text-align: center;
-          font-size: 13pt;
-          font-weight: bold;
-          letter-spacing: 0.5px;
-          color: #2c5282;
-          border-radius: 4px;
-        }
-        
-        h2 {
-          font-size: 12pt;
-          margin: 0 0 8px 0;
-          padding-bottom: 5px;
-          border-bottom: 1px solid #333;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          font-weight: bold;
-        }
-        
-        .sample-row, .pricing-row {
-          display: flex;
-          gap: 35px;
-          margin: 20px 0;
-          padding: 0 10px;
-        }
-        
-        .field-group {
-          flex: 1;
-          display: flex;
-          align-items: baseline;
-          gap: 5px;
-        }
-        
-        .field-group label {
-          font-size: 12pt;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-        
-        .field-line {
-          border: none;
-          border-bottom: 1px solid #333;
-          outline: none;
-          flex: 1;
-          min-width: 60px;
-          font-size: 11pt;
-          background: transparent;
-          padding-bottom: 3px;
-        }
-        
-        .filled-value {
-          font-weight: bold;
-          padding-left: 5px;
-          font-size: 12pt;
-        }
-        
-        table { 
-          width: 100%; 
-          border-collapse: collapse;
-          margin-top: 10px;
-          font-size: 11pt;
-        }
-        
-        th { 
-          background: #f5f5f5;
-          border: 1px solid #333;
-          padding: 12px 8px;
-          text-align: left;
-          font-weight: bold;
-        }
-        
-        td { 
-          border: 1px solid #333;
-          padding: 12px 8px;
-        }
-        
-        .total-row {
-          background: #f5f5f5;
-          font-weight: bold;
-        }
-        
-        .notes-box { 
-          border: 1px solid #333;
-          min-height: 280px;
-          padding: 15px;
-          background: white;
-          margin-top: 12px;
-        }
-      </style>
-    </head>
-    <body>
-      ${printHTML}
-    </body>
-    </html>
-  `;
-  
-  const printWindow = window.open('', '', 'width=800,height=600');
-  if (printWindow) {
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    };
-  }
-};
+    
+    const printWindow = window.open('', '', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
+    }
+  };
 
   const getHistoryCount = (productId: string): number => {
     if (productId.startsWith('order-sample-')) {
@@ -1127,7 +1066,7 @@ const handlePrintAll = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
-      {/* Order Header */}
+      {/* Order Header - Now shows CLIENT total for admins */}
       <OrderHeader 
         order={order} 
         totalAmount={totalAmount}
@@ -1389,10 +1328,12 @@ const handlePrintAll = () => {
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
                     autoCollapse={shouldAutoCollapse}
+                    allOrderProducts={allProducts}
                   />
                 );
               }
               
+              // Admin sees AdminProductCard which should show CLIENT prices
               return (
                 <AdminProductCard
                   key={product.id}

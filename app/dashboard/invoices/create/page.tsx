@@ -6,10 +6,11 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { 
   ArrowLeft, Building, Calendar, Package, Download,
   Mail, Phone, MapPin, FileText, DollarSign, Save,
-  Send, ChevronRight, Plus, X, AlertCircle
+  Send, ChevronRight, Plus, X, AlertCircle, QrCode
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 import EmailPreviewModal from '../EmailPreviewModal';
+// Note: You'll need to install qrcode package: npm install qrcode @types/qrcode
 
 interface InvoiceData {
   order: any;
@@ -21,6 +22,93 @@ interface InvoiceData {
   invoiceNumber: string;
   dueDate: string;
 }
+
+// QR Code Modal Component
+const QRCodeModal = ({ 
+  isOpen, 
+  onClose, 
+  invoiceUrl,
+  invoiceNumber 
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  invoiceUrl: string;
+  invoiceNumber: string;
+}) => {
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
+  
+  useEffect(() => {
+    if (isOpen && invoiceUrl) {
+      // Generate QR code when modal opens
+      generateQRCode();
+    }
+  }, [isOpen, invoiceUrl]);
+  
+  const generateQRCode = async () => {
+    try {
+      // Dynamically import QRCode to avoid build issues
+      const QRCode = (await import('qrcode')).default;
+      const dataUrl = await QRCode.toDataURL(invoiceUrl, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      });
+      setQrCodeDataUrl(dataUrl);
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+    }
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Scan to Download Invoice</h3>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="text-center">
+          <div className="bg-gray-50 p-6 rounded-lg mb-4">
+            {qrCodeDataUrl ? (
+              <img 
+                src={qrCodeDataUrl} 
+                alt="QR Code"
+                className="mx-auto"
+              />
+            ) : (
+              <div className="w-[300px] h-[300px] flex items-center justify-center text-gray-500">
+                Generating QR Code...
+              </div>
+            )}
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-2">
+            Scan this QR code with your phone's camera to download
+          </p>
+          <p className="text-xs text-gray-500">
+            Invoice #{invoiceNumber}
+          </p>
+          
+          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+            <p className="text-xs text-blue-800">
+              <strong>Tip:</strong> On iPhone, use the Camera app. On Android, use Google Lens or your camera app.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function CreateInvoicePage() {
   const router = useRouter();
@@ -51,6 +139,8 @@ export default function CreateInvoicePage() {
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [markAsPaidOnSend, setMarkAsPaidOnSend] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [invoiceDownloadUrl, setInvoiceDownloadUrl] = useState('');
   
   useEffect(() => {
     if (orderId) {
@@ -183,6 +273,376 @@ export default function CreateInvoicePage() {
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
     
     return productTotal + customTotal;
+  };
+
+  const handleShowQRCode = () => {
+    if (selectedProducts.length === 0 && customItems.length === 0) {
+      notify.error('Please select at least one product or add a custom item');
+      return;
+    }
+
+    // Generate a temporary URL that will serve the invoice
+    // In production, this would be your actual invoice URL
+    const baseUrl = window.location.origin;
+    const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${invoiceData?.invoiceNumber}&temp=true`;
+    
+    setInvoiceDownloadUrl(invoiceUrl);
+    setShowQRCode(true);
+  };
+
+  const handleDownloadInvoice = () => {
+    if (selectedProducts.length === 0 && customItems.length === 0) {
+      notify.error('Please select at least one product or add a custom item');
+      return;
+    }
+
+    // Create a hidden iframe for printing
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'absolute';
+    printFrame.style.top = '-10000px';
+    printFrame.style.left = '-10000px';
+    document.body.appendChild(printFrame);
+
+    const subtotal = calculateSelectedTotal();
+    const taxAmount = applyTax ? (subtotal * taxRate) / 100 : 0;
+    const total = subtotal + taxAmount;
+
+    // Build the invoice HTML for printing
+    const invoiceHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice ${invoiceData?.invoiceNumber}</title>
+        <style>
+          @page {
+            size: letter;
+            margin: 0.5in;
+          }
+          @media print {
+            body { 
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+          }
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            color: #111827;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+          }
+          .invoice-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+          }
+          .company-info h1 {
+            margin: 0;
+            font-size: ${companyNameFontSize}px;
+            color: #111827;
+          }
+          .company-tagline {
+            color: #6b7280;
+            margin-top: 4px;
+          }
+          .invoice-title {
+            text-align: right;
+          }
+          .invoice-title h2 {
+            margin: 0;
+            font-size: 32px;
+            color: #111827;
+          }
+          .invoice-number {
+            color: #6b7280;
+            font-size: 14px;
+            margin-top: 4px;
+          }
+          .invoice-details {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 40px;
+          }
+          .bill-to h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            color: #6b7280;
+          }
+          .bill-to-content {
+            line-height: 1.5;
+          }
+          .invoice-meta {
+            text-align: right;
+          }
+          .invoice-meta-item {
+            margin-bottom: 8px;
+          }
+          .invoice-meta-label {
+            color: #6b7280;
+            font-weight: 500;
+          }
+          .invoice-meta-value {
+            color: #111827;
+            font-weight: 600;
+            margin-left: 8px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 40px;
+          }
+          th {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 2px solid #e5e7eb;
+            font-weight: 600;
+            color: #374151;
+            font-size: 12px;
+            text-transform: uppercase;
+          }
+          td {
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #111827;
+          }
+          .text-right {
+            text-align: right;
+          }
+          .totals {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 40px;
+          }
+          .totals-content {
+            width: 300px;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+          }
+          .total-row.grand-total {
+            border-top: 2px solid #e5e7eb;
+            padding-top: 12px;
+            margin-top: 8px;
+            font-size: 18px;
+            font-weight: bold;
+          }
+          .notes-section {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+          }
+          .notes-grid {
+            display: flex;
+            gap: 40px;
+          }
+          .notes-column {
+            flex: 1;
+          }
+          .notes-title {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 14px;
+          }
+          .notes-content {
+            color: #111827;
+            line-height: 1.5;
+          }
+          .footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-header">
+          <div class="company-info">
+            ${logoUrl ? `<img src="${logoUrl}" alt="Logo" style="height: 48px; margin-bottom: 12px;">` : ''}
+            <h1>${companyName}</h1>
+            <div class="company-tagline">${companyTagline}</div>
+          </div>
+          <div class="invoice-title">
+            <h2>INVOICE</h2>
+            <div class="invoice-number">#${invoiceData?.invoiceNumber}</div>
+          </div>
+        </div>
+
+        <div class="invoice-details">
+          <div class="bill-to">
+            <h3>Bill To</h3>
+            <div class="bill-to-content">
+              <strong>${billToName}</strong><br>
+              ${billToEmail}<br>
+              ${billToAddress ? `${billToAddress}<br>` : ''}
+              ${billToPhone ? `${billToPhone}<br>` : ''}
+            </div>
+          </div>
+          <div class="invoice-meta">
+            <div class="invoice-meta-item">
+              <span class="invoice-meta-label">Invoice Date:</span>
+              <span class="invoice-meta-value">${new Date().toLocaleDateString()}</span>
+            </div>
+            <div class="invoice-meta-item">
+              <span class="invoice-meta-label">Due Date:</span>
+              <span class="invoice-meta-value">${new Date(dueDate).toLocaleDateString()}</span>
+            </div>
+            <div class="invoice-meta-item">
+              <span class="invoice-meta-label">Order #:</span>
+              <span class="invoice-meta-value">${invoiceData?.order.order_number}</span>
+            </div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40%">Description</th>
+              <th class="text-right" style="width: 15%">Qty</th>
+              <th class="text-right" style="width: 15%">Unit Price</th>
+              <th class="text-right" style="width: 15%">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${invoiceData?.products
+              .filter(p => selectedProducts.includes(p.id))
+              .map(product => {
+                const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+                const clientUnitPrice = product.client_product_price || 0;
+                let rows = [];
+                
+                // Sample fee row
+                if (product.sample_fee > 0) {
+                  rows.push(`
+                    <tr>
+                      <td>${product.description || product.product?.title || 'Product'} - Sample Fee</td>
+                      <td class="text-right">1</td>
+                      <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
+                      <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
+                    </tr>
+                  `);
+                }
+                
+                // Production row
+                if (clientUnitPrice > 0 && totalQty > 0) {
+                  rows.push(`
+                    <tr>
+                      <td>${product.description || product.product?.title || 'Product'} - Production</td>
+                      <td class="text-right">${totalQty}</td>
+                      <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
+                      <td class="text-right">$${(clientUnitPrice * totalQty).toFixed(2)}</td>
+                    </tr>
+                  `);
+                }
+                
+                // Shipping row
+                if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+                  rows.push(`
+                    <tr>
+                      <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
+                      <td class="text-right">1</td>
+                      <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+                      <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+                    </tr>
+                  `);
+                } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+                  rows.push(`
+                    <tr>
+                      <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
+                      <td class="text-right">1</td>
+                      <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+                      <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+                    </tr>
+                  `);
+                }
+                
+                return rows.join('');
+              }).join('')}
+            
+            ${customItems.map(item => `
+              <tr>
+                <td>${item.description}</td>
+                <td class="text-right">${item.quantity}</td>
+                <td class="text-right">$${item.price.toFixed(2)}</td>
+                <td class="text-right">$${(item.quantity * item.price).toFixed(2)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="totals">
+          <div class="totals-content">
+            <div class="total-row">
+              <span>Subtotal:</span>
+              <span>$${subtotal.toFixed(2)}</span>
+            </div>
+            ${applyTax ? `
+              <div class="total-row">
+                <span>Tax (${taxRate}%):</span>
+                <span>$${taxAmount.toFixed(2)}</span>
+              </div>
+            ` : ''}
+            <div class="total-row grand-total">
+              <span>Total:</span>
+              <span>$${total.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        ${(notes || terms) ? `
+          <div class="notes-section">
+            <div class="notes-grid">
+              ${notes ? `
+                <div class="notes-column">
+                  <div class="notes-title">Notes</div>
+                  <div class="notes-content">${notes.replace(/\n/g, '<br>')}</div>
+                </div>
+              ` : ''}
+              ${terms ? `
+                <div class="notes-column">
+                  <div class="notes-title">Payment Terms</div>
+                  <div class="notes-content">${terms}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="footer">
+          <p>Thank you for your business!</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Write to iframe and print
+    const frameDoc = printFrame.contentWindow?.document;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(invoiceHTML);
+      frameDoc.close();
+
+      // Wait for content to load then print
+      printFrame.onload = () => {
+        if (printFrame.contentWindow) {
+          printFrame.contentWindow.focus();
+          printFrame.contentWindow.print();
+          
+          // Remove iframe after printing
+          setTimeout(() => {
+            document.body.removeChild(printFrame);
+          }, 1000);
+        }
+      };
+    }
   };
 
   const handleCreateInvoice = async (status: 'draft' | 'sent', emailData?: { to: string[], cc: string[] }) => {
@@ -365,6 +825,21 @@ export default function CreateInvoicePage() {
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
+              </button>
+              <button
+                onClick={handleShowQRCode}
+                className="px-4 py-2 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+                title="Generate QR code for mobile download"
+              >
+                <QrCode className="w-4 h-4" />
+                QR Code
+              </button>
+              <button
+                onClick={handleDownloadInvoice}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Download PDF
               </button>
               <button
                 onClick={() => handleCreateInvoice('draft')}
@@ -864,6 +1339,14 @@ export default function CreateInvoicePage() {
           </p>
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      <QRCodeModal 
+        isOpen={showQRCode}
+        onClose={() => setShowQRCode(false)}
+        invoiceUrl={invoiceDownloadUrl}
+        invoiceNumber={invoiceData?.invoiceNumber || ''}
+      />
 
       {/* Email Preview Modal - SIMPLIFIED WORKING VERSION */}
       <EmailPreviewModal

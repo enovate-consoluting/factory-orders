@@ -1,8 +1,6 @@
 /**
- * Create Order Page
- * Multi-step order creation with products, variants, and sample requests
- * Uses shared components for better maintainability
- * Roles: Admin, Super Admin
+ * Create Order Page - FIXED VERSION
+ * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
  * Last Modified: November 2025
  */
 
@@ -558,12 +556,14 @@ export default function CreateOrderPage() {
               .from('order-media')
               .getPublicUrl(filePath)
 
+            // FIXED: Use correct file_type, not 'order_sample'
             await supabase
               .from('order_media')
               .insert({
                 order_id: orderData.id,
                 file_url: publicUrl,
-                file_type: 'order_sample',
+                file_type: file.type.startsWith('image/') ? 'image' : 'document', // FIXED!
+                is_sample: true, // Mark as sample with flag
                 uploaded_by: user?.id,
                 original_filename: file.name,
                 display_name: displayName
