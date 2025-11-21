@@ -7,7 +7,7 @@
  * - Fixed currency formatting to always show cents (.50 not .5)
  * - Improved button spacing throughout
  * - Uses new database fields (shipping_linked_products, shipping_link_note)
- * Last Modified: Nov 21 2025
+ * Last Modified: Nov 21 2025 v3
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
