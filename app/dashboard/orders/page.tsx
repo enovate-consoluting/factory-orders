@@ -1,3 +1,8 @@
+/**
+ * Order Listing Card Component
+ * Last Modified: Nov 21 2025
+ */
+
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -12,6 +17,7 @@ import {
 } from 'lucide-react';
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
+import { formatCurrency as formatCurrencyUtil } from './utils/orderCalculations';
 
 interface Order {
   id: string;
@@ -44,14 +50,9 @@ interface Order {
 
 type TabType = 'my_orders' | 'sent_to_other' | 'approved_for_production' | 'in_production' | 'shipped';
 
-// Helper function to format currency with commas
+// Helper function to format currency with commas - NOW USES THE UTIL
 const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(amount);
+  return `$${formatCurrencyUtil(amount)}`;
 };
 
 export default function OrdersPage() {
