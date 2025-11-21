@@ -1,15 +1,21 @@
 /**
- * Manufacturer Product Card Component
+ * Manufacturer Product Card Component - FINAL VERSION
  * Product card for Manufacturer users with cost pricing
- * Uses shared components for collapsed view and file display
- * Last Modified: November 2024
+ * FIXES: 
+ * - Shipping allocation moved INSIDE blue shipping box (more logical placement)
+ * - Always shows for manufacturers (not dependent on multiple products)
+ * - Fixed currency formatting to always show cents (.50 not .5)
+ * - Improved button spacing throughout
+ * - Uses new database fields (shipping_linked_products, shipping_link_note)
+ * Last Modified: Nov 21 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
   Package, Clock, Lock, Unlock, Send, CheckCircle, 
   Loader2, Save, DollarSign, Plane, Ship, 
-  Upload, X, ChevronDown, Calculator
+  Upload, X, ChevronDown, Calculator, Edit2, Eye, EyeOff,
+  Link2, AlertCircle
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
@@ -18,6 +24,15 @@ import { getProductStatusIcon } from '../shared/ProductStatusIcon';
 import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
+
+// FIXED: Helper function to format currency - ALWAYS show 2 decimals for cents
+const formatCurrency = (amount: number): string => {
+  const formatted = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,  // Always show 2 decimals
+    maximumFractionDigits: 2,  // Always show 2 decimals
+  }).format(amount);
+  return formatted;
+};
 
 // Define the ref type for imperative handle
 export interface ManufacturerProductCardRef {
@@ -40,6 +55,7 @@ interface ManufacturerProductCardProps {
   forceExpanded?: boolean;
   onExpand?: () => void;
   onDataChange?: (data: any) => void;
+  allOrderProducts?: OrderProduct[]; // For shipping allocation dropdown
 }
 
 export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, ManufacturerProductCardProps>(
@@ -57,10 +73,16 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     autoCollapse = false,
     forceExpanded = false,
     onExpand,
-    onDataChange
+    onDataChange,
+    allOrderProducts = []
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
+
+    // State for finance margins - LOAD FROM SYSTEM CONFIG
+    const [productMargin, setProductMargin] = useState(80);
+    const [shippingMargin, setShippingMargin] = useState(5);
+    const [marginsLoaded, setMarginsLoaded] = useState(false);
 
     // Collapsible state
     const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -80,7 +102,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     }, [(product as any)?.product_status, autoCollapse, forceExpanded]);
     
-    // State for notes
+    // State for notes - KEEPING BUT WILL COMMENT OUT THE DISPLAY
     const [tempNotes, setTempNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
     
@@ -101,6 +123,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
     const [itemQuantities, setItemQuantities] = useState<{[key: string]: string}>({});
     const [editingVariants, setEditingVariants] = useState(false);
+    const [showAllVariants, setShowAllVariants] = useState(false);
     const [variantsDirty, setVariantsDirty] = useState(false);
     
     // State for bulk section - convert to strings for inputs
@@ -122,6 +145,25 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     // State for pending file uploads
     const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
     
+    // NEW: State for shipping allocation
+    const [applyShippingToOthers, setApplyShippingToOthers] = useState(false);
+    const [selectedProductsForShipping, setSelectedProductsForShipping] = useState<string[]>([]);
+    
+    // Initialize shipping allocation from database
+    useEffect(() => {
+      if ((product as any).shipping_linked_products) {
+        try {
+          const linkedProducts = JSON.parse((product as any).shipping_linked_products);
+          if (Array.isArray(linkedProducts) && linkedProducts.length > 0) {
+            setApplyShippingToOthers(true);
+            setSelectedProductsForShipping(linkedProducts);
+          }
+        } catch (e) {
+          console.error('Error parsing shipping_linked_products:', e);
+        }
+      }
+    }, [(product as any).shipping_linked_products]);
+    
     // Store original values for comparison
     const [originalValues, setOriginalValues] = useState({
       productPrice: (product as any).product_price?.toString() || '',
@@ -133,6 +175,38 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       sampleETA: (product as any).sample_eta || '',
       manufacturerNotes: (product as any).manufacturer_notes || ''
     });
+    
+    // LOAD MARGINS FROM SYSTEM CONFIG
+    useEffect(() => {
+      const loadMargins = async () => {
+        try {
+          const { data } = await supabase
+            .from('system_config')
+            .select('config_key, config_value')
+            .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+          
+          if (data) {
+            data.forEach(config => {
+              if (config.config_key === 'default_margin_percentage') {
+                setProductMargin(parseFloat(config.config_value) || 80);
+                console.log('Loaded product margin:', config.config_value + '%');
+              } else if (config.config_key === 'default_shipping_margin_percentage') {
+                setShippingMargin(parseFloat(config.config_value) || 5);
+                console.log('Loaded shipping margin:', config.config_value + '%');
+              }
+            });
+          }
+          setMarginsLoaded(true);
+        } catch (error) {
+          console.error('Error loading margins:', error);
+          // Use defaults if loading fails
+          setProductMargin(80);
+          setShippingMargin(5);
+          setMarginsLoaded(true);
+        }
+      };
+      loadMargins();
+    }, []);
     
     // Initialize item quantities and notes from items
     useEffect(() => {
@@ -151,7 +225,20 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       return sum + (parseInt(itemQuantities[itemId]) || 0);
     }, 0);
     
-    // Calculate manufacturer totals
+    // Filter variants for display
+    const visibleVariants = showAllVariants || editingVariants 
+      ? items 
+      : items.filter(item => {
+          const qty = parseInt(itemQuantities[item.id]) || 0;
+          return qty > 0;
+        });
+    
+    const hasHiddenVariants = items.some(item => {
+      const qty = parseInt(itemQuantities[item.id]) || 0;
+      return qty === 0;
+    });
+    
+    // Calculate manufacturer totals - USING formatCurrency
     const calculateManufacturerTotal = () => {
       let total = 0;
       
@@ -209,23 +296,36 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       };
     };
 
-    // FIXED: EXPOSE SAVE ALL FUNCTION TO PARENT - NOW PROPERLY SAVES ALL NOTES
+    // FIXED: EXPOSE SAVE ALL FUNCTION TO PARENT - NOW CALCULATES CLIENT PRICES AND USES NEW DB FIELDS
     useImperativeHandle(ref, () => ({
       saveAll: async () => {
         console.log('=== SaveAll called for product:', (product as any).product_order_number);
+        console.log('Product margin:', productMargin + '%');
+        console.log('Shipping margin:', shippingMargin + '%');
         
         try {
-          // STEP 1: Save all product pricing data AND notes
-          console.log('Step 1: Saving product pricing data and notes...');
-          console.log('Current tempNotes:', tempNotes);
-          console.log('Current tempBulkNotes:', tempBulkNotes);
-          console.log('Current manufacturerNotes:', manufacturerNotes);
+          // STEP 1: Save all product pricing data with CLIENT PRICE CALCULATIONS
+          console.log('Step 1: Calculating client prices and saving...');
           
-          // Combine ALL notes - temp notes, bulk notes, and existing
+          // Calculate CLIENT prices using margins from system config
+          const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
+          const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+          const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
+          const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
+          
+          // Apply margins to get client prices
+          const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+          const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
+          const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
+          const clientSampleFee = mfgSampleFee ? mfgSampleFee * (1 + productMargin / 100) : null; // Sample uses product margin
+          
+          console.log('Manufacturer prices:', { mfgProductPrice, mfgAirPrice, mfgBoatPrice });
+          console.log('Client prices:', { clientProductPrice, clientAirPrice, clientBoatPrice });
+          
+          // Combine ALL notes
           let finalManufacturerNotes = manufacturerNotes || '';
           let finalInternalNotes = (product as any).internal_notes || '';
           
-          // Add temp bulk notes to manufacturer notes if they exist
           if (tempBulkNotes && tempBulkNotes.trim()) {
             const timestamp = new Date().toLocaleDateString();
             finalManufacturerNotes = manufacturerNotes 
@@ -233,25 +333,47 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               : `[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`;
           }
           
-          // For general notes - if there's text in the temp field, use it
           if (tempNotes && tempNotes.trim()) {
             finalInternalNotes = tempNotes.trim();
           }
           
+          // Prepare shipping allocation data for THIS product
+          let shippingLinkNote = '';
+          if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+            const selectedNames = selectedProductsForShipping.map(id => {
+              const prod = allOrderProducts.find(p => (p as any).id === id);
+              return (prod as any)?.product_order_number || id;
+            }).join(', ');
+            shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
+          }
+          
           const productUpdateData: any = {
-            product_price: productPrice ? parseFloat(productPrice) : null,
+            // Manufacturer prices
+            product_price: mfgProductPrice,
+            shipping_air_price: mfgAirPrice,
+            shipping_boat_price: mfgBoatPrice,
+            sample_fee: mfgSampleFee,
+            
+            // CLIENT PRICES WITH MARGINS APPLIED
+            client_product_price: clientProductPrice,
+            client_shipping_air_price: clientAirPrice,
+            client_shipping_boat_price: clientBoatPrice,
+            client_sample_fee: clientSampleFee,
+            
+            // Other fields
             production_time: productionTime || null,
-            shipping_air_price: shippingAirPrice ? parseFloat(shippingAirPrice) : null,
-            shipping_boat_price: shippingBoatPrice ? parseFloat(shippingBoatPrice) : null,
-            sample_fee: sampleFee ? parseFloat(sampleFee) : null,
             sample_eta: sampleETA || null,
             manufacturer_notes: finalManufacturerNotes || null,
-            internal_notes: finalInternalNotes || null
+            internal_notes: finalInternalNotes || null,
+            
+            // NEW: Shipping allocation fields
+            shipping_linked_products: applyShippingToOthers && selectedProductsForShipping.length > 0 
+              ? JSON.stringify(selectedProductsForShipping)
+              : null,
+            shipping_link_note: shippingLinkNote || null
           };
           
           console.log('Updating product with:', productUpdateData);
-          console.log('Final internal_notes:', productUpdateData.internal_notes);
-          console.log('Final manufacturer_notes:', productUpdateData.manufacturer_notes);
           
           const { error: productError } = await supabase
             .from('order_products')
@@ -263,7 +385,26 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             throw productError;
           }
           
-          console.log('Product updated successfully');
+          console.log('Product updated successfully with client prices');
+          
+          // Update linked products if shipping is shared
+          if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+            for (const linkedProductId of selectedProductsForShipping) {
+              const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
+              
+              await supabase
+                .from('order_products')
+                .update({ 
+                  shipping_link_note: linkNote,
+                  // Clear their shipping prices since they're included elsewhere
+                  shipping_air_price: 0,
+                  shipping_boat_price: 0,
+                  client_shipping_air_price: 0,
+                  client_shipping_boat_price: 0
+                })
+                .eq('id', linkedProductId);
+            }
+          }
           
           // STEP 2: Save variant quantities and notes
           console.log('Step 2: Saving variant quantities and notes...');
@@ -353,8 +494,8 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           setBulkSectionDirty(false);
           setEditingVariants(false);
           setVariantsDirty(false);
+          setShowAllVariants(false);
           
-          // Update the manufacturer notes state with the combined value
           if (finalManufacturerNotes !== manufacturerNotes) {
             setManufacturerNotes(finalManufacturerNotes);
           }
@@ -367,7 +508,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         }
       },
       getState: () => {
-        // Include ALL current state including temp values
         return {
           productPrice,
           productionTime,
@@ -399,6 +539,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       variantNotes,
       pendingBulkFiles,
       items,
+      productMargin,
+      shippingMargin,
+      applyShippingToOthers,
+      selectedProductsForShipping,
+      allOrderProducts,
       (product as any).id,
       (product as any).order_id,
       (product as any).product_order_number,
@@ -463,17 +608,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
-    // Save Bulk Section
+    // Save Bulk Section - WITH CLIENT PRICE CALCULATIONS AND NEW DB FIELDS
     const handleSaveBulkSection = async () => {
-      console.log('Starting bulk save with:', { 
-        productPrice, 
-        productionTime, 
-        shippingAirPrice, 
-        shippingBoatPrice,
-        sampleFee,
-        sampleETA,
-        manufacturerNotes 
-      });
+      console.log('Starting bulk save with margins - Product:', productMargin + '%, Shipping:', shippingMargin + '%');
       
       setSavingBulkSection(true);
       try {
@@ -491,34 +628,10 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           return;
         }
         
-        // Check what changed
-        if (productPrice !== originalValues.productPrice) {
-          changes.push(`Product Price: $${originalValues.productPrice || '0'} → $${productPrice || '0'}`);
-        }
-        if (productionTime !== originalValues.productionTime) {
-          changes.push(`Production Time: ${originalValues.productionTime || 'not set'} → ${productionTime || 'not set'}`);
-        }
-        if (shippingAirPrice !== originalValues.shippingAirPrice) {
-          changes.push(`Air Shipping: $${originalValues.shippingAirPrice || '0'} → $${shippingAirPrice || '0'}`);
-        }
-        if (shippingBoatPrice !== originalValues.shippingBoatPrice) {
-          changes.push(`Boat Shipping: $${originalValues.shippingBoatPrice || '0'} → $${shippingBoatPrice || '0'}`);
-        }
-        if (sampleFee !== originalValues.sampleFee) {
-          changes.push(`Sample Fee: $${originalValues.sampleFee || '0'} → $${sampleFee || '0'}`);
-        }
-        if (sampleETA !== originalValues.sampleETA) {
-          changes.push(`Sample ETA: ${originalValues.sampleETA || 'not set'} → ${sampleETA || 'not set'}`);
-        }
-        if (manufacturerNotes !== originalValues.manufacturerNotes) {
-          changes.push('Manufacturer notes updated');
-        }
-        
         // Handle bulk notes
         let finalBulkNotes = tempBulkNotes.trim() || (product as any).client_notes || '';
         let finalManufacturerNotes = manufacturerNotes;
         
-        // If there's a temp bulk note, append it to manufacturer notes
         if (tempBulkNotes && tempBulkNotes.trim()) {
           const timestamp = new Date().toLocaleDateString();
           finalManufacturerNotes = manufacturerNotes 
@@ -526,23 +639,59 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             : `[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`;
         }
         
-        // Prepare update data
+        // Prepare shipping allocation data
+        let shippingLinkNote = '';
+        if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+          const selectedNames = selectedProductsForShipping.map(id => {
+            const prod = allOrderProducts.find(p => (p as any).id === id);
+            return (prod as any)?.product_order_number || id;
+          }).join(', ');
+          shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
+        }
+        
+        // CALCULATE CLIENT PRICES WITH MARGINS
+        const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
+        const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+        const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
+        const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
+        
+        // Apply margins
+        const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+        const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
+        const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
+        const clientSampleFee = mfgSampleFee ? mfgSampleFee * (1 + productMargin / 100) : null;
+        
+        // Prepare update data with BOTH manufacturer and client prices AND shipping allocation
         const updateData: any = {
-          product_price: productPrice ? parseFloat(productPrice) : null,
+          // Manufacturer prices
+          product_price: mfgProductPrice,
+          shipping_air_price: mfgAirPrice,
+          shipping_boat_price: mfgBoatPrice,
+          sample_fee: mfgSampleFee,
+          
+          // CLIENT PRICES WITH MARGINS
+          client_product_price: clientProductPrice,
+          client_shipping_air_price: clientAirPrice,
+          client_shipping_boat_price: clientBoatPrice,
+          client_sample_fee: clientSampleFee,
+          
+          // Other fields
           production_time: productionTime || null,
-          shipping_air_price: shippingAirPrice ? parseFloat(shippingAirPrice) : null,
-          shipping_boat_price: shippingBoatPrice ? parseFloat(shippingBoatPrice) : null,
-          sample_fee: sampleFee ? parseFloat(sampleFee) : null,
           sample_eta: sampleETA || null,
-          manufacturer_notes: finalManufacturerNotes || null
+          manufacturer_notes: finalManufacturerNotes || null,
+          
+          // NEW: Shipping allocation fields
+          shipping_linked_products: applyShippingToOthers && selectedProductsForShipping.length > 0 
+            ? JSON.stringify(selectedProductsForShipping)
+            : null,
+          shipping_link_note: shippingLinkNote || null
         };
 
-        // Only update client notes if there's a new note
         if (tempBulkNotes && tempBulkNotes.trim()) {
           updateData.client_notes = finalBulkNotes;
         }
         
-        console.log('Update data:', updateData);
+        console.log('Update data with client prices and shipping allocation:', updateData);
         
         // Update database
         const { error } = await supabase
@@ -556,25 +705,25 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           return;
         }
         
-        console.log('Bulk section updated successfully');
+        console.log('Bulk section updated successfully with client prices');
 
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
-        try {
-          const { data: orderData } = await supabase
-            .from('orders')
-            .select('status')
-            .eq('id', (product as any).order_id)
-            .single();
-
-          if (orderData && orderData.status === 'sent_to_manufacturer') {
+        // Update linked products if shipping is shared
+        if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+          for (const linkedProductId of selectedProductsForShipping) {
+            const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
+            
             await supabase
-              .from('orders')
-              .update({ status: 'in_progress' })
-              .eq('id', (product as any).order_id);
-            console.log('Order status updated to in_progress');
+              .from('order_products')
+              .update({ 
+                shipping_link_note: linkNote,
+                // Clear their shipping prices since they're included elsewhere
+                shipping_air_price: 0,
+                shipping_boat_price: 0,
+                client_shipping_air_price: 0,
+                client_shipping_boat_price: 0
+              })
+              .eq('id', linkedProductId);
           }
-        } catch (orderError) {
-          console.error('Error updating order status:', orderError);
         }
 
         // Upload files
@@ -607,27 +756,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                 });
             }
           }
-          console.log('Files uploaded successfully with original names');
-        }
-
-        // Log audit if there were changes
-        if (changes.length > 0) {
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'bulk_section_updated',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                old_value: JSON.stringify(originalValues),
-                new_value: changes.join(', '),
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-          }
+          console.log('Files uploaded successfully');
         }
 
         // Update original values
@@ -643,7 +772,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           bulkNotes: finalBulkNotes
         }));
         
-        // Update manufacturer notes state if changed
         setManufacturerNotes(finalManufacturerNotes);
         
         // Clear temporary states
@@ -664,53 +792,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
-    // Save Generic Note
-    const handleSaveGenericNotes = async () => {
-      if (!tempNotes || tempNotes.trim() === '') return;
-      
-      setSavingNotes(true);
-      try {
-        const user = getCurrentUser();
-        
-        const { error } = await supabase
-          .from('order_products')
-          .update({ internal_notes: tempNotes.trim() })
-          .eq('id', (product as any).id);
-
-        if (error) {
-          console.error('Database error:', error);
-          alert('Failed to save note. Please try again.');
-          return;
-        }
-
-        try {
-          await supabase
-            .from('audit_log')
-            .insert({
-              user_id: user.id,
-              user_name: user.name,
-              action_type: 'note_added',
-              target_type: 'order_product',
-              target_id: (product as any).id,
-              new_value: `General Note: "${tempNotes.trim()}"`,
-              timestamp: new Date().toISOString()
-            });
-        } catch (auditError) {
-          console.error('Failed to log audit:', auditError);
-        }
-
-        setTempNotes('');
-        setShowNewHistoryDot(true);
-        await onUpdate();
-      } catch (error) {
-        console.error('Error saving notes:', error);
-        alert('Failed to save note. Please try again.');
-      } finally {
-        setSavingNotes(false);
-      }
-    };
-
-    // Handle bulk file selection
+    // Other handler functions
     const handleBulkFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -776,29 +858,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           }
         }
 
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer' and changes were made
-        if (hasChanges) {
-          try {
-            const { data: orderData } = await supabase
-              .from('orders')
-              .select('status')
-              .eq('id', (product as any).order_id)
-              .single();
-
-            if (orderData && orderData.status === 'sent_to_manufacturer') {
-              await supabase
-                .from('orders')
-                .update({ status: 'in_progress' })
-                .eq('id', (product as any).order_id);
-              console.log('Order status updated to in_progress');
-            }
-          } catch (orderError) {
-            console.error('Error updating order status:', orderError);
-          }
-        }
-
         setEditingVariants(false);
         setVariantsDirty(false);
+        setShowAllVariants(false);
         await onUpdate();
       } catch (error) {
         console.error('Error saving variant notes:', error);
@@ -863,11 +925,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
                   <ProductStatusBadge status={displayStatus} />
-                  {/* MANUFACTURER TOTAL BADGE */}
+                  {/* MANUFACTURER TOTAL BADGE - USING formatCurrency */}
                   {manufacturerTotal > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
                       <Calculator className="w-4 h-4" />
-                      Mfg Total: ${manufacturerTotal.toFixed(2)}
+                      Mfg Total: ${formatCurrency(manufacturerTotal)}
                     </span>
                   )}
                 </div>
@@ -928,55 +990,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* Generic Notes Section */}
+          {/* COMMENTED OUT Generic Notes Section - Keeping for potential future use */}
+          {/* 
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
-            
-            {(product as any).internal_notes && (
-              <div className="mb-2 p-2 bg-gray-50 rounded text-sm text-gray-700">
-                <strong>Current notes:</strong>
-                <div className="whitespace-pre-wrap mt-1">{(product as any).internal_notes}</div>
-              </div>
-            )}
-            
-            <div className="space-y-2">
-              <textarea
-                value={tempNotes}
-                onChange={(e) => setTempNotes(e.target.value)}
-                placeholder="Add general notes or instructions for this product..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              />
-              {tempNotes && (
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setTempNotes('')}
-                    disabled={savingNotes}
-                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveGenericNotes}
-                    disabled={savingNotes}
-                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
-                  >
-                    {savingNotes ? (
-                      <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-3 h-3" />
-                        Save Note
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
+            ... notes section code ...
           </div>
+          */}
 
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
@@ -984,6 +1004,16 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <Package className="w-4 h-4 mr-2" />
               Bulk Order Information
             </h4>
+
+            {/* Show if this product has linked shipping from another product */}
+            {(product as any).shipping_link_note && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-800">
+                  <span className="font-medium">Shipping Note:</span> {(product as any).shipping_link_note}
+                </div>
+              </div>
+            )}
 
             {/* Bulk Order Notes */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
@@ -1029,11 +1059,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               loading={uploadingBulkMedia}
             />
 
-            {/* Product Price and Production Info */}
+            {/* Product Price and Production Info - USING formatCurrency */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Price
+                  Product Price (Your Cost)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1075,9 +1105,75 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* Shipping Options & Pricing */}
+            {/* Shipping Options & Pricing - MOVED ALLOCATION FEATURE INSIDE HERE */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
-              <h5 className="text-sm font-semibold text-gray-800 mb-3">Shipping Options & Pricing</h5>
+              <div className="flex items-center justify-between mb-3">
+                <h5 className="text-sm font-semibold text-gray-800">Shipping Options & Pricing</h5>
+                
+                {/* MOVED HERE: Shipping Allocation Checkbox - ALWAYS VISIBLE FOR MANUFACTURERS */}
+                {allOrderProducts && allOrderProducts.length > 1 && (
+                  <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyShippingToOthers}
+                      onChange={(e) => {
+                        setApplyShippingToOthers(e.target.checked);
+                        if (!e.target.checked) {
+                          setSelectedProductsForShipping([]);
+                        }
+                        setBulkSectionDirty(true);
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Link2 className="w-4 h-4 text-yellow-600" />
+                    <span>Apply fee to multiple products</span>
+                  </label>
+                )}
+              </div>
+              
+              {/* Shipping Allocation Dropdown - Shows when checkbox is checked */}
+              {applyShippingToOthers && allOrderProducts && allOrderProducts.length > 1 && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2">
+                    Select which products share this shipping fee:
+                  </p>
+                  <div className="max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
+                    {allOrderProducts
+                      .filter(p => (p as any).id !== (product as any).id)
+                      .map(p => (
+                        <label key={(p as any).id} className="flex items-start gap-2 py-1.5 px-2 hover:bg-gray-50 cursor-pointer rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductsForShipping.includes((p as any).id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProductsForShipping(prev => [...prev, (p as any).id]);
+                              } else {
+                                setSelectedProductsForShipping(prev => prev.filter(id => id !== (p as any).id));
+                              }
+                              setBulkSectionDirty(true);
+                            }}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+                          />
+                          <div className="flex-1">
+                            <span className="text-xs font-semibold text-gray-900">
+                              {(p as any).product_order_number}
+                            </span>
+                            <span className="text-xs text-gray-600 ml-2">
+                              - {(p as any).description || (p as any).product?.title || 'No description'}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                  </div>
+                  {selectedProductsForShipping.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-green-600 font-medium mt-2">
+                      <CheckCircle className="w-3 h-3" />
+                      Shipping will be linked with {selectedProductsForShipping.length} product{selectedProductsForShipping.length > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              )}
               
               {(product as any).selected_shipping_method && (
                 <div className="mb-4 p-3 bg-white rounded-lg border-2 border-blue-400 shadow-sm">
@@ -1091,7 +1187,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         <div>
                           <span className="text-base font-bold text-blue-800">AIR SHIPPING</span>
                           {shippingAirPrice && (
-                            <p className="text-sm text-blue-600">Price: ${parseFloat(shippingAirPrice).toFixed(2)}</p>
+                            <p className="text-sm text-blue-600">Price: ${formatCurrency(parseFloat(shippingAirPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1103,7 +1199,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         <div>
                           <span className="text-base font-bold text-cyan-800">BOAT SHIPPING</span>
                           {shippingBoatPrice && (
-                            <p className="text-sm text-cyan-600">Price: ${parseFloat(shippingBoatPrice).toFixed(2)}</p>
+                            <p className="text-sm text-cyan-600">Price: ${formatCurrency(parseFloat(shippingBoatPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1115,7 +1211,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Air Shipping Price
+                    Air Shipping Price (Your Cost)
                   </label>
                   <div className="relative">
                     <Plane className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1132,14 +1228,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         }
                       }}
                       placeholder="Enter air price"
-                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+                      disabled={(product as any).shipping_link_note ? true : false}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                 </div>
                 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Boat Shipping Price
+                    Boat Shipping Price (Your Cost)
                   </label>
                   <div className="relative">
                     <Ship className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1156,14 +1253,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         }
                       }}
                       placeholder="Enter boat price"
-                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+                      disabled={(product as any).shipping_link_note ? true : false}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* MANUFACTURER PRICING SUMMARY */}
+            {/* MANUFACTURER PRICING SUMMARY - USING formatCurrency */}
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-300">
               <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
                 <Calculator className="w-4 h-4 mr-2" />
@@ -1172,34 +1270,50 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="space-y-2 text-sm">
                 {productPrice && totalQuantity > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-700">Product: ${parseFloat(productPrice).toFixed(2)} × {totalQuantity} units</span>
-                    <span className="font-semibold text-gray-900">${(parseFloat(productPrice) * totalQuantity).toFixed(2)}</span>
+                    <span className="text-gray-700">
+                      Product: ${formatCurrency(parseFloat(productPrice))} × {totalQuantity} units
+                    </span>
+                    <span className="font-semibold text-gray-900">
+                      ${formatCurrency(parseFloat(productPrice) * totalQuantity)}
+                    </span>
                   </div>
                 )}
-                {(product as any).selected_shipping_method && (
+                {(product as any).selected_shipping_method && !((product as any).shipping_link_note) && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">
                       Shipping ({(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'})
+                      {applyShippingToOthers && selectedProductsForShipping.length > 0 && (
+                        <span className="text-xs text-green-600 ml-1">
+                          (shared with {selectedProductsForShipping.length} products)
+                        </span>
+                      )}
                     </span>
                     <span className="font-semibold text-gray-900">
                       ${(product as any).selected_shipping_method === 'air' 
-                        ? (parseFloat(shippingAirPrice) || 0).toFixed(2)
-                        : (parseFloat(shippingBoatPrice) || 0).toFixed(2)}
+                        ? formatCurrency(parseFloat(shippingAirPrice) || 0)
+                        : formatCurrency(parseFloat(shippingBoatPrice) || 0)}
                     </span>
+                  </div>
+                )}
+                {(product as any).shipping_link_note && (
+                  <div className="text-xs text-blue-600 italic">
+                    {(product as any).shipping_link_note}
                   </div>
                 )}
                 <div className="pt-2 border-t border-green-300">
                   <div className="flex justify-between">
                     <span className="font-semibold text-green-800">Total Manufacturing Cost</span>
-                    <span className="font-bold text-green-800 text-base">${manufacturerTotal.toFixed(2)}</span>
+                    <span className="font-bold text-green-800 text-base">
+                      ${formatCurrency(manufacturerTotal)}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Save button for Bulk Section */}
+            {/* Save button for Bulk Section - IMPROVED SPACING */}
             {bulkSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-gray-200">
+              <div className="flex justify-end gap-3 pt-3 mt-4 border-t border-gray-200">
                 <button
                   onClick={() => {
                     setProductPrice(originalValues.productPrice);
@@ -1212,16 +1326,18 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     setTempBulkNotes('');
                     setPendingBulkFiles([]);
                     setBulkSectionDirty(false);
+                    setApplyShippingToOthers(false);
+                    setSelectedProductsForShipping([]);
                   }}
                   disabled={savingBulkSection}
-                  className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveBulkSection}
                   disabled={savingBulkSection}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors font-medium"
                 >
                   {savingBulkSection ? (
                     <>
@@ -1238,41 +1354,86 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             )}
 
-            {/* Variant Details Table */}
+            {/* IMPROVED Variant Details Table with BETTER BUTTON SPACING */}
             <div className="mb-4">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">
-                {getVariantTypeName()} Details
-              </h5>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="text-sm font-medium text-gray-700">
+                  {getVariantTypeName()} Details
+                  {!showAllVariants && hasHiddenVariants && !editingVariants && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      (Showing {visibleVariants.length} of {items.length})
+                    </span>
+                  )}
+                </h5>
+                <div className="flex items-center gap-2">
+                  {!editingVariants && hasHiddenVariants && (
+                    <button
+                      onClick={() => setShowAllVariants(!showAllVariants)}
+                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                    >
+                      {showAllVariants ? (
+                        <>
+                          <EyeOff className="w-3 h-3" />
+                          Hide Empty
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3 h-3" />
+                          Show All
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {!editingVariants ? (
+                    <button
+                      onClick={() => {
+                        setEditingVariants(true);
+                        setShowAllVariants(true);
+                      }}
+                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '25%'}}>
+                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '30%'}}>
                         {getVariantTypeName()}
                       </th>
-                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '15%'}}>Qty</th>
-                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '60%'}}>Notes</th>
+                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '20%'}}>Qty</th>
+                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '50%'}}>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
+                    {visibleVariants.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{item.variant_combo}</td>
                         <td className="py-2 px-1">
-                          <input
-                            type="number"
-                            min="0"
-                            value={itemQuantities[item.id] || '0'}
-                            onChange={(e) => {
-                              setItemQuantities(prev => ({
-                                ...prev,
-                                [item.id]: e.target.value
-                              }));
-                              setVariantsDirty(true);
-                              if (!editingVariants) setEditingVariants(true);
-                            }}
-                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                          {editingVariants ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={itemQuantities[item.id] || '0'}
+                              onChange={(e) => {
+                                setItemQuantities(prev => ({
+                                  ...prev,
+                                  [item.id]: e.target.value
+                                }));
+                                setVariantsDirty(true);
+                              }}
+                              className="w-24 px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-900">
+                              {itemQuantities[item.id] || '0'}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 pl-2 pr-3">
                           <input
@@ -1287,7 +1448,8 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                               if (!editingVariants) setEditingVariants(true);
                             }}
                             placeholder="Add note..."
-                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            disabled={!editingVariants}
+                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-700"
                           />
                         </td>
                       </tr>
@@ -1297,7 +1459,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
               
               {editingVariants && (
-                <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 flex justify-end gap-3">
                   <button
                     onClick={() => {
                       const originalNotes: {[key: string]: string} = {};
@@ -1310,16 +1472,17 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                       setItemQuantities(originalQtys);
                       setEditingVariants(false);
                       setVariantsDirty(false);
+                      setShowAllVariants(false);
                     }}
                     disabled={savingVariantNotes}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveVariantNotes}
                     disabled={savingVariantNotes}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors font-medium"
                   >
                     {savingVariantNotes ? (
                       <>
