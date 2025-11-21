@@ -1,8 +1,3 @@
-/**
- * Order Listing Card Component
- * Last Modified: Nov 21 2025
- */
-
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -72,11 +67,6 @@ export default function OrdersPage() {
   // State for showing/hiding prices
   const [showPrices, setShowPrices] = useState(false);
 
-  // State for finance margins
-  const [productMargin, setProductMargin] = useState(80); // Default 80%
-  const [shippingMargin, setShippingMargin] = useState(0); // Default 0%
-  const [marginsLoaded, setMarginsLoaded] = useState(false);
-
   // State for tracking orders with unread notifications
   const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
@@ -90,7 +80,6 @@ export default function OrdersPage() {
     const user = JSON.parse(userData);
     setUserRole(user.role);
     fetchOrders(user);
-    loadMargins(); // Load margins for price calculations
 
     // Load unread notifications for manufacturer
     let unsubscribe: (() => void) | undefined;
@@ -199,62 +188,28 @@ export default function OrdersPage() {
     filterOrders();
   }, [searchTerm, orders, activeTab]);
 
-  // Load finance margins from database
-  const loadMargins = async () => {
-    try {
-      const { data } = await supabase
-        .from('system_config')
-        .select('config_key, config_value')
-        .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
-      
-      if (data) {
-        data.forEach(config => {
-          if (config.config_key === 'default_margin_percentage') {
-            setProductMargin(parseFloat(config.config_value) || 80);
-          } else if (config.config_key === 'default_shipping_margin_percentage') {
-            setShippingMargin(parseFloat(config.config_value) || 0);
-          }
-        });
-      }
-      setMarginsLoaded(true);
-    } catch (error) {
-      console.error('Error loading margins:', error);
-      setMarginsLoaded(true);
-    }
-  };
-
-  // Calculate product total with margins for admin view
+  // FIXED: Calculate product total - ADMINS ALWAYS SEE CLIENT PRICES
   const calculateProductTotal = (product: any): number => {
-    if (!product.product_price && !product.sample_fee) return 0;
-    
+    // Get quantities
     const totalQty = product.order_items?.reduce((sum: number, item: any) => 
       sum + (item.quantity || 0), 0) || 0;
     
     let productPrice = 0;
-    let sampleFee = 0;
     let shippingPrice = 0;
     
-    // For admin/super admin, apply margins
+    // FIXED: Admin and Super Admin ALWAYS see CLIENT prices (never manufacturing)
     if (userRole === 'admin' || userRole === 'super_admin') {
-      const mfgProductPrice = parseFloat(product.product_price || 0);
-      const mfgSampleFee = parseFloat(product.sample_fee || 0);
+      // Use CLIENT prices - these already have margins applied
+      productPrice = parseFloat(product.client_product_price || 0);
       
-      // Apply product margin (80%)
-      productPrice = mfgProductPrice * (1 + productMargin / 100);
-      sampleFee = mfgSampleFee * (1 + productMargin / 100);
-      
-      // Apply shipping margin (0%)
       if (product.selected_shipping_method === 'air') {
-        const mfgShipping = parseFloat(product.shipping_air_price || 0);
-        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        shippingPrice = parseFloat(product.client_shipping_air_price || 0);
       } else if (product.selected_shipping_method === 'boat') {
-        const mfgShipping = parseFloat(product.shipping_boat_price || 0);
-        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
       }
-    } else {
-      // For other roles, use raw prices
+    } else if (userRole === 'manufacturer') {
+      // Manufacturer sees their cost prices only
       productPrice = parseFloat(product.product_price || 0);
-      sampleFee = parseFloat(product.sample_fee || 0);
       
       if (product.selected_shipping_method === 'air') {
         shippingPrice = parseFloat(product.shipping_air_price || 0);
@@ -263,7 +218,7 @@ export default function OrdersPage() {
       }
     }
     
-    const total = (productPrice * totalQty) + sampleFee + shippingPrice;
+    const total = (productPrice * totalQty) + shippingPrice;
     return total;
   };
 
@@ -297,9 +252,11 @@ export default function OrdersPage() {
             routed_to,
             product:products(title),
             product_price,
-            sample_fee,
+            client_product_price,
             shipping_air_price,
             shipping_boat_price,
+            client_shipping_air_price,
+            client_shipping_boat_price,
             selected_shipping_method,
             order_items(quantity)
           )
@@ -487,14 +444,14 @@ export default function OrdersPage() {
     const isManufacturerUser = userRole === 'manufacturer';
     
     if (!isAdminUser && !isManufacturerUser) {
-  return {
-    my_orders: 0,
-    sent_to_other: 0,
-    approved_for_production: 0,
-    in_production: 0,
-    shipped: 0
-  };
-}
+      return {
+        my_orders: 0,
+        sent_to_other: 0,
+        approved_for_production: 0,
+        in_production: 0,
+        shipped: 0
+      };
+    }
     
     // Count PRODUCTS not orders
     let productCounts = {
@@ -1097,7 +1054,7 @@ export default function OrdersPage() {
                       )}
                       {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
                         <div className="text-xs font-semibold text-green-600 mt-1">
-                          Est. Total: {showPrices ? formatCurrency(orderTotal) : 'XXXXX'}
+                          Client Total: {showPrices ? formatCurrency(orderTotal) : 'XXXXX'}
                         </div>
                       )}
                     </div>
@@ -1219,7 +1176,7 @@ export default function OrdersPage() {
                   </th>
                   {(userRole === 'admin' || userRole === 'super_admin') && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Est. Total
+                      Client Total
                     </th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
