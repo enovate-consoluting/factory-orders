@@ -1,12 +1,8 @@
 /**
- * Admin Product Card Component - UPDATED VERSION
- * Product card for Admin/Super Admin users with client pricing
- * Uses shared components for collapsed view and file display
- * UPDATES:
- * - Added display for shipping_link_note field
- * - Shows when shipping is linked from/to other products
- * - Visual indicators for shipping allocation
- * Last Modified: Nov 21 2025
+ * Admin Product Card Component - FIXED VERSION
+ * Product card for Admin/Super Admin users with CLIENT pricing
+ * FIXED: Removed all margin calculations - uses client prices directly
+ * Last Modified: December 2024
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
@@ -57,11 +53,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'admin';
     const canEditPricing = userRole === 'super_admin';
     
-    // State for finance margins
-    const [productMargin, setProductMargin] = useState(80);
-    const [shippingMargin, setShippingMargin] = useState(5);
-    const [marginsLoaded, setMarginsLoaded] = useState(false);
-    
     // Collapsible state
     const [isCollapsed, setIsCollapsed] = useState(() => {
       if (forceExpanded) return false;
@@ -105,33 +96,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     
     // Calculate total quantity
     const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-    
-    // Load finance margins from database
-    useEffect(() => {
-      const loadMargins = async () => {
-        try {
-          const { data } = await supabase
-            .from('system_config')
-            .select('config_key, config_value')
-            .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
-          
-          if (data) {
-            data.forEach(config => {
-              if (config.config_key === 'default_margin_percentage') {
-                setProductMargin(parseFloat(config.config_value) || 80);
-              } else if (config.config_key === 'default_shipping_margin_percentage') {
-                setShippingMargin(parseFloat(config.config_value) || 0);
-              }
-            });
-          }
-          setMarginsLoaded(true);
-        } catch (error) {
-          console.error('Error loading margins:', error);
-          setMarginsLoaded(true);
-        }
-      };
-      loadMargins();
-    }, []);
     
     // Initialize variant data from items
     useEffect(() => {
@@ -197,10 +161,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       (product as any).id
     ]);
     
-    // FIXED: Calculate prices with memoization to prevent cross-contamination
+    // FIXED: Calculate prices - ALWAYS use CLIENT prices directly
     const { unitPrice, productPrice, shippingPrice, totalPrice, hasShippingLink } = useMemo(() => {
-      // Always use the CLIENT prices from database if available
-      const clientUnitPrice = (product as any).client_product_price || 0;
+      // ALWAYS use the CLIENT prices from database (these already have margins)
+      const clientUnitPrice = parseFloat((product as any).client_product_price || 0);
       const calculatedProductPrice = clientUnitPrice * totalQuantity;
       
       // Check if shipping is linked from another product
@@ -210,9 +174,9 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       // Only calculate shipping if not linked from another product
       if (!hasLink) {
         if ((product as any).selected_shipping_method === 'air') {
-          calculatedShippingPrice = (product as any).client_shipping_air_price || 0;
+          calculatedShippingPrice = parseFloat((product as any).client_shipping_air_price || 0);
         } else if ((product as any).selected_shipping_method === 'boat') {
-          calculatedShippingPrice = (product as any).client_shipping_boat_price || 0;
+          calculatedShippingPrice = parseFloat((product as any).client_shipping_boat_price || 0);
         }
       }
       
@@ -591,7 +555,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     </span>
                   )}
                   
-                  {/* IMPROVED TOTAL BADGE WITH COLOR CODING - USING formatCurrency */}
+                  {/* CLIENT TOTAL BADGE - Always showing client prices */}
                   {totalPrice > 0 && (
                     <span className={`px-3 py-1 text-sm font-semibold rounded-full flex items-center gap-1 ${
                       shippingPrice > 0 || hasShippingLink
@@ -599,10 +563,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         : 'bg-red-100 text-red-700'
                     }`}>
                       <DollarSign className="w-4 h-4" />
-                      Total {(shippingPrice > 0 || hasShippingLink) ? (
+                      Client Total {(shippingPrice > 0 || hasShippingLink) ? (
                         <span className="text-green-700">(w/ shipping)</span>
                       ) : (
-                        <span className="text-red-600">(w/o shipping)</span>
+                        <span className="text-red-600">(no shipping)</span>
                       )}: ${formatCurrency(totalPrice)}
                     </span>
                   )}
@@ -689,14 +653,6 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
           </div>
 
-          {/* COMMENTED OUT Notes Section - Keeping for potential future use */}
-          {/* 
-          <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
-            ... notes section code ...
-          </div>
-          */}
-
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
@@ -704,7 +660,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               Bulk Order Information
             </h4>
 
-            {/* NEW: Show shipping link note if this product's shipping is linked */}
+            {/* Show shipping link note if this product's shipping is linked */}
             {(product as any).shipping_link_note && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start gap-2">
                 <Link2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -714,7 +670,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             )}
 
-            {/* NEW: Show if this product has linked shipping to other products */}
+            {/* Show if this product has linked shipping to other products */}
             {(product as any).shipping_linked_products && (
               <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -776,17 +732,17 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               loading={uploadingBulkMedia}
             />
 
-            {/* Product Price and Production Info - USING formatCurrency */}
+            {/* Product Price and Production Info - ALWAYS CLIENT PRICES */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Price {!canEditPricing && '(Client Price)'}
+                  Client Price (Per Unit)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={unitPrice > 0 ? `$${formatCurrency(unitPrice)}` : 'Set by manufacturer'}
+                    value={unitPrice > 0 ? `$${formatCurrency(unitPrice)}` : 'Not set'}
                     disabled={true}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
@@ -801,7 +757,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <Clock className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    value={(product as any).production_time || 'Set by manufacturer'}
+                    value={(product as any).production_time || 'Not set'}
                     disabled={true}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
                   />
@@ -809,10 +765,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             </div>
 
-            {/* Shipping Method Selection - UPDATED WITH LINK NOTE DISPLAY */}
+            {/* Shipping Method Selection - CLIENT PRICES */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
               <h5 className="text-sm font-semibold text-gray-800 mb-3">
-                Select Shipping Method {!canEditPricing && '(Client Prices)'}
+                Select Shipping Method (Client Prices)
               </h5>
               
               {/* Show if shipping is linked from another product */}
@@ -970,7 +926,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             )}
 
-            {/* IMPROVED Variant Details Table with WIDER QUANTITY FIELD */}
+            {/* Variant Details Table */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h5 className="text-sm font-medium text-gray-700">
