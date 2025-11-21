@@ -2,14 +2,17 @@
  * Order Calculations Utility
  * Handles all order total and pricing calculations
  * Used across order detail and other components
- * Last Modified: November 2025
+ * Last Modified: December 2024
  */
 
 interface OrderProduct {
   product_price?: number;
+  client_product_price?: number;  // Added client price fields
   sample_fee?: number;
   shipping_air_price?: number;
+  client_shipping_air_price?: number;  // Added
   shipping_boat_price?: number;
+  client_shipping_boat_price?: number;  // Added
   selected_shipping_method?: string;
   order_items?: Array<{ quantity?: number }>;
   routed_to?: string;
@@ -20,6 +23,44 @@ interface OrderProduct {
 interface Order {
   order_products?: OrderProduct[];
   sample_fee?: number;
+}
+
+/**
+ * Format currency with proper accounting format
+ * @param amount - The number to format
+ * @param includeZeroCents - Whether to show .00 (default false)
+ * @returns Formatted string with commas and optional cents
+ */
+export function formatCurrency(amount: number, includeZeroCents: boolean = false): string {
+  // Round to 2 decimal places to avoid floating point issues
+  const rounded = Math.round(amount * 100) / 100;
+  
+  // Check if we have cents
+  const hasCents = rounded % 1 !== 0;
+  
+  if (hasCents || includeZeroCents) {
+    // Format with 2 decimal places and commas
+    return rounded.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  } else {
+    // Format without decimal places but with commas
+    return Math.floor(rounded).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    });
+  }
+}
+
+/**
+ * Format currency with dollar sign
+ * @param amount - The number to format
+ * @param includeZeroCents - Whether to show .00 (default false)
+ * @returns Formatted string with $ and proper formatting
+ */
+export function formatDollar(amount: number, includeZeroCents: boolean = false): string {
+  return `$${formatCurrency(amount, includeZeroCents)}`;
 }
 
 export function calculateOrderTotal(
@@ -42,7 +83,7 @@ export function calculateOrderTotal(
     let shippingPrice = 0;
     
     if (isManufacturer) {
-      // Manufacturer sees cost prices
+      // Manufacturer sees cost prices (no change needed here)
       productPrice = parseFloat(String(product.product_price || 0));
       sampleFee = parseFloat(String(product.sample_fee || 0));
       
@@ -52,19 +93,38 @@ export function calculateOrderTotal(
         shippingPrice = parseFloat(String(product.shipping_boat_price || 0));
       }
     } else {
-      // Admin/Client see prices with markup
-      const mfgProductPrice = parseFloat(String(product.product_price || 0));
-      const mfgSampleFee = parseFloat(String(product.sample_fee || 0));
+      // FIXED: Admin/Client see client prices if available, otherwise calculate with markup
       
-      productPrice = mfgProductPrice * (1 + productMargin / 100);
+      // Product price - use client price if available
+      if (product.client_product_price !== undefined && product.client_product_price !== null) {
+        productPrice = parseFloat(String(product.client_product_price));
+      } else {
+        // Only apply markup if no client price exists
+        const mfgProductPrice = parseFloat(String(product.product_price || 0));
+        productPrice = mfgProductPrice * (1 + productMargin / 100);
+      }
+      
+      // Sample fee - for now still use margin calculation (no client_sample_fee field)
+      const mfgSampleFee = parseFloat(String(product.sample_fee || 0));
       sampleFee = mfgSampleFee * (1 + productMargin / 100);
       
+      // Shipping price - use client shipping prices if available
       if (product.selected_shipping_method === 'air') {
-        const mfgShipping = parseFloat(String(product.shipping_air_price || 0));
-        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        if (product.client_shipping_air_price !== undefined && product.client_shipping_air_price !== null) {
+          shippingPrice = parseFloat(String(product.client_shipping_air_price));
+        } else {
+          // Only apply margin if no client price exists
+          const mfgShipping = parseFloat(String(product.shipping_air_price || 0));
+          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        }
       } else if (product.selected_shipping_method === 'boat') {
-        const mfgShipping = parseFloat(String(product.shipping_boat_price || 0));
-        shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        if (product.client_shipping_boat_price !== undefined && product.client_shipping_boat_price !== null) {
+          shippingPrice = parseFloat(String(product.client_shipping_boat_price));
+        } else {
+          // Only apply margin if no client price exists
+          const mfgShipping = parseFloat(String(product.shipping_boat_price || 0));
+          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
+        }
       }
     }
     
