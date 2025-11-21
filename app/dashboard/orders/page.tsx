@@ -8,11 +8,150 @@ import {
   Calendar, ChevronRight, Edit, Building,
   ChevronDown, AlertCircle, Trash2, Shield, DollarSign,
   Inbox, SendHorizontal, Factory, Truck, CheckCircle,
-  EyeOff
+  EyeOff, Globe
 } from 'lucide-react';
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 import { formatCurrency as formatCurrencyUtil } from './utils/orderCalculations';
+
+// Translation dictionary
+const translations = {
+  en: {
+    // Header
+    orders: "Orders",
+    yourOrders: "Your Orders",
+    newOrder: "New Order",
+    
+    // Tabs
+    myOrders: "My Orders",
+    sentToAdmin: "Sent to Admin",
+    sentToManufacturer: "Sent to Manufacturer",
+    approvedForProduction: "Approved for Production",
+    inProduction: "In Production",
+    shipped: "Shipped",
+    
+    // Table Headers
+    order: "Order",
+    clientMfr: "Client/Mfr",
+    client: "Client",
+    manufacturer: "Manufacturer",
+    products: "Products",
+    clientTotal: "Client Total",
+    created: "Created",
+    actions: "Actions",
+    
+    // Order Details
+    untitledOrder: "Untitled Order",
+    product: "Product",
+    withAdmin: "With Admin",
+    withManufacturer: "With Manufacturer",
+    needAction: "Need Action",
+    approved: "Approved",
+    completed: "Completed",
+    
+    // Search
+    searchPlaceholder: "Search orders, clients, or manufacturers...",
+    noOrders: "No orders",
+    noOrdersMessage: "No orders need your action right now",
+    tryAdjustingSearch: "Try adjusting your search",
+    getStarted: "Get started by creating a new order",
+    
+    // Actions
+    showPrices: "Show Prices",
+    hidePrices: "Hide Prices",
+    viewDetails: "View Details",
+    editOrder: "Edit Order",
+    deleteOrder: "Delete Order",
+    
+    // Delete Modal
+    confirmDelete: "Confirm Delete",
+    superAdminOverride: "Super Admin Override",
+    areYouSure: "Are you sure you want to delete order",
+    permanentDelete: "This will permanently delete the order and all associated products, variants, and media files.",
+    cancel: "Cancel",
+    deleting: "Deleting...",
+    
+    // Status
+    draft: "Draft",
+    newOrderStatus: "New Order",
+    awaitingPrice: "Awaiting Price",
+    priced: "Priced",
+    withClient: "With Client",
+    clientApproved: "Client Approved",
+    readyToProduce: "Ready to Produce",
+    
+    // Language Toggle
+    switchToChinese: "中文"
+  },
+  
+  zh: {
+    // Header
+    orders: "订单",
+    yourOrders: "您的订单",
+    newOrder: "新建订单",
+    
+    // Tabs
+    myOrders: "我的订单",
+    sentToAdmin: "发送给管理员",
+    sentToManufacturer: "发送给制造商",
+    approvedForProduction: "已批准生产",
+    inProduction: "生产中",
+    shipped: "已发货",
+    
+    // Table Headers
+    order: "订单",
+    clientMfr: "客户/制造商",
+    client: "客户",
+    manufacturer: "制造商",
+    products: "产品",
+    clientTotal: "客户总额",
+    created: "创建时间",
+    actions: "操作",
+    
+    // Order Details
+    untitledOrder: "未命名订单",
+    product: "产品",
+    withAdmin: "管理员处理中",
+    withManufacturer: "制造商处理中",
+    needAction: "需要处理",
+    approved: "已批准",
+    completed: "已完成",
+    
+    // Search
+    searchPlaceholder: "搜索订单、客户或制造商...",
+    noOrders: "没有订单",
+    noOrdersMessage: "目前没有需要您处理的订单",
+    tryAdjustingSearch: "请尝试调整搜索条件",
+    getStarted: "创建新订单开始",
+    
+    // Actions
+    showPrices: "显示价格",
+    hidePrices: "隐藏价格",
+    viewDetails: "查看详情",
+    editOrder: "编辑订单",
+    deleteOrder: "删除订单",
+    
+    // Delete Modal
+    confirmDelete: "确认删除",
+    superAdminOverride: "超级管理员权限",
+    areYouSure: "您确定要删除订单",
+    permanentDelete: "这将永久删除订单及所有相关产品、变体和媒体文件。",
+    cancel: "取消",
+    deleting: "删除中...",
+    
+    // Status
+    draft: "草稿",
+    newOrderStatus: "新订单",
+    awaitingPrice: "等待报价",
+    priced: "已报价",
+    withClient: "客户审核中",
+    clientApproved: "客户已批准",
+    readyToProduce: "准备生产",
+    
+    // Language Toggle
+    switchToChinese: "English"
+  }
+};
 
 interface Order {
   id: string;
@@ -45,8 +184,13 @@ interface Order {
 
 type TabType = 'my_orders' | 'sent_to_other' | 'approved_for_production' | 'in_production' | 'shipped';
 
-// Helper function to format currency with commas - NOW USES THE UTIL
-const formatCurrency = (amount: number): string => {
+// Helper function to format currency with language support
+const formatCurrency = (amount: number, language: 'en' | 'zh' = 'en'): string => {
+  if (language === 'zh') {
+    // Convert USD to CNY (approximate rate 1 USD = 7.2 CNY)
+    const cnyAmount = amount * 7.2;
+    return `¥${formatCurrencyUtil(cnyAmount)}`;
+  }
   return `$${formatCurrencyUtil(amount)}`;
 };
 
@@ -60,6 +204,12 @@ export default function OrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  
+  // Language state
+  const [language, setLanguage] = useState<'en' | 'zh'>('en');
+  
+  // Get translations
+  const t = translations[language];
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('my_orders');
@@ -70,6 +220,21 @@ export default function OrdersPage() {
   // State for tracking orders with unread notifications
   const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
+  
+  // Load language preference from localStorage
+  useEffect(() => {
+    const savedLanguage = localStorage.getItem('orderLanguage') as 'en' | 'zh';
+    if (savedLanguage) {
+      setLanguage(savedLanguage);
+    }
+  }, []);
+  
+  // Toggle language function
+  const toggleLanguage = () => {
+    const newLanguage = language === 'en' ? 'zh' : 'en';
+    setLanguage(newLanguage);
+    localStorage.setItem('orderLanguage', newLanguage);
+  };
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -671,7 +836,7 @@ export default function OrdersPage() {
 
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
-      return { status: 'no_products', label: 'No Products', color: 'gray' };
+      return { status: 'no_products', label: t.products, color: 'gray' };
     }
 
     const products = order.order_products;
@@ -708,13 +873,13 @@ export default function OrdersPage() {
       if (isAdminUser) {
         return { 
           status: 'with_admin', 
-          label: `${withAdmin} With Admin`, 
+          label: `${withAdmin} ${t.withAdmin}`, 
           color: 'purple' 
         };
       } else {
         return { 
           status: 'with_manufacturer', 
-          label: `${withManufacturer} Need Action`, 
+          label: `${withManufacturer} ${t.needAction}`, 
           color: 'indigo' 
         };
       }
@@ -722,39 +887,39 @@ export default function OrdersPage() {
       if (isAdminUser) {
         return { 
           status: 'with_manufacturer', 
-          label: `${withManufacturer} With Manufacturer`, 
+          label: `${withManufacturer} ${t.withManufacturer}`, 
           color: 'indigo' 
         };
       } else {
         return { 
           status: 'with_admin', 
-          label: `${withAdmin} With Admin`, 
+          label: `${withAdmin} ${t.withAdmin}`, 
           color: 'purple' 
         };
       }
     } else if (activeTab === 'approved_for_production') {
       return { 
         status: 'approved', 
-        label: `${approvedForProduction} Approved`, 
+        label: `${approvedForProduction} ${t.approved}`, 
         color: 'green' 
       };
     } else if (activeTab === 'in_production') {
       return { 
         status: 'in_production', 
-        label: `${inProduction} In Production`, 
+        label: `${inProduction} ${t.inProduction}`, 
         color: 'blue' 
       };
     } else if (activeTab === 'shipped') {
       return { 
         status: 'shipped', 
-        label: `${shipped} Shipped`, 
+        label: `${shipped} ${t.shipped}`, 
         color: 'green' 
       };
     }
     
     return { 
       status: 'mixed', 
-      label: `${products.length} Products`, 
+      label: `${products.length} ${t.products}`, 
       color: 'gray' 
     };
   };
@@ -764,16 +929,16 @@ export default function OrdersPage() {
                      (userRole !== 'manufacturer' && product.routed_to === 'admin');
 
     if (product.product_status === 'completed') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Completed</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.completed}</span>;
     }
     if (product.product_status === 'approved_for_production') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Approved</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.approved}</span>;
     }
     if (product.product_status === 'in_production') {
-      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">In Production</span>;
+      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{t.inProduction}</span>;
     }
     if (product.product_status === 'shipped') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">Shipped</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.shipped}</span>;
     }
     
     return (
@@ -785,12 +950,12 @@ export default function OrdersPage() {
         {product.routed_to === 'admin' ? (
           <>
             <Users className="w-3 h-3" />
-            With Admin
+            {t.withAdmin}
           </>
         ) : (
           <>
             <Building className="w-3 h-3" />
-            With Manufacturer
+            {t.withManufacturer}
           </>
         )}
         {product.product_status === 'question_for_admin' && (
@@ -818,19 +983,19 @@ export default function OrdersPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">{t.confirmDelete}</h3>
               {userRole === 'super_admin' && (
                 <div className="flex items-center gap-2 mb-3 text-amber-600">
                   <Shield className="w-4 h-4" />
-                  <span className="text-sm">Super Admin Override</span>
+                  <span className="text-sm">{t.superAdminOverride}</span>
                 </div>
               )}
               <p className="text-gray-600">
-                Are you sure you want to delete order{' '}
+                {t.areYouSure}{' '}
                 <strong>{formatOrderNumber(orders.find(o => o.id === showDeleteConfirm)?.order_number || '')}</strong>?
               </p>
               <p className="text-red-600 text-sm mt-2">
-                This will permanently delete the order and all associated products, variants, and media files.
+                {t.permanentDelete}
               </p>
             </div>
             <div className="flex gap-3">
@@ -839,14 +1004,14 @@ export default function OrdersPage() {
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 disabled={deletingOrder === showDeleteConfirm}
               >
-                Cancel
+                {t.cancel}
               </button>
               <button
                 onClick={() => handleDeleteOrder(showDeleteConfirm)}
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
                 disabled={deletingOrder === showDeleteConfirm}
               >
-                {deletingOrder === showDeleteConfirm ? 'Deleting...' : 'Delete Order'}
+                {deletingOrder === showDeleteConfirm ? t.deleting : t.deleteOrder}
               </button>
             </div>
           </div>
@@ -857,17 +1022,29 @@ export default function OrdersPage() {
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <h1 className="text-2xl font-bold text-gray-900">
-            {userRole === 'manufacturer' ? 'Your Orders' : 'Orders'}
+            {userRole === 'manufacturer' ? t.yourOrders : t.orders}
           </h1>
-          {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
-            <Link
-              href="/dashboard/orders/create"
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          <div className="flex items-center gap-3">
+            {/* Language Toggle Button */}
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
+              title="Switch Language / 切换语言"
             >
-              <Plus className="w-5 h-5" />
-              New Order
-            </Link>
-          )}
+              <Globe className="w-5 h-5" />
+              <span className="font-medium">{t.switchToChinese}</span>
+            </button>
+            
+            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
+              <Link
+                href="/dashboard/orders/create"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                {t.newOrder}
+              </Link>
+            )}
+          </div>
         </div>
 
         {/* Tabs for Manufacturers AND Admins */}
@@ -883,7 +1060,7 @@ export default function OrdersPage() {
                 }`}
               >
                 <Inbox className="w-4 h-4" />
-                My Orders
+                {t.myOrders}
                 {tabCounts.my_orders !== undefined && tabCounts.my_orders > 0 && (
                   <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs">
                     {tabCounts.my_orders}
@@ -899,7 +1076,7 @@ export default function OrdersPage() {
                 }`}
               >
                 <SendHorizontal className="w-4 h-4" />
-                {userRole === 'manufacturer' ? 'Sent to Admin' : 'Sent to Manufacturer'}
+                {userRole === 'manufacturer' ? t.sentToAdmin : t.sentToManufacturer}
                 {tabCounts.sent_to_other !== undefined && tabCounts.sent_to_other > 0 && (
                   <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs">
                     {tabCounts.sent_to_other}
@@ -915,7 +1092,7 @@ export default function OrdersPage() {
                 }`}
               >
                 <CheckCircle className="w-4 h-4" />
-                Approved for Production
+                {t.approvedForProduction}
                 {tabCounts.approved_for_production !== undefined && tabCounts.approved_for_production > 0 && (
                   <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs">
                     {tabCounts.approved_for_production}
@@ -931,7 +1108,7 @@ export default function OrdersPage() {
                 }`}
               >
                 <Factory className="w-4 h-4" />
-                In Production
+                {t.inProduction}
                 {tabCounts.in_production !== undefined && tabCounts.in_production > 0 && (
                   <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs">
                     {tabCounts.in_production}
@@ -947,7 +1124,7 @@ export default function OrdersPage() {
                 }`}
               >
                 <Truck className="w-4 h-4" />
-                Shipped
+                {t.shipped}
                 {tabCounts.shipped !== undefined && tabCounts.shipped > 0 && (
                   <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs">
                     {tabCounts.shipped}
@@ -965,7 +1142,7 @@ export default function OrdersPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Search orders, clients, or manufacturers..."
+                placeholder={t.searchPlaceholder}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
@@ -978,17 +1155,17 @@ export default function OrdersPage() {
             <button
               onClick={() => setShowPrices(!showPrices)}
               className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              title={showPrices ? "Hide prices" : "Show prices"}
+              title={showPrices ? t.hidePrices : t.showPrices}
             >
               {showPrices ? (
                 <>
                   <EyeOff className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">Hide Prices</span>
+                  <span className="text-gray-700">{t.hidePrices}</span>
                 </>
               ) : (
                 <>
                   <Eye className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">Show Prices</span>
+                  <span className="text-gray-700">{t.showPrices}</span>
                 </>
               )}
             </button>
@@ -1039,7 +1216,7 @@ export default function OrdersPage() {
                     )}
                     <div>
                       <div className="font-bold text-gray-900 flex items-center gap-2">
-                        {order.order_name || 'Untitled Order'}
+                        {order.order_name || t.untitledOrder}
                         {hasUnreadNotification && (
                           <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
                         )}
@@ -1049,12 +1226,12 @@ export default function OrdersPage() {
                       </div>
                       {visibleProducts && (
                         <div className="text-xs text-gray-400">
-                          {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+                          {visibleProducts.length} {language === 'zh' ? '产品' : `product${visibleProducts.length !== 1 ? 's' : ''}`}
                         </div>
                       )}
                       {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
                         <div className="text-xs font-semibold text-green-600 mt-1">
-                          Client Total: {showPrices ? formatCurrency(orderTotal) : 'XXXXX'}
+                          {t.clientTotal}: {showPrices ? formatCurrency(orderTotal, language) : 'XXXXX'}
                         </div>
                       )}
                     </div>
@@ -1098,23 +1275,23 @@ export default function OrdersPage() {
                 {/* Order Info */}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Client:</span>
+                    <span className="text-gray-500">{t.client}:</span>
                     <span className="text-gray-900">{order.client?.name || '-'}</span>
                   </div>
                   {userRole !== 'manufacturer' && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Manufacturer:</span>
+                      <span className="text-gray-500">{t.manufacturer}:</span>
                       <span className="text-gray-900">{order.manufacturer?.name || '-'}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Products:</span>
+                    <span className="text-gray-500">{t.products}:</span>
                     <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
                       {routingStatus.label}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-500">Created:</span>
+                    <span className="text-gray-500">{t.created}:</span>
                     <span className="text-gray-900">{new Date(order.created_at).toLocaleDateString()}</span>
                   </div>
                 </div>
@@ -1134,14 +1311,14 @@ export default function OrdersPage() {
                                 {product.product_order_number}
                               </div>
                               <div className="text-xs text-gray-500 truncate">
-                                {product.description || product.product?.title || 'Product'}
+                                {product.description || product.product?.title || t.product}
                               </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 ml-2">
                             {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
                               <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                {showPrices ? formatCurrency(productTotal) : 'XXXXX'}
+                                {showPrices ? formatCurrency(productTotal, language) : 'XXXXX'}
                               </span>
                             )}
                             <div className="flex flex-col items-end gap-1">
@@ -1166,24 +1343,24 @@ export default function OrdersPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Order
+                    {t.order}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {userRole === 'manufacturer' ? 'Client' : 'Client/Mfr'}
+                    {userRole === 'manufacturer' ? t.client : t.clientMfr}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Products
+                    {t.products}
                   </th>
                   {(userRole === 'admin' || userRole === 'super_admin') && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Client Total
+                      {t.clientTotal}
                     </th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created
+                    {t.created}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t.actions}
                   </th>
                 </tr>
               </thead>
@@ -1226,7 +1403,7 @@ export default function OrdersPage() {
                             )}
                             <div>
                               <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                                {order.order_name || 'Untitled Order'}
+                                {order.order_name || t.untitledOrder}
                                 {hasUnreadNotification && (
                                   <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
                                 )}
@@ -1236,7 +1413,7 @@ export default function OrdersPage() {
                               </div>
                               {visibleProducts && (
                                 <div className="text-xs text-gray-400">
-                                  {visibleProducts.length} product{visibleProducts.length !== 1 ? 's' : ''}
+                                  {visibleProducts.length} {language === 'zh' ? '产品' : `product${visibleProducts.length !== 1 ? 's' : ''}`}
                                 </div>
                               )}
                             </div>
@@ -1260,7 +1437,7 @@ export default function OrdersPage() {
                             {orderTotal > 0 && (
                               <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1">
                                 <DollarSign className="w-3.5 h-3.5" />
-                                {showPrices ? formatCurrency(orderTotal).replace('$', '') : 'XXXXX'}
+                                {showPrices ? formatCurrency(orderTotal, language).replace(/[$¥]/, '') : 'XXXXX'}
                               </span>
                             )}
                           </td>
@@ -1277,7 +1454,7 @@ export default function OrdersPage() {
                               <Link
                                 href={`/dashboard/orders/edit/${order.id}`}
                                 className="text-blue-600 hover:text-blue-800"
-                                title="Edit Order"
+                                title={t.editOrder}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <Edit className="w-5 h-5" />
@@ -1302,7 +1479,7 @@ export default function OrdersPage() {
                             <Link
                               href={`/dashboard/orders/${order.id}`}
                               className="text-gray-600 hover:text-gray-800"
-                              title="View Order"
+                              title={t.viewDetails}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <Eye className="w-5 h-5" />
@@ -1328,14 +1505,14 @@ export default function OrdersPage() {
                                           {product.product_order_number}
                                         </span>
                                         <span className="text-xs text-gray-500 ml-2">
-                                          {product.description || product.product?.title || 'Product'}
+                                          {product.description || product.product?.title || t.product}
                                         </span>
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
                                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                                          {showPrices ? formatCurrency(productTotal) : 'XXXXX'}
+                                          {showPrices ? formatCurrency(productTotal, language) : 'XXXXX'}
                                         </span>
                                       )}
                                       <StatusBadge status={product.product_status} />
@@ -1359,15 +1536,15 @@ export default function OrdersPage() {
         {filteredOrders.length === 0 && (
           <div className="text-center py-12">
             <Package className="mx-auto h-12 w-12 text-gray-300" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No orders</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">{t.noOrders}</h3>
             <p className="mt-1 text-sm text-gray-500">
               {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin')
                 ? activeTab === 'my_orders' 
-                  ? 'No orders need your action right now'
-                  : `No orders in ${activeTab.replace('_', ' ')}`
+                  ? t.noOrdersMessage
+                  : `${t.noOrders} in ${activeTab.replace('_', ' ')}`
                 : searchTerm
-                  ? 'Try adjusting your search'
-                  : 'Get started by creating a new order'}
+                  ? t.tryAdjustingSearch
+                  : t.getStarted}
             </p>
           </div>
         )}
