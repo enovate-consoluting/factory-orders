@@ -52,11 +52,46 @@ export default function SendInvoiceModal({
   // Square payment states
   const [creatingPaymentLink, setCreatingPaymentLink] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState('');
+  
+  // SMS sending state
+  const [sendingSMS, setSendingSMS] = useState(false);
+  const [smsSuccess, setSmsSuccess] = useState(false);
 
   if (!isOpen) return null;
 
+  // Function to send SMS via Twilio API
+  const sendSMS = async (phone: string, message: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      console.log('Sending SMS to:', phone);
+      const response = await fetch('/api/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: phone,
+          message: message,
+          invoiceNumber: invoiceData.invoiceNumber || invoiceData.invoice_number,
+          invoiceId: invoiceData.id
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('SMS sent successfully:', data.data?.sid);
+        return { success: true };
+      } else {
+        console.error('SMS send failed:', data.error);
+        return { success: false, error: data.error };
+      }
+    } catch (error: any) {
+      console.error('SMS send error:', error);
+      return { success: false, error: error.message || 'Failed to send SMS' };
+    }
+  };
+
   const handleSend = async () => {
     setError('');
+    setSmsSuccess(false);
     
     // Validate based on send method
     if (sendMethod === 'email' || sendMethod === 'both') {
@@ -119,25 +154,81 @@ export default function SendInvoiceModal({
         }
       }
       
-      const toList = toEmails.split(',').map(e => e.trim()).filter(e => e);
-      const ccList = ccEmails.split(',').map(e => e.trim()).filter(e => e);
+      // === SEND SMS IF SELECTED ===
+      if (sendMethod === 'sms' || sendMethod === 'both') {
+        setSendingSMS(true);
+        
+        // Build SMS message
+        const invoiceNumber = invoiceData.invoiceNumber || invoiceData.invoice_number;
+        const dueDate = new Date(invoiceData.dueDate).toLocaleDateString();
+        const orderName = invoiceData.order?.order_name || invoiceData.order?.order_number || '';
+        
+        let smsText = `BirdHaus Invoice #${invoiceNumber}\n`;
+        if (orderName) smsText += `Order: ${orderName}\n`;
+        smsText += `Amount Due: $${finalTotal.toFixed(2)}\n`;
+        smsText += `Due: ${dueDate}`;
+        
+        // Add payment link if available
+        if (includePaymentLink && squarePaymentUrl) {
+          smsText += `\n\nPay Now: ${squarePaymentUrl}`;
+        }
+        
+        // Add custom message if provided
+        if (customizeSMS && smsMessage) {
+          smsText += `\n\n${smsMessage}`;
+        }
+        
+        smsText += `\n\nThank you for your business!`;
+        
+        // Send the SMS
+        const smsResult = await sendSMS(phoneNumber, smsText);
+        
+        if (smsResult.success) {
+          setSmsSuccess(true);
+          console.log('SMS sent successfully!');
+        } else {
+          // If SMS-only mode, show error but don't block
+          if (sendMethod === 'sms') {
+            setError(`SMS failed: ${smsResult.error}`);
+            setSending(false);
+            setSendingSMS(false);
+            return; // Stop here if SMS-only failed
+          } else {
+            // If both mode, just warn but continue with email
+            console.warn('SMS failed but continuing with email:', smsResult.error);
+          }
+        }
+        
+        setSendingSMS(false);
+      }
       
-      await onSend({
-        method: sendMethod,
-        to: toList,
-        cc: ccList,
-        phone: phoneNumber.replace(/\D/g, ''),
-        includePaymentLink,
-        paymentUrl: squarePaymentUrl,
-        emailMessage: customizeEmail ? emailMessage : undefined,
-        smsMessage: customizeSMS ? smsMessage : undefined
-      });
+      // === SEND EMAIL IF SELECTED ===
+      if (sendMethod === 'email' || sendMethod === 'both') {
+        const toList = toEmails.split(',').map(e => e.trim()).filter(e => e);
+        const ccList = ccEmails.split(',').map(e => e.trim()).filter(e => e);
+        
+        await onSend({
+          method: sendMethod,
+          to: toList,
+          cc: ccList,
+          phone: phoneNumber.replace(/\D/g, ''),
+          includePaymentLink,
+          paymentUrl: squarePaymentUrl,
+          emailMessage: customizeEmail ? emailMessage : undefined,
+          smsMessage: customizeSMS ? smsMessage : undefined
+        });
+      } else if (sendMethod === 'sms' && smsSuccess) {
+        // SMS-only mode succeeded, close the modal
+        onClose();
+      }
+      
     } catch (error) {
       console.error('Error in handleSend:', error);
       setError('Failed to send invoice. Please try again.');
     } finally {
       setSending(false);
       setCreatingPaymentLink(false);
+      setSendingSMS(false);
     }
   };
 
@@ -222,15 +313,25 @@ export default function SendInvoiceModal({
   };
 
   // SMS Preview text - updated to use actual Square payment URL if available
-  const baseSmsText = `BirdHaus Invoice #${invoiceData.invoiceNumber || invoiceData.invoice_number}
-Amount Due: $${finalTotal.toFixed(2)}
-Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
-
-  const smsLinkText = includePaymentLink ? `\nPay Now: ${paymentUrl || '[Payment link will be generated]'}` : '';
-  const customSmsText = smsMessage ? `\n\n${smsMessage}` : '';
-  const fullSmsText = baseSmsText + smsLinkText + customSmsText;
+  const invoiceNumber = invoiceData.invoiceNumber || invoiceData.invoice_number;
+  const orderName = invoiceData.order?.order_name || invoiceData.order?.order_number || '';
   
-  const smsCharCount = fullSmsText.length;
+  let smsPreviewText = `BirdHaus Invoice #${invoiceNumber}\n`;
+  if (orderName) smsPreviewText += `Order: ${orderName}\n`;
+  smsPreviewText += `Amount Due: $${finalTotal.toFixed(2)}\n`;
+  smsPreviewText += `Due: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
+  
+  if (includePaymentLink) {
+    smsPreviewText += `\n\nPay Now: ${paymentUrl || '[Payment link will be generated]'}`;
+  }
+  
+  if (customizeSMS && smsMessage) {
+    smsPreviewText += `\n\n${smsMessage}`;
+  }
+  
+  smsPreviewText += `\n\nThank you for your business!`;
+  
+  const smsCharCount = smsPreviewText.length;
   const smsSegments = Math.ceil(smsCharCount / 160);
 
   return (
@@ -267,7 +368,7 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
         {process.env.NODE_ENV === 'development' && (
           <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs">
             <div>Total: ${finalTotal.toFixed(2)} | Items: {invoiceItems.length} | Custom Items: {customItems?.length || 0}</div>
-            <div>Email: {toEmails || billToEmail}</div>
+            <div>Email: {toEmails || billToEmail} | Phone: {phoneNumber}</div>
           </div>
         )}
 
@@ -355,7 +456,8 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
             {(sendMethod === 'sms' || sendMethod === 'both') && (
               <div className={sendMethod === 'both' ? 'mt-3 pt-3 border-t border-blue-200' : ''}>
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  SMS Phone Number: (for text message only - not shown in email)
+                  <Phone className="w-3 h-3 inline mr-1" />
+                  SMS Phone Number:
                 </label>
                 <input
                   type="tel"
@@ -365,7 +467,7 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
                   className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-gray-900 placeholder-gray-500 disabled:opacity-50"
                   placeholder="(555) 123-4567"
                 />
-                <p className="text-xs text-gray-500 mt-1">US numbers only • This is only for SMS delivery</p>
+                <p className="text-xs text-gray-500 mt-1">US numbers supported • Include area code</p>
               </div>
             )}
 
@@ -374,6 +476,14 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
               <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
                 <p className="text-xs text-red-700">{error}</p>
+              </div>
+            )}
+            
+            {/* SMS Success Display */}
+            {smsSuccess && (
+              <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
+                <Check className="w-4 h-4 text-green-600 mt-0.5" />
+                <p className="text-xs text-green-700">SMS sent successfully!</p>
               </div>
             )}
           </div>
@@ -587,6 +697,8 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
                   <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" />
                     SMS Preview
+                    {sendingSMS && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
+                    {smsSuccess && <Check className="w-3 h-3 text-green-500" />}
                   </h3>
                   <p className="text-xs text-gray-600 mt-0.5">
                     To: {formatPhoneDisplay(phoneNumber) || 'Enter phone number'}
@@ -598,8 +710,8 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
                   <div className="max-w-xs mx-auto">
                     <div className="bg-gray-100 rounded-2xl p-4 shadow-inner">
                       <div className="bg-white rounded-xl p-3">
-                        <div className="bg-blue-500 text-white rounded-lg p-2 text-sm inline-block max-w-full">
-                          {fullSmsText}
+                        <div className="bg-blue-500 text-white rounded-lg p-2 text-sm inline-block max-w-full whitespace-pre-wrap">
+                          {smsPreviewText}
                         </div>
                         
                         <div className="mt-2 text-xs text-gray-500">
@@ -624,27 +736,33 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
         <div className="p-4 border-t bg-gray-50/80 backdrop-blur flex justify-between items-center">
           <div className="text-xs text-gray-600">
             {creatingPaymentLink && 'Creating Square payment link...'}
-            {!creatingPaymentLink && sendMethod === 'email' && 'Invoice PDF will be attached to email'}
-            {!creatingPaymentLink && sendMethod === 'sms' && includePaymentLink ? 'Square payment link will be sent via SMS' : 'Invoice details will be sent via SMS'}
-            {!creatingPaymentLink && sendMethod === 'both' && 'Email with PDF + SMS with payment link'}
+            {sendingSMS && 'Sending SMS via Twilio...'}
+            {!creatingPaymentLink && !sendingSMS && sendMethod === 'email' && 'Invoice PDF will be attached to email'}
+            {!creatingPaymentLink && !sendingSMS && sendMethod === 'sms' && (includePaymentLink ? 'Square payment link will be sent via SMS' : 'Invoice details will be sent via SMS')}
+            {!creatingPaymentLink && !sendingSMS && sendMethod === 'both' && 'Email with PDF + SMS with payment link'}
           </div>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              disabled={sending || creatingPaymentLink}
+              disabled={sending || creatingPaymentLink || sendingSMS}
               className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-white transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSend}
-              disabled={sending || creatingPaymentLink}
+              disabled={sending || creatingPaymentLink || sendingSMS}
               className="px-4 py-2 text-sm bg-blue-400 text-white rounded-lg hover:bg-blue-500 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creatingPaymentLink ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Creating payment link...
+                </>
+              ) : sendingSMS ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending SMS...
                 </>
               ) : sending ? (
                 <>
@@ -659,8 +777,8 @@ Due Date: ${new Date(invoiceData.dueDate).toLocaleDateString()}`;
               )}
             </button>
           </div>
-         </div>
+        </div>
       </div>
     </div>
   );
-} 
+}

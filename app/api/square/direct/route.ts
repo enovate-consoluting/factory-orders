@@ -8,6 +8,12 @@ async function createSquareCheckout(
   customerEmail: string,
   customerName: string
 ) {
+  // DEBUG LOGS TO CHECK ENVIRONMENT VARIABLES
+  console.log('DEBUG - Environment Variables Check:');
+  console.log('NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL);
+  console.log('SQUARE_ENVIRONMENT:', process.env.SQUARE_ENVIRONMENT);
+  console.log('SQUARE_ACCESS_TOKEN exists:', !!process.env.SQUARE_ACCESS_TOKEN);
+  
   const accessToken = process.env.SQUARE_ACCESS_TOKEN;
   const isProduction = process.env.SQUARE_ENVIRONMENT === 'production';
   
@@ -33,10 +39,17 @@ async function createSquareCheckout(
     const locationId = locationsData.locations?.[0]?.id || 'main';
     console.log('Using location ID:', locationId);
 
+    // FIXED: Build redirect URL properly
+    const redirectUrl = process.env.NEXT_PUBLIC_APP_URL 
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/invoice/success`
+      : 'http://localhost:3000/invoice/success';
+    
+    console.log('Using redirect URL:', redirectUrl);
+
     // Create checkout request body
     const checkoutRequest = {
       idempotency_key: `invoice-${invoiceNumber}-${Date.now()}`,
-      redirect_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/invoice/success`,
+      redirect_url: redirectUrl,
       ask_for_shipping_address: false,
       merchant_support_email: 'support@birdhaus.com',
       pre_populate_buyer_email: customerEmail,
