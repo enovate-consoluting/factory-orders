@@ -145,6 +145,9 @@ export default function CreateInvoicePage() {
   const [generatedInvoiceNumber, setGeneratedInvoiceNumber] = useState('');
   const [invoiceReserved, setInvoiceReserved] = useState(false);
   
+  // NEW: Track if we should navigate after success
+  const [pendingNavigation, setPendingNavigation] = useState(false);
+  
   useEffect(() => {
     if (orderId) {
       fetchOrderData();
@@ -828,8 +831,8 @@ export default function CreateInvoicePage() {
         }
       }
 
-      // Try to send email
-      if (status === 'sent' && sendData) {
+      // Try to send email (only for email method)
+      if (status === 'sent' && sendData && (sendData.method === 'email' || sendData.method === 'both')) {
         try {
           console.log('Attempting to send invoice email...');
           
@@ -846,23 +849,20 @@ export default function CreateInvoicePage() {
             const emailResult = await emailResponse.json();
             
             if (emailResult.success) {
-              notify.success(`Invoice ${generatedInvoiceNumber} sent successfully!`);
+              console.log('Invoice email sent successfully');
             } else {
-              // Invoice saved, email didn't work
-              notify.success(`Invoice ${generatedInvoiceNumber} saved successfully!`);
               console.log('Email feature not configured yet');
             }
           } else {
-            // API endpoint might not exist yet - that's OK
-            notify.success(`Invoice ${generatedInvoiceNumber} saved successfully!`);
             console.log('Email endpoint not available yet');
           }
         } catch (emailError) {
-          // Email failed but invoice is saved - that's fine
-          notify.success(`Invoice ${generatedInvoiceNumber} saved successfully!`);
           console.log('Email sending not configured:', emailError);
         }
-      } else if (status === 'draft') {
+      }
+      
+      // For draft saves, show notification here
+      if (status === 'draft') {
         notify.success(`Invoice ${generatedInvoiceNumber} saved as draft`);
       }
       
@@ -883,6 +883,13 @@ export default function CreateInvoicePage() {
       return;
     }
     setShowEmailPreview(true);
+  };
+
+  // NEW: Handler for successful send from modal
+  const handleSendSuccess = (message: string) => {
+    // Show the success notification
+    notify.success(message);
+    // Navigation will happen in handleCreateInvoice
   };
 
   if (loading) {
@@ -1513,22 +1520,23 @@ export default function CreateInvoicePage() {
         invoiceNumber={invoiceData?.invoiceNumber || ''}
       />
 
-      {/* Email Preview Modal */}
+      {/* Email Preview Modal - UPDATED WITH onSuccess HANDLER */}
       <SendInvoiceModal
         isOpen={showEmailPreview}
         onClose={() => setShowEmailPreview(false)}
         onSend={async (sendData) => {
-          setShowEmailPreview(false);
+          // Modal will close itself via onSuccess callback
           // Pass all the send data to handleCreateInvoice
           await handleCreateInvoice('sent', sendData);
         }}
+        onSuccess={handleSendSuccess}
         invoiceData={invoiceData}
         billToEmail={billToEmail}
         billToName={billToName}
         billToPhone={billToPhone}
         invoiceTotal={selectedTotal + (applyTax ? (selectedTotal * taxRate) / 100 : 0)}
         selectedProducts={invoiceData?.products.filter(p => selectedProducts.includes(p.id)) || []}
-        customItems={customItems} // Pass custom items to the modal
+        customItems={customItems}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Mail, Send, FileText, AlertCircle, MessageSquare, Phone, Smartphone, Globe, CreditCard, Edit2, Check, Loader2 } from 'lucide-react';
 
 interface SendInvoiceModalProps {
@@ -20,7 +20,8 @@ interface SendInvoiceModalProps {
   billToPhone?: string;
   invoiceTotal: number;
   selectedProducts: any[];
-  customItems?: any[]; // Add support for custom line items
+  customItems?: any[];
+  onSuccess?: (message: string) => void; // NEW: Callback for success notification
 }
 
 export default function SendInvoiceModal({
@@ -33,7 +34,8 @@ export default function SendInvoiceModal({
   billToPhone = '',
   invoiceTotal,
   selectedProducts,
-  customItems = [] // Accept custom items
+  customItems = [],
+  onSuccess // NEW: Accept success callback
 }: SendInvoiceModalProps) {
   const [sendMethod, setSendMethod] = useState<'email' | 'sms' | 'both'>('email');
   const [toEmails, setToEmails] = useState(billToEmail);
@@ -55,7 +57,17 @@ export default function SendInvoiceModal({
   
   // SMS sending state
   const [sendingSMS, setSendingSMS] = useState(false);
-  const [smsSuccess, setSmsSuccess] = useState(false);
+
+  // SYNC STATE: Update fields when modal opens or props change
+  useEffect(() => {
+    if (isOpen) {
+      setToEmails(billToEmail);
+      setPhoneNumber(billToPhone);
+      // Reset other states when modal opens fresh
+      setError('');
+      setPaymentUrl('');
+    }
+  }, [isOpen, billToEmail, billToPhone]);
 
   if (!isOpen) return null;
 
@@ -89,9 +101,18 @@ export default function SendInvoiceModal({
     }
   };
 
+  // Helper function to show success and close modal
+  const handleSuccess = (message: string) => {
+    // Call the success callback if provided
+    if (onSuccess) {
+      onSuccess(message);
+    }
+    // Close the modal
+    onClose();
+  };
+
   const handleSend = async () => {
     setError('');
-    setSmsSuccess(false);
     
     // Validate based on send method
     if (sendMethod === 'email' || sendMethod === 'both') {
@@ -113,12 +134,13 @@ export default function SendInvoiceModal({
     try {
       setSending(true);
       let squarePaymentUrl = '';
+      let smsSent = false;
+      let emailSent = false;
       
       // Create Square payment link if requested
       if (includePaymentLink) {
         setCreatingPaymentLink(true);
         try {
-          // IMPORTANT: Use the email from the modal input, not the original billToEmail
           const currentEmail = toEmails.split(',')[0].trim() || billToEmail;
           
           const paymentResponse = await fetch('/api/square/direct', {
@@ -126,8 +148,8 @@ export default function SendInvoiceModal({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               invoiceNumber: invoiceData.invoiceNumber || invoiceData.invoice_number,
-              amount: invoiceTotal, // This should include custom items
-              customerEmail: currentEmail, // Use the current email from modal
+              amount: invoiceTotal,
+              customerEmail: currentEmail,
               customerName: billToName || 'Customer'
             })
           });
@@ -138,17 +160,11 @@ export default function SendInvoiceModal({
             squarePaymentUrl = paymentData.checkoutUrl;
             setPaymentUrl(squarePaymentUrl);
             console.log('Square payment link created:', squarePaymentUrl);
-            console.log('Using email:', currentEmail);
-            console.log('Total amount:', invoiceTotal);
           } else {
             console.error('Failed to create Square payment link:', paymentData.error);
-            // Don't fail the entire send, just continue without payment link
-            setError('Payment link could not be created, but invoice will still be sent.');
           }
         } catch (paymentError) {
           console.error('Error creating payment link:', paymentError);
-          // Continue without payment link
-          setError('Payment link could not be created, but invoice will still be sent.');
         } finally {
           setCreatingPaymentLink(false);
         }
@@ -168,33 +184,28 @@ export default function SendInvoiceModal({
         smsText += `Amount Due: $${finalTotal.toFixed(2)}\n`;
         smsText += `Due: ${dueDate}`;
         
-        // Add payment link if available
         if (includePaymentLink && squarePaymentUrl) {
           smsText += `\n\nPay Now: ${squarePaymentUrl}`;
         }
         
-        // Add custom message if provided
         if (customizeSMS && smsMessage) {
           smsText += `\n\n${smsMessage}`;
         }
         
         smsText += `\n\nThank you for your business!`;
         
-        // Send the SMS
         const smsResult = await sendSMS(phoneNumber, smsText);
         
         if (smsResult.success) {
-          setSmsSuccess(true);
+          smsSent = true;
           console.log('SMS sent successfully!');
         } else {
-          // If SMS-only mode, show error but don't block
           if (sendMethod === 'sms') {
             setError(`SMS failed: ${smsResult.error}`);
             setSending(false);
             setSendingSMS(false);
-            return; // Stop here if SMS-only failed
+            return;
           } else {
-            // If both mode, just warn but continue with email
             console.warn('SMS failed but continuing with email:', smsResult.error);
           }
         }
@@ -217,15 +228,37 @@ export default function SendInvoiceModal({
           emailMessage: customizeEmail ? emailMessage : undefined,
           smsMessage: customizeSMS ? smsMessage : undefined
         });
-      } else if (sendMethod === 'sms' && smsSuccess) {
-        // SMS-only mode succeeded, close the modal
-        onClose();
+        
+        emailSent = true;
+      }
+      
+      // === SHOW SUCCESS AND CLOSE ===
+      setSending(false);
+      
+      // Determine success message
+      let successMessage = '';
+      if (sendMethod === 'sms' && smsSent) {
+        successMessage = 'SMS sent successfully!';
+      } else if (sendMethod === 'email' && emailSent) {
+        successMessage = 'Email sent successfully!';
+      } else if (sendMethod === 'both') {
+        if (smsSent && emailSent) {
+          successMessage = 'Email and SMS sent successfully!';
+        } else if (emailSent) {
+          successMessage = 'Email sent successfully! (SMS failed)';
+        } else if (smsSent) {
+          successMessage = 'SMS sent successfully! (Email failed)';
+        }
+      }
+      
+      // Close modal and show success
+      if (successMessage) {
+        handleSuccess(successMessage);
       }
       
     } catch (error) {
       console.error('Error in handleSend:', error);
       setError('Failed to send invoice. Please try again.');
-    } finally {
       setSending(false);
       setCreatingPaymentLink(false);
       setSendingSMS(false);
@@ -235,11 +268,9 @@ export default function SendInvoiceModal({
   // Calculate ALL items including custom items for preview
   const invoiceItems: any[] = [];
   
-  // Add product items
   selectedProducts.forEach(product => {
     const totalQty = product.order_items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
     
-    // Use CLIENT prices throughout
     const clientPrice = product.client_product_price || 0;
     const clientAirPrice = product.client_shipping_air_price || 0;
     const clientBoatPrice = product.client_shipping_boat_price || 0;
@@ -262,7 +293,6 @@ export default function SendInvoiceModal({
       });
     }
     
-    // Add shipping if selected
     if (product.selected_shipping_method === 'air' && clientAirPrice > 0) {
       invoiceItems.push({
         description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
@@ -280,7 +310,6 @@ export default function SendInvoiceModal({
     }
   });
   
-  // Add custom line items if provided
   if (customItems && customItems.length > 0) {
     customItems.forEach(item => {
       if (item.amount > 0) {
@@ -294,13 +323,9 @@ export default function SendInvoiceModal({
     });
   }
   
-  // Calculate the real total from all items
   const calculatedTotal = invoiceItems.reduce((sum, item) => sum + item.total, 0);
-  
-  // Use the passed invoiceTotal or calculated total (whichever is higher to ensure we don't miss anything)
   const finalTotal = Math.max(invoiceTotal, calculatedTotal);
 
-  // Format phone for display
   const formatPhoneDisplay = (phone: string) => {
     const cleaned = phone.replace(/\D/g, '');
     if (cleaned.length === 10) {
@@ -312,7 +337,6 @@ export default function SendInvoiceModal({
     return phone;
   };
 
-  // SMS Preview text - updated to use actual Square payment URL if available
   const invoiceNumber = invoiceData.invoiceNumber || invoiceData.invoice_number;
   const orderName = invoiceData.order?.order_name || invoiceData.order?.order_number || '';
   
@@ -335,19 +359,18 @@ export default function SendInvoiceModal({
   const smsSegments = Math.ceil(smsCharCount / 160);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white/95 backdrop-blur rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-gray-200">
-        {/* Header with BirdHaus branding - MUCH LIGHTER BLUE */}
+    // FIXED: More transparent background - no dark overlay
+    <div className="fixed inset-0 bg-white/30 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col border border-gray-300">
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-400 to-blue-500 p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* BirdHaus Logo - Using actual icon */}
             <div className="w-10 h-10 bg-white/90 backdrop-blur rounded-lg flex items-center justify-center p-1">
               <img 
                 src="/birdhaus-icon.png" 
                 alt="BirdHaus" 
                 className="w-full h-full object-contain"
                 onError={(e) => {
-                  // Fallback to BH if image doesn't load
                   e.currentTarget.style.display = 'none';
                   e.currentTarget.parentElement!.innerHTML = '<span class="text-blue-400 font-bold text-lg">BH</span>';
                 }}
@@ -364,16 +387,8 @@ export default function SendInvoiceModal({
           </button>
         </div>
 
-        {/* Debug info (remove in production) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-xs">
-            <div>Total: ${finalTotal.toFixed(2)} | Items: {invoiceItems.length} | Custom Items: {customItems?.length || 0}</div>
-            <div>Email: {toEmails || billToEmail} | Phone: {phoneNumber}</div>
-          </div>
-        )}
-
-        {/* Send Method Tabs - IMPROVED DESIGN */}
-        <div className="bg-gray-50/80 backdrop-blur border-b p-3">
+        {/* Send Method Tabs */}
+        <div className="bg-gray-50 border-b p-3">
           <div className="flex gap-1 bg-gray-200/50 rounded-lg p-1">
             <button
               onClick={() => setSendMethod('email')}
@@ -478,14 +493,6 @@ export default function SendInvoiceModal({
                 <p className="text-xs text-red-700">{error}</p>
               </div>
             )}
-            
-            {/* SMS Success Display */}
-            {smsSuccess && (
-              <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg flex items-start gap-2">
-                <Check className="w-4 h-4 text-green-600 mt-0.5" />
-                <p className="text-xs text-green-700">SMS sent successfully!</p>
-              </div>
-            )}
           </div>
 
           {/* Options Section */}
@@ -570,11 +577,11 @@ export default function SendInvoiceModal({
           </div>
 
           {/* Preview Section */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white/50">
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
             {/* Email Preview */}
             {(sendMethod === 'email' || sendMethod === 'both') && (
               <div className={sendMethod === 'both' ? 'border-b border-gray-200' : ''}>
-                <div className="bg-gray-50/80 px-4 py-2 border-b">
+                <div className="bg-gray-50 px-4 py-2 border-b">
                   <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
                     <Mail className="w-4 h-4" />
                     Email Preview
@@ -585,7 +592,7 @@ export default function SendInvoiceModal({
                 </div>
                 
                 <div className="p-4 bg-white">
-                  {/* Branded Email Header with LARGER LOGO - LIGHTER BLUE */}
+                  {/* Branded Email Header */}
                   <div className="bg-gradient-to-r from-blue-400 to-blue-500 rounded-t-lg p-4 text-center">
                     <div className="inline-flex items-center justify-center bg-white/95 rounded-lg px-4 py-2 mb-2">
                       <img 
@@ -593,7 +600,6 @@ export default function SendInvoiceModal({
                         alt="BirdHaus"
                         className="h-8"
                         onError={(e) => {
-                          // Fallback to text if logo doesn't load
                           e.currentTarget.style.display = 'none';
                           e.currentTarget.parentElement!.innerHTML = '<span class="text-blue-400 font-bold text-2xl">BirdHaus</span>';
                         }}
@@ -609,7 +615,7 @@ export default function SendInvoiceModal({
                       {emailMessage}
                     </p>
                     
-                    {/* Invoice Summary Card - LIGHTER BACKGROUND */}
+                    {/* Invoice Summary Card */}
                     <div className="my-4 bg-blue-50/50 border border-blue-200 rounded-lg p-3">
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
@@ -626,7 +632,6 @@ export default function SendInvoiceModal({
                         <p className="text-2xl font-bold text-blue-600">${finalTotal.toFixed(2)}</p>
                       </div>
                       
-                      {/* Payment Button - CONDITIONAL */}
                       {includePaymentLink && (
                         <div className="mt-3">
                           <div className="bg-green-500 text-white text-center py-2 px-4 rounded-lg font-medium text-sm">
@@ -640,12 +645,12 @@ export default function SendInvoiceModal({
                       )}
                     </div>
                     
-                    {/* ALL Items Table Including Custom Items */}
+                    {/* Items Table */}
                     <div className="my-4">
                       <h4 className="font-semibold text-gray-900 text-sm mb-2">Invoice Details:</h4>
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
                         <table className="w-full text-xs">
-                          <thead className="bg-gray-50/50">
+                          <thead className="bg-gray-50">
                             <tr>
                               <th className="text-left py-1.5 px-2 text-gray-700 font-medium">Item</th>
                               <th className="text-center py-1.5 px-2 text-gray-700 font-medium">Qty</th>
@@ -654,7 +659,6 @@ export default function SendInvoiceModal({
                             </tr>
                           </thead>
                           <tbody>
-                            {/* Show ALL items including custom */}
                             {invoiceItems.map((item, idx) => (
                               <tr key={idx} className="border-t border-gray-100">
                                 <td className="py-1.5 px-2 text-gray-700">{item.description}</td>
@@ -663,7 +667,7 @@ export default function SendInvoiceModal({
                                 <td className="text-right py-1.5 px-2 text-gray-900 font-medium">${item.total.toFixed(2)}</td>
                               </tr>
                             ))}
-                            <tr className="border-t-2 border-gray-200 bg-gray-50/50">
+                            <tr className="border-t-2 border-gray-200 bg-gray-50">
                               <td colSpan={3} className="py-1.5 px-2 text-right font-semibold text-gray-900">Total:</td>
                               <td className="py-1.5 px-2 text-right font-bold text-gray-900">${finalTotal.toFixed(2)}</td>
                             </tr>
@@ -681,7 +685,7 @@ export default function SendInvoiceModal({
                 </div>
                 
                 {/* Attachment Note */}
-                <div className="bg-gray-50/80 px-4 py-2 border-t">
+                <div className="bg-gray-50 px-4 py-2 border-t">
                   <div className="flex items-center gap-2 text-xs">
                     <FileText className="w-4 h-4 text-gray-400" />
                     <span className="text-gray-600">PDF Invoice will be attached</span>
@@ -693,12 +697,11 @@ export default function SendInvoiceModal({
             {/* SMS Preview */}
             {(sendMethod === 'sms' || sendMethod === 'both') && (
               <div>
-                <div className="bg-gray-50/80 px-4 py-2 border-b">
+                <div className="bg-gray-50 px-4 py-2 border-b">
                   <h3 className="font-semibold text-gray-900 text-sm flex items-center gap-2">
                     <MessageSquare className="w-4 h-4" />
                     SMS Preview
                     {sendingSMS && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
-                    {smsSuccess && <Check className="w-3 h-3 text-green-500" />}
                   </h3>
                   <p className="text-xs text-gray-600 mt-0.5">
                     To: {formatPhoneDisplay(phoneNumber) || 'Enter phone number'}
@@ -733,7 +736,7 @@ export default function SendInvoiceModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t bg-gray-50/80 backdrop-blur flex justify-between items-center">
+        <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
           <div className="text-xs text-gray-600">
             {creatingPaymentLink && 'Creating Square payment link...'}
             {sendingSMS && 'Sending SMS via Twilio...'}
@@ -752,7 +755,7 @@ export default function SendInvoiceModal({
             <button
               onClick={handleSend}
               disabled={sending || creatingPaymentLink || sendingSMS}
-              className="px-4 py-2 text-sm bg-blue-400 text-white rounded-lg hover:bg-blue-500 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {creatingPaymentLink ? (
                 <>
