@@ -1,7 +1,7 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * UPDATED: Added Client Portal support with ClientProductCard
- * Clients see only products routed to them, read-only view with approve/reject
+ * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
+ * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
  * Last Modified: Nov 2025
  */
 
@@ -20,7 +20,7 @@ import { ProductDistributionBar } from './components/shared/ProductDistributionB
 // Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
-import { ClientProductCard } from './components/client/ClientProductCard';
+// Note: ClientProductCard doesn't exist - using AdminProductCard for client view (shows client prices)
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
 
 // Modals
@@ -652,7 +652,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             case 'send_for_approval':
               productUpdate.requires_client_approval = true;
               productUpdate.product_status = 'pending_client_approval';
-              productUpdate.routed_to = 'client';  // FIXED: Route to client
+              productUpdate.routed_to = 'client';
               productUpdate.routed_at = new Date().toISOString();
               productUpdate.routed_by = user.id || null;
               break;
@@ -1068,66 +1068,75 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const visibleProducts = getVisibleProducts();
   const clientProducts = getClientProducts();
 
-  const existingSampleMedia = order?.order_media?.filter((m: any) => 
-    m.file_type === 'order_sample' && 
-    m.order_product_id === null
-  ) || [];
+  // FIXED: Look for sample files in BOTH places:
+  // 1. Direct order.order_media (for files with order_product_id = null)
+  // 2. Inside order_products.order_media (for files attached to first product with is_sample = true)
+  const existingSampleMedia = (() => {
+    const samples: any[] = [];
+    
+    // Check direct order_media (if any)
+    if (order?.order_media) {
+      order.order_media.forEach((m: any) => {
+        if (m.is_sample === true || m.file_type === 'order_sample') {
+          samples.push(m);
+        }
+      });
+    }
+    
+    // Check inside each product's order_media for files marked as samples
+    if (order?.order_products) {
+      order.order_products.forEach((product: any) => {
+        if (product.order_media) {
+          product.order_media.forEach((m: any) => {
+            if (m.is_sample === true) {
+              // Avoid duplicates (in case same file appears in both places)
+              if (!samples.find((s: any) => s.id === m.id)) {
+                samples.push(m);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    return samples;
+  })();
 
   // ========================================
   // CLIENT VIEW - Simplified, read-only
   // ========================================
   if (isClient) {
-    // Calculate order estimate total for client
-    const calculateOrderEstimateTotal = () => {
-      let total = 0;
-      
-      // Add sample fee if exists
-      if (order?.sample_required && order?.sample_fee) {
-        total += parseFloat(order.sample_fee || 0);
-      }
-      
-      // Add all client products
-      clientProducts.forEach((p: any) => {
-        const productItems = p.order_items || [];
-        const qty = productItems.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-        total += parseFloat(p.client_product_price || 0) * qty;
-        
-        if (p.selected_shipping_method === 'air') {
-          total += parseFloat(p.client_shipping_air_price || 0);
-        } else if (p.selected_shipping_method === 'boat') {
-          total += parseFloat(p.client_shipping_boat_price || 0);
-        }
-      });
-      
-      return total;
-    };
-
-    const orderEstimateTotal = calculateOrderEstimateTotal();
-
     return (
-      <div className="min-h-screen bg-gray-50 overflow-x-hidden">
-        {/* CLEAN PROFESSIONAL CLIENT HEADER */}
-        <div className="bg-white border-b border-gray-300 shadow-sm">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
+        {/* Client Header */}
+        <div className="bg-white border-b border-gray-200 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="flex-1">
-                <h1 className="text-3xl font-bold text-gray-900">
-                  {order.order_name || 'Order'}
-                </h1>
-                <p className="text-sm text-gray-600 mt-2">
-                  Order #{order.order_number}
-                </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                      Order {order.order_number}
+                    </h1>
+                    {order.order_name && (
+                      <p className="text-gray-500">{order.order_name}</p>
+                    )}
+                  </div>
+                </div>
               </div>
               
-              {/* Order Estimate Total */}
-              <div className="text-right bg-gray-50 border border-gray-300 rounded-lg px-6 py-4 shadow-sm">
-                <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
-                  Order Estimate Total
-                </p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
-                  ${orderEstimateTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
+              {/* Order Total */}
+              {totalAmount > 0 && (
+                <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
+                  <p className="text-sm text-gray-500">Order Total</p>
+                  <p className="text-3xl font-bold text-green-700">
+                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1158,14 +1167,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 const media = product.order_media || [];
                 
                 return (
-                  <ClientProductCard
+                  <AdminProductCard
                     key={product.id}
                     product={product}
                     items={items}
                     media={media}
-                    order={order}
-                    allProducts={clientProducts}
+                    orderStatus={order.workflow_status || order.status}
                     onUpdate={refetch}
+                    autoCollapse={true}
                   />
                 );
               })
@@ -1422,9 +1431,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
-              const isRoutedToManufacturer = product.routed_to === 'manufacturer';
-              
-              if (isManufacturer || isRoutedToManufacturer) {
+              // FIXED: Only ACTUAL manufacturers see ManufacturerProductCard
+              // Admins ALWAYS see AdminProductCard with CLIENT prices
+              if (isManufacturer) {
                 return (
                   <ManufacturerProductCard
                     key={product.id}
@@ -1448,7 +1457,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 );
               }
               
-              // Admin sees AdminProductCard which shows CLIENT prices
+              // Admin/Super Admin ALWAYS sees AdminProductCard which shows CLIENT prices
               return (
                 <AdminProductCard
                   key={product.id}
