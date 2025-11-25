@@ -121,7 +121,7 @@ export default function CreateInvoicePage() {
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [terms, setTerms] = useState('Net 30 days');
+  const [terms, setTerms] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [logoUrl, setLogoUrl] = useState('/logo.png');
   const [showLogoUpload, setShowLogoUpload] = useState(false);

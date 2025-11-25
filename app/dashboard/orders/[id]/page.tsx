@@ -1,7 +1,8 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * FIXED: Admins/Super Admins see CLIENT prices (no margins applied)
- * Last Modified: Nov 21 2025
+ * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
+ * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
+ * Last Modified: Nov 2025
  */
 
 'use client';
@@ -19,6 +20,7 @@ import { ProductDistributionBar } from './components/shared/ProductDistributionB
 // Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
+// Note: ClientProductCard doesn't exist - using AdminProductCard for client view (shows client prices)
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
 
 // Modals
@@ -30,9 +32,9 @@ import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
 import { getProductCounts } from '../utils/orderCalculations';
 
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer } from 'lucide-react';
+import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer, User, Clock, CheckCircle } from 'lucide-react';
 
-// FIXED: Calculate order total WITHOUT margins for admins
+// Calculate order total based on user role
 const calculateOrderTotal = (order: any, userRole: string): number => {
   if (!order?.order_products) return 0;
   
@@ -46,8 +48,8 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
     let productPrice = 0;
     let shippingPrice = 0;
     
-    // FIXED: Admin and Super Admin ALWAYS see CLIENT prices directly
-    if (userRole === 'admin' || userRole === 'super_admin') {
+    // Admin, Super Admin, and Client ALWAYS see CLIENT prices
+    if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
       // Use CLIENT prices - these already have margins built in
       productPrice = parseFloat(product.client_product_price || 0);
       
@@ -64,15 +66,6 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
         shippingPrice = parseFloat(product.shipping_air_price || 0);
       } else if (product.selected_shipping_method === 'boat') {
         shippingPrice = parseFloat(product.shipping_boat_price || 0);
-      }
-    } else if (userRole === 'client') {
-      // Client sees client prices
-      productPrice = parseFloat(product.client_product_price || 0);
-      
-      if (product.selected_shipping_method === 'air') {
-        shippingPrice = parseFloat(product.client_shipping_air_price || 0);
-      } else if (product.selected_shipping_method === 'boat') {
-        shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
       }
     }
     
@@ -142,8 +135,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // Track manufacturer card refs
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
-  // FIXED: Calculate total WITHOUT margins for admins
+  // Calculate total based on role
   const totalAmount = calculateOrderTotal(order, userRole || '');
+
+  // Role checks
+  const isManufacturer = userRole === 'manufacturer';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = userRole === 'admin';
+  const isClient = userRole === 'client';
 
   useEffect(() => {
     const fetchSubManufacturers = async () => {
@@ -548,7 +547,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const visibleProducts = getVisibleProducts();
-      const isManufacturer = userRole === 'manufacturer';
       
       console.log('=== STARTING SAVE ALL & ROUTE ===');
       console.log(`Processing ${visibleProducts.length} products`);
@@ -654,7 +652,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             case 'send_for_approval':
               productUpdate.requires_client_approval = true;
               productUpdate.product_status = 'pending_client_approval';
-              productUpdate.routed_to = 'admin';
+              productUpdate.routed_to = 'client';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
               break;
           }
           
@@ -1022,11 +1022,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const getVisibleProducts = () => {
     const allProducts = getAllProducts();
     
+    // CLIENT: Only see products routed to 'client'
+    if (isClient) {
+      return allProducts.filter((product: any) => product.routed_to === 'client');
+    }
+    
     if (selectedProductId !== 'all') {
       return allProducts.filter((product: any) => product.id === selectedProductId);
     }
     
     return allProducts;
+  };
+
+  // Get products routed to client (for client count display)
+  const getClientProducts = () => {
+    const allProducts = getAllProducts();
+    return allProducts.filter((product: any) => product.routed_to === 'client');
   };
 
   // Use the extracted utility function
@@ -1055,18 +1066,104 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
-  const isManufacturer = userRole === 'manufacturer';
-  const isSuperAdmin = userRole === 'super_admin';
-  const isAdmin = userRole === 'admin';
+  const clientProducts = getClientProducts();
 
+  // FIXED: Look for is_sample flag OR legacy file_type='order_sample'
+  // This finds both new format (is_sample=true) and old format (file_type='order_sample')
   const existingSampleMedia = order?.order_media?.filter((m: any) => 
-    m.file_type === 'order_sample' && 
-    m.order_product_id === null
+    m.is_sample === true || m.file_type === 'order_sample'
   ) || [];
 
+  // ========================================
+  // CLIENT VIEW - Simplified, read-only
+  // ========================================
+  if (isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
+        {/* Client Header */}
+        <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                      Order {order.order_number}
+                    </h1>
+                    {order.order_name && (
+                      <p className="text-gray-500">{order.order_name}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Order Total */}
+              {totalAmount > 0 && (
+                <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
+                  <p className="text-sm text-gray-500">Order Total</p>
+                  <p className="text-3xl font-bold text-green-700">
+                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+          {/* Products Section */}
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="w-5 h-5 text-gray-400" />
+              Products for Your Review
+            </h2>
+
+            {clientProducts.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  No Products Pending Review
+                </h3>
+                <p className="text-gray-500">
+                  All products have been reviewed or are still being processed.
+                </p>
+              </div>
+            ) : (
+              clientProducts.map((product: any) => {
+                const items = product.order_items || [];
+                const media = product.order_media || [];
+                
+                return (
+                  <AdminProductCard
+                    key={product.id}
+                    product={product}
+                    items={items}
+                    media={media}
+                    order={order}
+                    allProducts={clientProducts}
+                    onUpdate={refetch}
+                    readOnly={true}
+                  />
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ========================================
+  // ADMIN/MANUFACTURER VIEW - Full functionality
+  // ========================================
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
-      {/* Order Header - Now shows CLIENT total for admins */}
+      {/* Order Header - Shows CLIENT total for admins */}
       <OrderHeader 
         order={order} 
         totalAmount={totalAmount}
@@ -1307,9 +1404,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
-              const isRoutedToManufacturer = product.routed_to === 'manufacturer';
-              
-              if (isManufacturer || isRoutedToManufacturer) {
+              // FIXED: Only ACTUAL manufacturers see ManufacturerProductCard
+              // Admins ALWAYS see AdminProductCard with CLIENT prices
+              if (isManufacturer) {
                 return (
                   <ManufacturerProductCard
                     key={product.id}
@@ -1333,7 +1430,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 );
               }
               
-              // Admin sees AdminProductCard which should show CLIENT prices
+              // Admin/Super Admin ALWAYS sees AdminProductCard which shows CLIENT prices
               return (
                 <AdminProductCard
                   key={product.id}

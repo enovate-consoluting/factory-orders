@@ -1,5 +1,6 @@
 /**
  * Create Order Page - FIXED VERSION
+ * FIXED: Order sample files now attach to first product so they show in detail page
  * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
  * Last Modified: November 2025
  */
@@ -528,54 +529,6 @@ export default function CreateOrderPage() {
       console.log('Order ID:', orderData.id)
       console.log('Order Number:', orderNumber)
       
-      // Upload order-level sample files if any
-      if (orderSampleFiles.length > 0) {
-        console.log(`Uploading ${orderSampleFiles.length} order-level sample files...`)
-        
-        for (let i = 0; i < orderSampleFiles.length; i++) {
-          const file = orderSampleFiles[i]
-          try {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
-            const cleanName = sanitizeFileName(file.name)
-            // New naming: originalname-sample-001.ext
-            const displayName = `${cleanName}-sample-${String(i + 1).padStart(3, '0')}.${fileExt}`
-            const filePath = `${orderData.id}/${displayName}`
-            
-            console.log('Uploading sample file:', displayName)
-
-            const { error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(filePath, file)
-
-            if (uploadError) {
-              console.error('Error uploading order sample file:', uploadError)
-              continue
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-              .from('order-media')
-              .getPublicUrl(filePath)
-
-            // FIXED: Use correct file_type, not 'order_sample'
-            await supabase
-              .from('order_media')
-              .insert({
-                order_id: orderData.id,
-                file_url: publicUrl,
-                file_type: file.type.startsWith('image/') ? 'image' : 'document', // FIXED!
-                is_sample: true, // Mark as sample with flag
-                uploaded_by: user?.id,
-                original_filename: file.name,
-                display_name: displayName
-              })
-
-            console.log('Order sample file uploaded:', displayName)
-          } catch (error) {
-            console.error('Error uploading order sample file:', error)
-          }
-        }
-      }
-      
       // Create manufacturer notification if not a draft
       if (!isDraft && orderData && selectedManufacturer) {
         console.log('🔔 Creating notification for manufacturer...')
@@ -598,6 +551,9 @@ export default function CreateOrderPage() {
       
       // Track global bulk file counter across all products
       let globalBulkFileCounter = 1
+      
+      // FIXED: Track the first product ID for order-level sample files
+      let firstProductId: string | null = null
       
       for (const orderProduct of orderProducts) {
         console.log('Saving product:', orderProduct.product.title)
@@ -633,6 +589,12 @@ export default function CreateOrderPage() {
 
         console.log('Product saved with ID:', productData.id)
         console.log('Product Order Number:', finalProductOrderNumber)
+        
+        // FIXED: Store the first product ID for order-level sample files
+        if (!firstProductId) {
+          firstProductId = productData.id
+          console.log('First product ID stored for sample files:', firstProductId)
+        }
 
         // Save variants
         const itemsToSave = orderProduct.items.map((item: any) => ({
@@ -703,6 +665,62 @@ export default function CreateOrderPage() {
             }
           }
         }
+      }
+      
+      // FIXED: Upload order-level sample files AFTER products are created
+      // Attach to first product so they show up in detail page queries
+      if (orderSampleFiles.length > 0 && firstProductId) {
+        console.log(`Uploading ${orderSampleFiles.length} order-level sample files...`)
+        console.log('Attaching to first product ID:', firstProductId)
+        
+        for (let i = 0; i < orderSampleFiles.length; i++) {
+          const file = orderSampleFiles[i]
+          try {
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
+            const cleanName = sanitizeFileName(file.name)
+            // New naming: originalname-sample-001.ext
+            const displayName = `${cleanName}-sample-${String(i + 1).padStart(3, '0')}.${fileExt}`
+            // Store in order folder (not product subfolder) for clarity
+            const filePath = `${orderData.id}/${displayName}`
+            
+            console.log('Uploading order sample file:', displayName)
+
+            const { error: uploadError } = await supabase.storage
+              .from('order-media')
+              .upload(filePath, file)
+
+            if (uploadError) {
+              console.error('Error uploading order sample file:', uploadError)
+              continue
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath)
+
+            // FIXED: Attach to first product AND set is_sample flag
+            // This ensures the file shows up in detail page queries
+            await supabase
+              .from('order_media')
+              .insert({
+                order_id: orderData.id,
+                order_product_id: firstProductId, // FIXED: Link to first product!
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                is_sample: true, // Mark as order-level sample
+                uploaded_by: user?.id,
+                original_filename: file.name,
+                display_name: displayName
+              })
+
+            console.log('Order sample file uploaded and linked to product:', displayName)
+          } catch (error) {
+            console.error('Error uploading order sample file:', error)
+          }
+        }
+      } else if (orderSampleFiles.length > 0 && !firstProductId) {
+        console.error('Cannot upload order sample files: No products were created')
+        showNotification('error', 'Sample files could not be uploaded - no products in order')
       }
       
       console.log('All products and items saved!')

@@ -88,6 +88,10 @@ export default function InvoicesPage() {
   const [user, setUser] = useState<any>(null);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   
+  // Client-specific states
+  const [isClient, setIsClient] = useState(false);
+  const [clientId, setClientId] = useState<string | null>(null);
+  
   // Data
   const [ordersForApproval, setOrdersForApproval] = useState<OrderForApproval[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -107,19 +111,55 @@ export default function InvoicesPage() {
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (userData) {
-      setUser(JSON.parse(userData));
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+      
+      // Check if user is a client
+      if (parsedUser.role === 'client') {
+        setIsClient(true);
+        setActiveTab('sent'); // Clients only see sent invoices
+        fetchClientId(parsedUser.email);
+      }
     }
   }, []);
 
   useEffect(() => {
+    if (isClient && !clientId) {
+      // Wait for clientId to be fetched before loading data
+      return;
+    }
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, isClient, clientId]);
+
+  const fetchClientId = async (email: string) => {
+    try {
+      const { data: clientData, error } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', email)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching client:', error);
+        return;
+      }
+      
+      if (clientData) {
+        setClientId(clientData.id);
+      }
+    } catch (error) {
+      console.error('Error fetching client ID:', error);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      await fetchStats();
-      if (activeTab === 'approval') {
+      if (!isClient) {
+        await fetchStats();
+      }
+      
+      if (activeTab === 'approval' && !isClient) {
         await fetchOrdersForApproval();
       } else {
         await fetchInvoices();
@@ -278,12 +318,20 @@ export default function InvoicesPage() {
         `)
         .order('created_at', { ascending: false });
 
-      if (activeTab === 'drafts') {
-        query = query.eq('status', 'draft');
-      } else if (activeTab === 'sent') {
-        query = query.eq('status', 'sent');
-      } else if (activeTab === 'paid') {
-        query = query.eq('status', 'paid');
+      // CLIENT FILTER - Only show sent invoices for their client_id
+      if (isClient && clientId) {
+        query = query
+          .eq('client_id', clientId)
+          .eq('status', 'sent');
+      } else {
+        // Admin filters
+        if (activeTab === 'drafts') {
+          query = query.eq('status', 'draft');
+        } else if (activeTab === 'sent') {
+          query = query.eq('status', 'sent');
+        } else if (activeTab === 'paid') {
+          query = query.eq('status', 'paid');
+        }
       }
 
       const { data, error } = await query;
@@ -600,12 +648,17 @@ export default function InvoicesPage() {
         {filteredInvoices.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="mx-auto h-12 w-12 text-gray-300" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No invoices found</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {isClient ? 'No invoices yet' : 'No invoices found'}
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {activeTab === 'drafts' && 'No draft invoices'}
-              {activeTab === 'sent' && 'No sent invoices awaiting payment'}
-              {activeTab === 'paid' && 'No paid invoices yet'}
-              {activeTab === 'all' && 'Create your first invoice to get started'}
+              {isClient 
+                ? 'Your invoices will appear here once they are sent to you'
+                : activeTab === 'drafts' && 'No draft invoices'
+              }
+              {!isClient && activeTab === 'sent' && 'No sent invoices awaiting payment'}
+              {!isClient && activeTab === 'paid' && 'No paid invoices yet'}
+              {!isClient && activeTab === 'all' && 'Create your first invoice to get started'}
             </p>
           </div>
         ) : (
@@ -619,9 +672,11 @@ export default function InvoicesPage() {
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Order
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Client
-                  </th>
+                  {!isClient && (
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Client
+                    </th>
+                  )}
                   <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
@@ -653,9 +708,11 @@ export default function InvoicesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm text-gray-700">{invoice.client?.name || '-'}</span>
-                    </td>
+                    {!isClient && (
+                      <td className="py-3 px-4">
+                        <span className="text-sm text-gray-700">{invoice.client?.name || '-'}</span>
+                      </td>
+                    )}
                     <td className="py-3 px-4">
                       {getStatusBadge(invoice.status)}
                     </td>
@@ -695,7 +752,7 @@ export default function InvoicesPage() {
                             <Eye className="w-4 h-4" />
                           </Link>
                         )}
-                        {canDelete(invoice) && (
+                        {!isClient && canDelete(invoice) && (
                           <button
                             onClick={() => setShowDeleteConfirm(invoice.id)}
                             className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
@@ -761,100 +818,106 @@ export default function InvoicesPage() {
       {/* Header */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <button
-            onClick={() => fetchData()}
-            className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isClient ? 'My Invoices' : 'Invoices'}
+          </h1>
+          {!isClient && (
+            <button
+              onClick={() => fetchData()}
+              className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
-        {/* Tabs - Matching Orders page style */}
-        <div className="border-b border-gray-200 mb-4">
-          <nav className="-mb-px flex flex-wrap gap-y-2">
-            <button
-              onClick={() => setActiveTab('approval')}
-              className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'approval'
-                  ? 'border-amber-500 text-amber-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <AlertCircle className="w-4 h-4" />
-              <span>For Approval</span>
-              {stats.forApproval > 0 && (
-                <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold">
-                  {stats.forApproval}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setActiveTab('drafts')}
-              className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'drafts'
-                  ? 'border-gray-500 text-gray-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>Drafts</span>
-              {stats.drafts > 0 && (
-                <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold">
-                  {stats.drafts}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setActiveTab('sent')}
-              className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'sent'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Send className="w-4 h-4" />
-              <span>Sent</span>
-              {stats.sent > 0 && (
-                <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">
-                  {stats.sent}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setActiveTab('paid')}
-              className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'paid'
-                  ? 'border-green-500 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <CheckCircle className="w-4 h-4" />
-              <span>Paid</span>
-              {stats.paid > 0 && (
-                <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
-                  {stats.paid}
-                </span>
-              )}
-            </button>
-            
-            <button
-              onClick={() => setActiveTab('all')}
-              className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'all'
-                  ? 'border-purple-500 text-purple-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Inbox className="w-4 h-4" />
-              <span>All Invoices</span>
-            </button>
-          </nav>
-        </div>
+        {/* Tabs - Hidden for clients */}
+        {!isClient && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="-mb-px flex flex-wrap gap-y-2">
+              <button
+                onClick={() => setActiveTab('approval')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'approval'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>For Approval</span>
+                {stats.forApproval > 0 && (
+                  <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.forApproval}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('drafts')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'drafts'
+                    ? 'border-gray-500 text-gray-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Drafts</span>
+                {stats.drafts > 0 && (
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.drafts}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('sent')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'sent'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>Sent</span>
+                {stats.sent > 0 && (
+                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.sent}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('paid')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'paid'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Paid</span>
+                {stats.paid > 0 && (
+                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.paid}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'all'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Inbox className="w-4 h-4" />
+                <span>All Invoices</span>
+              </button>
+            </nav>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="flex-1 max-w-md">
@@ -862,7 +925,7 @@ export default function InvoicesPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder={activeTab === 'approval' ? "Search orders..." : "Search invoices..."}
+              placeholder={activeTab === 'approval' && !isClient ? "Search orders..." : "Search invoices..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
@@ -878,7 +941,7 @@ export default function InvoicesPage() {
         </div>
       ) : (
         <>
-          {activeTab === 'approval' ? renderInvoiceApprovalView() : renderInvoiceList()}
+          {activeTab === 'approval' && !isClient ? renderInvoiceApprovalView() : renderInvoiceList()}
         </>
       )}
     </div>
