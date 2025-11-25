@@ -1,12 +1,60 @@
 /**
  * SMS Send API - Multi-Provider Support
- * Supports: AWS SNS, Twilio
+ * Supports: Textbelt, AWS SNS, Twilio
  * Switch via SMS_PROVIDER env variable or database config
  * POST /api/sms/send
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+
+// ========================================
+// PROVIDER: TEXTBELT (Recommended - Simple!)
+// ========================================
+async function sendViaTextbelt(to: string, message: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const apiKey = process.env.TEXTBELT_API_KEY;
+    
+    if (!apiKey) {
+      return { success: false, error: 'Textbelt API key not configured' };
+    }
+
+    // Clean phone number
+    let cleanPhone = to.replace(/[\s\-\(\)\.]/g, '');
+    if (!cleanPhone.startsWith('+')) {
+      if (cleanPhone.startsWith('1') && cleanPhone.length === 11) {
+        cleanPhone = '+' + cleanPhone;
+      } else if (cleanPhone.length === 10) {
+        cleanPhone = '+1' + cleanPhone;
+      } else {
+        cleanPhone = '+' + cleanPhone;
+      }
+    }
+
+    const response = await fetch('https://textbelt.com/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: cleanPhone,
+        message: message,
+        key: apiKey,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      console.log('[Textbelt] SMS sent:', { to: cleanPhone, textId: result.textId });
+      return { success: true, messageId: result.textId };
+    } else {
+      console.error('[Textbelt] Error:', result.error);
+      return { success: false, error: result.error };
+    }
+  } catch (error: any) {
+    console.error('[Textbelt] Error:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 // ========================================
 // PROVIDER: AWS SNS
@@ -125,9 +173,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get provider from env (default to AWS)
-    // Options: 'aws', 'twilio'
-    const provider = (process.env.SMS_PROVIDER || 'aws').toLowerCase();
+    // Get provider from env (default to textbelt - most reliable)
+    // Options: 'textbelt', 'aws', 'twilio'
+    const provider = (process.env.SMS_PROVIDER || 'textbelt').toLowerCase();
     
     console.log(`[SMS] Using provider: ${provider}`);
 
@@ -139,8 +187,11 @@ export async function POST(request: NextRequest) {
         break;
       case 'aws':
       case 'sns':
-      default:
         result = await sendViaSNS(to, message);
+        break;
+      case 'textbelt':
+      default:
+        result = await sendViaTextbelt(to, message);
         break;
     }
 
