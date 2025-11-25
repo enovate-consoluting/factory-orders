@@ -1,20 +1,37 @@
 /**
- * Order Sample Request Component
- * Order-level sample request section (replacing product-level)
- * Displays at the top of order details
- * Last Modified: November 2025
+ * Order Sample Request Component - UPGRADED WITH ROUTING
+ * Order-level sample request with independent routing workflow
+ * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
+ * Last Modified: Nov 2025
  */
 
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, Paperclip, History } from 'lucide-react';
+import { 
+  AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, 
+  Paperclip, History, Send, Building, User, CheckCircle, ArrowRight,
+  Factory
+} from 'lucide-react';
 
 interface OrderSampleRequestProps {
+  orderId?: string;
   sampleFee: string;
   sampleETA: string;
   sampleStatus: string;
   sampleNotes: string;
   sampleFiles?: File[];
   existingMedia?: any[];
+  // NEW: Routing props
+  sampleRoutedTo?: 'admin' | 'manufacturer' | 'client';
+  sampleWorkflowStatus?: string;
+  // Routing callbacks
+  onRouteToManufacturer?: (notes?: string) => Promise<boolean>;
+  onRouteToAdmin?: (notes?: string) => Promise<boolean>;
+  onRouteToClient?: (notes?: string) => Promise<boolean>;
+  canRouteToManufacturer?: boolean;
+  canRouteToAdmin?: boolean;
+  canRouteToClient?: boolean;
+  isRouting?: boolean;
+  // Existing callbacks
   onUpdate: (field: string, value: any) => void;
   onFileUpload?: (files: FileList | null) => void;
   onFileRemove?: (index: number) => void;
@@ -22,18 +39,32 @@ interface OrderSampleRequestProps {
   onViewHistory?: () => void;
   hasNewHistory?: boolean;
   isManufacturer?: boolean;
+  isClient?: boolean;
+  userRole?: string;
   readOnly?: boolean;
   onSave?: () => void;
   saving?: boolean;
 }
 
 export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
+  orderId,
   sampleFee,
   sampleETA,
   sampleStatus,
   sampleNotes,
   sampleFiles = [],
   existingMedia = [],
+  // Routing props
+  sampleRoutedTo = 'admin',
+  sampleWorkflowStatus = 'pending',
+  onRouteToManufacturer,
+  onRouteToAdmin,
+  onRouteToClient,
+  canRouteToManufacturer = false,
+  canRouteToAdmin = false,
+  canRouteToClient = false,
+  isRouting = false,
+  // Existing props
   onUpdate,
   onFileUpload,
   onFileRemove,
@@ -41,6 +72,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onViewHistory,
   hasNewHistory = false,
   isManufacturer = false,
+  isClient = false,
+  userRole = 'admin',
   readOnly = false,
   onSave,
   saving = false
@@ -48,12 +81,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const [tempNotes, setTempNotes] = useState('');
   const [isDirty, setIsDirty] = useState(false);
   const [originalNotes, setOriginalNotes] = useState(sampleNotes);
-
-  // Debug log to see what we're receiving
-  useEffect(() => {
-    console.log('OrderSampleRequest - existingMedia:', existingMedia);
-    console.log('OrderSampleRequest - existingMedia length:', existingMedia?.length);
-  }, [existingMedia]);
+  
+  // Route modal state
+  const [showRouteModal, setShowRouteModal] = useState(false);
+  const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | null>(null);
+  const [routeNotes, setRouteNotes] = useState('');
 
   useEffect(() => {
     if (sampleNotes !== originalNotes && !tempNotes) {
@@ -92,21 +124,103 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     window.open(fileUrl, '_blank');
   };
 
+  // Route modal handlers
+  const openRouteModal = (destination: 'manufacturer' | 'admin' | 'client') => {
+    setRouteDestination(destination);
+    setRouteNotes('');
+    setShowRouteModal(true);
+  };
+
+  const handleRoute = async () => {
+    if (!routeDestination) return;
+    
+    let success = false;
+    
+    if (routeDestination === 'manufacturer' && onRouteToManufacturer) {
+      success = await onRouteToManufacturer(routeNotes);
+    } else if (routeDestination === 'admin' && onRouteToAdmin) {
+      success = await onRouteToAdmin(routeNotes);
+    } else if (routeDestination === 'client' && onRouteToClient) {
+      success = await onRouteToClient(routeNotes);
+    }
+    
+    if (success) {
+      setShowRouteModal(false);
+      setRouteNotes('');
+      setRouteDestination(null);
+    }
+  };
+
+  const getRoutingStatusBadge = () => {
+    const badges: Record<string, { bg: string; text: string; label: string; icon: any }> = {
+      admin: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'With Admin', icon: User },
+      manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'With Manufacturer', icon: Factory },
+      client: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'With Client', icon: Building }
+    };
+    
+    const badge = badges[sampleRoutedTo] || badges.admin;
+    const Icon = badge.icon;
+    
+    return (
+      <span className={`px-2 py-1 ${badge.bg} ${badge.text} rounded text-xs font-medium flex items-center gap-1`}>
+        <Icon className="w-3 h-3" />
+        {badge.label}
+      </span>
+    );
+  };
+
+  const getWorkflowStatusBadge = () => {
+    const statuses: Record<string, { bg: string; text: string; label: string }> = {
+      pending: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pending' },
+      sent_to_manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Sent to Manufacturer' },
+      priced_by_manufacturer: { bg: 'bg-green-100', text: 'text-green-700', label: 'Priced' },
+      sent_to_client: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Sent to Client' },
+      client_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Client Approved' },
+      client_rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Client Rejected' },
+      in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'In Production' },
+      shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
+      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' }
+    };
+    
+    const status = statuses[sampleWorkflowStatus] || statuses.pending;
+    
+    return (
+      <span className={`px-2 py-1 ${status.bg} ${status.text} rounded text-xs font-medium`}>
+        {status.label}
+      </span>
+    );
+  };
+
   const showSaveButton = isDirty || sampleFiles.length > 0;
+  
+  // Determine if user can edit based on routing
+  const canEdit = !readOnly && (
+    (sampleRoutedTo === 'admin' && (userRole === 'admin' || userRole === 'super_admin')) ||
+    (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
+    (sampleRoutedTo === 'client' && isClient)
+  );
 
   return (
     <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-4">
+      {/* Header with routing status */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-amber-900 flex items-center">
           <AlertCircle className="w-4 h-4 mr-2" />
           Order Sample Request / Technical Pack
         </h3>
         <div className="flex items-center gap-2">
+          {/* Routing Status Badge */}
+          {getRoutingStatusBadge()}
+          
+          {/* Workflow Status Badge */}
+          {getWorkflowStatusBadge()}
+          
           {existingMedia && existingMedia.length > 0 && (
             <span className="text-xs text-amber-700">
               {existingMedia.length} file(s)
             </span>
           )}
+          
           {/* History button */}
           {onViewHistory && (
             <button
@@ -124,8 +238,69 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
+      {/* ROUTING BUTTONS - Based on user role and current routing */}
+      <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-700">Sample Routing:</span>
+          
+          <div className="flex items-center gap-2">
+            {/* Admin can send to Manufacturer */}
+            {canRouteToManufacturer && (
+              <button
+                onClick={() => openRouteModal('manufacturer')}
+                disabled={isRouting}
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+              >
+                <Send className="w-3 h-3" />
+                Send to Manufacturer
+              </button>
+            )}
+            
+            {/* Admin can send to Client */}
+            {canRouteToClient && (
+              <button
+                onClick={() => openRouteModal('client')}
+                disabled={isRouting}
+                className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+              >
+                <Send className="w-3 h-3" />
+                Send to Client
+              </button>
+            )}
+            
+            {/* Manufacturer/Client can send back to Admin */}
+            {canRouteToAdmin && (
+              <button
+                onClick={() => openRouteModal('admin')}
+                disabled={isRouting}
+                className="px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+              >
+                <Send className="w-3 h-3" />
+                {isManufacturer ? 'Send to Admin' : 'Return to Admin'}
+              </button>
+            )}
+            
+            {/* Show loading spinner if routing */}
+            {isRouting && (
+              <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+            )}
+            
+            {/* Show message if no routing available */}
+            {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
+              <span className="text-xs text-gray-500 italic">
+                {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
+                {sampleRoutedTo === 'admin' && isClient && 'Waiting for admin to send for approval'}
+                {sampleRoutedTo === 'manufacturer' && !isManufacturer && 'With manufacturer for pricing'}
+                {sampleRoutedTo === 'client' && !isClient && 'With client for approval'}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Sample Details Fields */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <div className={!isManufacturer ? "opacity-60" : ""}>
+        <div className={!canEdit ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample Fee
           </label>
@@ -138,13 +313,13 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               value={sampleFee}
               onChange={(e) => handleFieldChange('sampleFee', e.target.value)}
               placeholder={isManufacturer ? "Enter fee" : "Set by manufacturer"}
-              disabled={!isManufacturer || readOnly}
+              disabled={!canEdit}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
         </div>
 
-        <div className={!isManufacturer ? "opacity-60" : ""}>
+        <div className={!canEdit ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample ETA
           </label>
@@ -154,20 +329,20 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               type="date"
               value={sampleETA}
               onChange={(e) => handleFieldChange('sampleETA', e.target.value)}
-              disabled={!isManufacturer || readOnly}
+              disabled={!canEdit}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
         </div>
 
-        <div className={!isManufacturer ? "opacity-60" : ""}>
+        <div className={!canEdit ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Status
           </label>
           <select
             value={sampleStatus}
             onChange={(e) => handleFieldChange('sampleStatus', e.target.value)}
-            disabled={!isManufacturer || readOnly}
+            disabled={!canEdit}
             className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
           >
             <option value="pending">Pending</option>
@@ -181,6 +356,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
+      {/* Notes Section */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
           Sample Notes / Instructions
@@ -198,11 +374,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           onChange={(e) => handleNotesChange(e.target.value)}
           placeholder="Add notes about the sample request, special instructions, materials, colors, etc..."
           rows={2}
-          disabled={readOnly}
+          disabled={!canEdit}
           className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 font-medium placeholder-gray-500 disabled:bg-amber-50 focus:ring-1 focus:ring-amber-500"
         />
       </div>
 
+      {/* Existing Files */}
       {existingMedia && existingMedia.length > 0 && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-amber-800 mb-1">
@@ -219,7 +396,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   <Paperclip className="w-3 h-3" />
                   <span>{file.display_name || file.original_filename || 'Sample File'}</span>
                 </button>
-                {!readOnly && onExistingFileDelete && (
+                {canEdit && onExistingFileDelete && (
                   <button
                     onClick={() => onExistingFileDelete(file.id)}
                     className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
@@ -234,7 +411,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       )}
 
-      {onFileUpload && !readOnly && (
+      {/* File Upload */}
+      {onFileUpload && canEdit && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Upload New Technical Pack / Sample Media
@@ -287,7 +465,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       )}
 
-      {showSaveButton && onSave && !readOnly && (
+      {/* Save Button */}
+      {showSaveButton && onSave && canEdit && (
         <div className="flex justify-end gap-2 pt-3 border-t border-amber-200">
           <button
             onClick={handleCancel}
@@ -313,6 +492,79 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {/* ROUTE MODAL */}
+      {showRouteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Send className="w-5 h-5 text-amber-600" />
+              Route Sample Request
+            </h3>
+            
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-600">Sending to:</span>
+                <span className="font-semibold text-amber-800">
+                  {routeDestination === 'manufacturer' && '🏭 Manufacturer'}
+                  {routeDestination === 'admin' && '👤 Admin'}
+                  {routeDestination === 'client' && '🏢 Client'}
+                </span>
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Add a note (optional)
+              </label>
+              <textarea
+                value={routeNotes}
+                onChange={(e) => setRouteNotes(e.target.value)}
+                placeholder={
+                  routeDestination === 'manufacturer' 
+                    ? "Instructions for manufacturer..." 
+                    : routeDestination === 'client'
+                    ? "Message for client..."
+                    : "Notes for admin..."
+                }
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRouteModal(false);
+                  setRouteNotes('');
+                  setRouteDestination(null);
+                }}
+                disabled={isRouting}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRoute}
+                disabled={isRouting}
+                className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isRouting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Routing...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Send
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

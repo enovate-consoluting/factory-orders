@@ -2,6 +2,7 @@
  * Order Detail Page - /dashboard/orders/[id]
  * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
  * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
+ * UPDATED: Added independent sample routing (Nov 2025)
  * Last Modified: Nov 2025
  */
 
@@ -11,6 +12,7 @@ import { use, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
+import { useSampleRouting } from './hooks/useSampleRouting'; // NEW: Sample routing hook
 
 // Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
@@ -143,6 +145,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
+
+  // ========================================
+  // NEW: SAMPLE ROUTING HOOK
+  // Independent routing for sample requests
+  // ========================================
+  const sampleRouting = useSampleRouting(
+    id,
+    {
+      routed_to: (order?.sample_routed_to as 'admin' | 'manufacturer' | 'client') || 'admin',
+      workflow_status: order?.sample_workflow_status || 'pending',
+      routed_at: order?.sample_routed_at || null,
+      routed_by: order?.sample_routed_by || null
+    },
+    userRole || 'admin',
+    refetch
+  );
 
   useEffect(() => {
     const fetchSubManufacturers = async () => {
@@ -1319,9 +1337,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
 
-        {/* ORDER-LEVEL SAMPLE REQUEST SECTION */}
+        {/* ORDER-LEVEL SAMPLE REQUEST SECTION - UPDATED WITH ROUTING */}
         {(isAdmin || isSuperAdmin || isManufacturer) && (
           <OrderSampleRequest
+            orderId={id}
             sampleFee={orderSampleFee}
             sampleETA={orderSampleETA}
             sampleStatus={orderSampleStatus}
@@ -1346,9 +1365,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             }}
             hasNewHistory={hasNewOrderSampleHistory()}
             isManufacturer={isManufacturer}
+            isClient={isClient}
+            userRole={userRole || 'admin'}
             readOnly={false}
             onSave={saveOrderSampleData}
             saving={savingOrderSample}
+            // NEW: Sample routing props
+            sampleRoutedTo={order?.sample_routed_to || 'admin'}
+            sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
+            onRouteToManufacturer={sampleRouting.routeToManufacturer}
+            onRouteToAdmin={sampleRouting.routeToAdmin}
+            onRouteToClient={sampleRouting.routeToClient}
+            canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
+            canRouteToAdmin={sampleRouting.canRouteToAdmin}
+            canRouteToClient={sampleRouting.canRouteToClient}
+            isRouting={sampleRouting.isRouting}
           />
         )}
 
