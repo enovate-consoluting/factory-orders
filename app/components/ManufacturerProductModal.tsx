@@ -15,6 +15,7 @@ import {
 import { OrderProduct } from '@/app/types/database';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { createNotification } from '@/app/hooks/useNotifications';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 
 interface ManufacturerProductModalProps {
   product: OrderProduct;
@@ -345,7 +346,7 @@ export default function ManufacturerProductModal({
                     <input
                       type="file"
                       multiple
-                      accept="image/*,video/*"
+                      accept={ACCEPTED_FILE_TYPES}
                       onChange={handleFileChange}
                       className="hidden"
                       id="sample-upload"

@@ -12,6 +12,7 @@ import {
   Paperclip, History, Send, Building, User, CheckCircle, ArrowRight,
   Factory
 } from 'lucide-react';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 
 interface OrderSampleRequestProps {
   orderId?: string;
@@ -436,7 +437,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               <input
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*"
+                accept={ACCEPTED_FILE_TYPES}
                 onChange={(e) => {
                   onFileUpload(e.target.files);
                   setIsDirty(true);

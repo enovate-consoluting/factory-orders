@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Upload, X } from 'lucide-react';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 
 interface FileUploadSectionProps {
   label: string;
@@ -28,7 +29,7 @@ export const FileUploadSection: React.FC<FileUploadSectionProps> = ({
   buttonText = "Upload Files",
   buttonClassName = "bg-gray-100 text-gray-700 hover:bg-gray-200",
   fileClassName = "bg-gray-100 text-gray-700",
-  accept,
+  accept = ACCEPTED_FILE_TYPES,
   multiple = true
 }) => {
   return (

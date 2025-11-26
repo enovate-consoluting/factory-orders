@@ -25,6 +25,7 @@ import { getProductStatusIcon } from '../shared/ProductStatusIcon';
 import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatCurrency } from '../../../utils/orderCalculations';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 import { supabase } from '@/lib/supabase';
 
 // Define the ref type for imperative handle
@@ -1028,7 +1029,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               ref={bulkFileInputRef}
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
+              accept={ACCEPTED_FILE_TYPES}
               onChange={handleBulkFileUpload}
               className="hidden"
             />
