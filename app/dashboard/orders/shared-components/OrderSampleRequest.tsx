@@ -1,18 +1,26 @@
 /**
  * Order Sample Request Component - UPGRADED WITH ROUTING
  * Order-level sample request with independent routing workflow
- * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
- * FIX: Now syncs sample_workflow_status when sampleStatus changes
+ * FIX: Passes values directly to onSave instead of relying on parent state
+ * FIX: Notes field shows only current editable note, not history
  * Last Modified: Nov 26 2025
  */
 
 import React, { useState, useEffect } from 'react';
 import { 
   AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, 
-  Paperclip, History, Send, Building, User, CheckCircle, ArrowRight,
+  Paperclip, History, Send, Building, User,
   Factory
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
+
+// Data to pass to save function
+interface SampleSaveData {
+  fee: string;
+  eta: string;
+  status: string;
+  notes: string;
+}
 
 interface OrderSampleRequestProps {
   orderId?: string;
@@ -22,7 +30,7 @@ interface OrderSampleRequestProps {
   sampleNotes: string;
   sampleFiles?: File[];
   existingMedia?: any[];
-  // NEW: Routing props
+  // Routing props
   sampleRoutedTo?: 'admin' | 'manufacturer' | 'client';
   sampleWorkflowStatus?: string;
   // Routing callbacks
@@ -33,7 +41,7 @@ interface OrderSampleRequestProps {
   canRouteToAdmin?: boolean;
   canRouteToClient?: boolean;
   isRouting?: boolean;
-  // Existing callbacks
+  // Existing callbacks - CHANGED: onSave now receives data
   onUpdate: (field: string, value: any) => void;
   onFileUpload?: (files: FileList | null) => void;
   onFileRemove?: (index: number) => void;
@@ -44,7 +52,7 @@ interface OrderSampleRequestProps {
   isClient?: boolean;
   userRole?: string;
   readOnly?: boolean;
-  onSave?: () => void;
+  onSave?: (data: SampleSaveData) => Promise<void>;
   saving?: boolean;
 }
 
@@ -80,54 +88,72 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onSave,
   saving = false
 }) => {
-  const [tempNotes, setTempNotes] = useState('');
+  // LOCAL state for form fields - don't rely on parent
+  const [localFee, setLocalFee] = useState(sampleFee);
+  const [localETA, setLocalETA] = useState(sampleETA);
+  const [localStatus, setLocalStatus] = useState(sampleStatus);
+  const [localNotes, setLocalNotes] = useState(''); // Start empty for new notes
   const [isDirty, setIsDirty] = useState(false);
-  const [originalNotes, setOriginalNotes] = useState(sampleNotes);
   
   // Route modal state
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | null>(null);
   const [routeNotes, setRouteNotes] = useState('');
 
+  // Sync local state when props change (on load/refetch)
   useEffect(() => {
-    if (sampleNotes !== originalNotes && !tempNotes) {
-      setOriginalNotes(sampleNotes);
-      setTempNotes('');
-    }
-  }, [sampleNotes, originalNotes, tempNotes]);
+    setLocalFee(sampleFee);
+    setLocalETA(sampleETA);
+    setLocalStatus(sampleStatus);
+    // Don't set localNotes from props - keep it empty for new input
+    setIsDirty(false);
+  }, [sampleFee, sampleETA, sampleStatus]);
 
-  const handleFieldChange = (field: string, value: any) => {
-    onUpdate(field, value);
+  const handleFeeChange = (value: string) => {
+    setLocalFee(value);
+    onUpdate('sampleFee', value);
+    setIsDirty(true);
+  };
+
+  const handleETAChange = (value: string) => {
+    setLocalETA(value);
+    onUpdate('sampleETA', value);
+    setIsDirty(true);
+  };
+
+  const handleStatusChange = (value: string) => {
+    setLocalStatus(value);
+    onUpdate('sampleStatus', value);
+    onUpdate('sampleWorkflowStatus', value);
     setIsDirty(true);
   };
 
   const handleNotesChange = (value: string) => {
-    setTempNotes(value);
-    onUpdate('sampleNotes', value);
+    setLocalNotes(value);
     setIsDirty(true);
   };
 
-  // FIX: Handle status change and sync workflow status
-  const handleStatusChange = (newStatus: string) => {
-    // Update the sample status
-    handleFieldChange('sampleStatus', newStatus);
-    // Keep workflow status in sync with sample status
-    onUpdate('sampleWorkflowStatus', newStatus);
-  };
-
+  // SAVE: Pass local values directly
   const handleSave = async () => {
     if (onSave) {
-      await onSave();
+      await onSave({
+        fee: localFee,
+        eta: localETA,
+        status: localStatus,
+        notes: localNotes
+      });
+      setLocalNotes(''); // Clear notes after save
       setIsDirty(false);
-      setTempNotes('');
-      setOriginalNotes(tempNotes || sampleNotes);
     }
   };
 
   const handleCancel = () => {
-    setTempNotes('');
+    // Reset to original values
+    setLocalFee(sampleFee);
+    setLocalETA(sampleETA);
+    setLocalStatus(sampleStatus);
+    setLocalNotes('');
     setIsDirty(false);
-    onUpdate('sampleNotes', originalNotes);
   };
 
   const handleFileClick = (fileUrl: string) => {
@@ -144,6 +170,18 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const handleRoute = async () => {
     if (!routeDestination) return;
     
+    // SAVE DATA FIRST before routing
+    if (onSave) {
+      await onSave({
+        fee: localFee,
+        eta: localETA,
+        status: localStatus,
+        notes: localNotes
+      });
+      setLocalNotes(''); // Clear notes after save
+    }
+    
+    // Then route
     let success = false;
     
     if (routeDestination === 'manufacturer' && onRouteToManufacturer) {
@@ -158,9 +196,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       setShowRouteModal(false);
       setRouteNotes('');
       setRouteDestination(null);
+      setIsDirty(false);
     }
   };
 
+  // ONLY routing status badge
   const getRoutingStatusBadge = () => {
     const badges: Record<string, { bg: string; text: string; label: string; icon: any }> = {
       admin: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'With Admin', icon: User },
@@ -179,23 +219,20 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     );
   };
 
-  const getWorkflowStatusBadge = () => {
+  // Status badge (shows actual sample status)
+  const getSampleStatusBadge = () => {
     const statuses: Record<string, { bg: string; text: string; label: string }> = {
       pending: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pending' },
-      sent_to_manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Sent to Manufacturer' },
-      priced_by_manufacturer: { bg: 'bg-green-100', text: 'text-green-700', label: 'Priced' },
-      sent_to_client: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Sent to Client' },
-      client_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Client Approved' },
-      client_rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Client Rejected' },
       in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'In Production' },
+      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Ready' },
       shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
       delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' },
-      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Ready' },
-      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' },
+      sample_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' }, // backwards compat
       rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' }
     };
     
-    const status = statuses[sampleWorkflowStatus] || statuses.pending;
+    const status = statuses[localStatus] || statuses.pending;
     
     return (
       <span className={`px-2 py-1 ${status.bg} ${status.text} rounded text-xs font-medium`}>
@@ -212,6 +249,9 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
     (sampleRoutedTo === 'client' && isClient)
   );
+  
+  // Fee and ETA: ONLY Manufacturer and Super Admin can edit
+  const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
 
   return (
     <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-4">
@@ -225,8 +265,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           {/* Routing Status Badge */}
           {getRoutingStatusBadge()}
           
-          {/* Workflow Status Badge */}
-          {getWorkflowStatusBadge()}
+          {/* Sample Status Badge */}
+          {getSampleStatusBadge()}
           
           {existingMedia && existingMedia.length > 0 && (
             <span className="text-xs text-amber-700">
@@ -251,13 +291,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
-      {/* ROUTING BUTTONS - Based on user role and current routing */}
+      {/* ROUTING BUTTONS */}
       <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-gray-700">Sample Routing:</span>
           
           <div className="flex items-center gap-2">
-            {/* Admin can send to Manufacturer */}
             {canRouteToManufacturer && (
               <button
                 onClick={() => openRouteModal('manufacturer')}
@@ -269,7 +308,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </button>
             )}
             
-            {/* Admin can send to Client */}
             {canRouteToClient && (
               <button
                 onClick={() => openRouteModal('client')}
@@ -281,7 +319,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </button>
             )}
             
-            {/* Manufacturer/Client can send back to Admin */}
             {canRouteToAdmin && (
               <button
                 onClick={() => openRouteModal('admin')}
@@ -293,12 +330,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </button>
             )}
             
-            {/* Show loading spinner if routing */}
             {isRouting && (
               <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
             )}
             
-            {/* Show message if no routing available */}
             {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
               <span className="text-xs text-gray-500 italic">
                 {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
@@ -313,9 +348,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
       {/* Sample Details Fields */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <div className={!canEdit ? "opacity-60" : ""}>
+        <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample Fee
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -323,26 +359,27 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               type="number"
               min="0"
               step="0.01"
-              value={sampleFee}
-              onChange={(e) => handleFieldChange('sampleFee', e.target.value)}
+              value={localFee}
+              onChange={(e) => handleFeeChange(e.target.value)}
               placeholder={isManufacturer ? "Enter fee" : "Set by manufacturer"}
-              disabled={!canEdit}
+              disabled={!canEditFeeETA}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
         </div>
 
-        <div className={!canEdit ? "opacity-60" : ""}>
+        <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample ETA
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
             <input
               type="date"
-              value={sampleETA}
-              onChange={(e) => handleFieldChange('sampleETA', e.target.value)}
-              disabled={!canEdit}
+              value={localETA}
+              onChange={(e) => handleETAChange(e.target.value)}
+              disabled={!canEditFeeETA}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
@@ -353,7 +390,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             Status
           </label>
           <select
-            value={sampleStatus}
+            value={localStatus}
             onChange={(e) => handleStatusChange(e.target.value)}
             disabled={!canEdit}
             className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
@@ -363,29 +400,25 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             <option value="ready">Ready</option>
             <option value="shipped">Shipped</option>
             <option value="delivered">Delivered</option>
-            <option value="approved">Approved</option>
+            <option value="sample_approved">Sample Approved</option>
             <option value="rejected">Rejected</option>
           </select>
         </div>
       </div>
 
-      {/* Notes Section */}
+      {/* Notes Section - CLEAN: Only for new notes */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
-          Sample Notes / Instructions
+          Add Note
+          {onViewHistory && (
+            <span className="text-gray-500 font-normal ml-2">(View previous notes in History)</span>
+          )}
         </label>
         
-        {sampleNotes && !tempNotes && (
-          <div className="mb-2 p-2 bg-amber-100 rounded text-xs text-amber-800 border border-amber-200">
-            <strong>Current notes:</strong>
-            <div className="whitespace-pre-wrap mt-1">{sampleNotes}</div>
-          </div>
-        )}
-        
         <textarea
-          value={tempNotes}
+          value={localNotes}
           onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder="Add notes about the sample request, special instructions, materials, colors, etc..."
+          placeholder="Add a note about the sample request..."
           rows={2}
           disabled={!canEdit}
           className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 font-medium placeholder-gray-500 disabled:bg-amber-50 focus:ring-1 focus:ring-amber-500"
@@ -462,7 +495,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                     <button
                       onClick={() => {
                         onFileRemove(index);
-                        if (sampleFiles.length === 1 && !tempNotes) {
+                        if (sampleFiles.length === 1 && !localNotes) {
                           setIsDirty(false);
                         }
                       }}

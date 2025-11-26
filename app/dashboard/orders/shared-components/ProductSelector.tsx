@@ -1,13 +1,15 @@
 /**
  * Product Selector Component
  * Grid display for selecting products with quantities
+ * UPDATED: Edit button moved to bottom next to "Tap to add to order"
  * Used in step 2 of order creation
  * Last Modified: November 2025
  */
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, X, Loader2 } from 'lucide-react';
+import { Trash2, Plus, X, Loader2, Edit2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { EditProductVariantsModal } from './EditProductVariantsModal';
 
 interface Product {
   id: string;
@@ -48,6 +50,9 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
   const [newVariantValues, setNewVariantValues] = useState<{ [key: string]: string[] }>({});
   const [saving, setSaving] = useState(false);
   const [savingVariant, setSavingVariant] = useState<string | null>(null);
+  
+  // Edit variants modal state
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   const getTotalProductsSelected = () => {
     return Object.values(selectedProducts).reduce((sum, qty) => sum + qty, 0);
@@ -138,14 +143,13 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
 
     setSavingVariant(variantTypeId);
     try {
-      const newOptions: any[] = []; // Fixed: explicitly typed as any[]
+      const newOptions: any[] = [];
       
       for (const value of values) {
-        // Fixed: using 'type_id' instead of 'variant_type_id'
         const { data: newOption, error } = await supabase
           .from('variant_options')
           .insert({
-            type_id: variantTypeId,  // Changed from variant_type_id
+            type_id: variantTypeId,
             value: value.trim()
           })
           .select()
@@ -242,6 +246,19 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
     }
   };
 
+  // Handle edit button click
+  const handleEditProduct = (e: React.MouseEvent, product: Product) => {
+    e.stopPropagation(); // Prevent triggering product click
+    setEditingProduct(product);
+  };
+
+  // Handle variants updated
+  const handleVariantsUpdated = () => {
+    if (onProductsRefresh) {
+      onProductsRefresh();
+    }
+  };
+
   // Check if there are unselected variants available
   const hasAvailableVariants = variantTypes.some(vt => !selectedVariants.find(v => v.variant_type_id === vt.id));
 
@@ -311,12 +328,25 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                   )}
                 </div>
 
+                {/* Bottom section - Edit button next to tap text */}
                 <div className="mt-3 pt-3 border-t border-gray-200">
                   {selectedProducts[product.id] > 0 ? (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-blue-600 font-medium">
-                        Tap to add more
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-600 font-medium">
+                          Tap to add more
+                        </span>
+                        {/* Edit button */}
+                        {product.variants && product.variants.length > 0 && (
+                          <button
+                            onClick={(e) => handleEditProduct(e, product)}
+                            className="p-1 hover:bg-blue-100 rounded transition-colors"
+                            title="Edit variants"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-blue-500 hover:text-blue-700" />
+                          </button>
+                        )}
+                      </div>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -330,9 +360,21 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <span className="text-xs text-gray-700">
-                      Tap to add to order
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-700">
+                        Tap to add to order
+                      </span>
+                      {/* Edit button */}
+                      {product.variants && product.variants.length > 0 && (
+                        <button
+                          onClick={(e) => handleEditProduct(e, product)}
+                          className="p-1 hover:bg-gray-100 rounded transition-colors"
+                          title="Edit variants"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-gray-400 hover:text-blue-600" />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -340,6 +382,17 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Edit Product Variants Modal */}
+      {editingProduct && (
+        <EditProductVariantsModal
+          isOpen={!!editingProduct}
+          onClose={() => setEditingProduct(null)}
+          product={editingProduct}
+          onVariantsUpdated={handleVariantsUpdated}
+          showNotification={showNotification}
+        />
+      )}
 
       {/* New Product Modal - PROPERLY TRANSPARENT WITH FROSTED BACKGROUND */}
       {showNewProductModal && (

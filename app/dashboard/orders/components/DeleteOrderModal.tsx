@@ -7,14 +7,14 @@
 
 import React from 'react';
 import { Shield } from 'lucide-react';
-import { TranslationStrings } from '../utils/orderListTranslations';
+import { Translations } from '../utils/orderListTranslations';
 
 interface DeleteOrderModalProps {
   isOpen: boolean;
   orderNumber: string;
   userRole: string | null;
   isDeleting: boolean;
-  translations: TranslationStrings;
+  translations: Translations;
   onConfirm: () => void;
   onCancel: () => void;
 }

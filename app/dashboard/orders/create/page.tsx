@@ -1,5 +1,6 @@
 /**
  * Create Order Page - FIXED VERSION
+ * UPDATED: Client selection uses autocomplete with keyboard navigation (arrow keys + enter)
  * FIXED: Order sample files now attach to first product so they show in detail page
  * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
  * Last Modified: November 2025
@@ -10,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Search, X, Check } from 'lucide-react'
 
 // Import all our new shared components
 import { StepIndicator } from '../shared-components/StepIndicator'
@@ -76,6 +77,14 @@ export default function CreateOrderPage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   
+  // Client autocomplete refs and state
+  const clientInputRef = useRef<HTMLInputElement>(null)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+  const [clientSearchQuery, setClientSearchQuery] = useState('')
+  const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const [filteredClients, setFilteredClients] = useState<Client[]>([])
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  
   // Notification state
   const [notification, setNotification] = useState<{
     show: boolean
@@ -100,6 +109,7 @@ export default function CreateOrderPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [selectedClient, setSelectedClient] = useState('')
+  const [selectedClientName, setSelectedClientName] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
   
   // Step 2: Products with quantities
@@ -116,6 +126,40 @@ export default function CreateOrderPage() {
   const [orderSampleStatus, setOrderSampleStatus] = useState('pending')
   const [orderSampleNotes, setOrderSampleNotes] = useState('')
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([])
+
+  // Click outside handler for client dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        clientDropdownRef.current && 
+        !clientDropdownRef.current.contains(event.target as Node) &&
+        clientInputRef.current &&
+        !clientInputRef.current.contains(event.target as Node)
+      ) {
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Filter clients based on search query
+  useEffect(() => {
+    if (clientSearchQuery.trim() === '') {
+      setFilteredClients(clients)
+    } else {
+      const query = clientSearchQuery.toLowerCase()
+      const filtered = clients.filter(client => 
+        client.name.toLowerCase().includes(query) ||
+        client.email.toLowerCase().includes(query)
+      )
+      setFilteredClients(filtered)
+    }
+    // Reset highlighted index when results change
+    setHighlightedIndex(-1)
+  }, [clientSearchQuery, clients])
 
   useEffect(() => {
     fetchInitialData()
@@ -153,6 +197,7 @@ export default function CreateOrderPage() {
         .order('title')
 
       setClients(clientsData || [])
+      setFilteredClients(clientsData || [])
       setManufacturers(manufacturersData || [])
       
       if (manufacturersData && manufacturersData.length === 1) {
@@ -194,6 +239,86 @@ export default function CreateOrderPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Client selection handlers
+  const handleClientSelect = (client: Client) => {
+    setSelectedClient(client.id)
+    setSelectedClientName(client.name)
+    setClientSearchQuery(client.name)
+    setShowClientDropdown(false)
+    setHighlightedIndex(-1)
+  }
+
+  const handleClientInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setClientSearchQuery(value)
+    setShowClientDropdown(true)
+    
+    // If user clears the input, clear the selection
+    if (value === '') {
+      setSelectedClient('')
+      setSelectedClientName('')
+    }
+  }
+
+  const handleClientInputFocus = () => {
+    setShowClientDropdown(true)
+  }
+
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showClientDropdown) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setShowClientDropdown(true)
+        return
+      }
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex(prev => {
+          const nextIndex = prev < filteredClients.length - 1 ? prev + 1 : prev
+          // Scroll into view
+          const element = document.getElementById(`client-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex(prev => {
+          const nextIndex = prev > 0 ? prev - 1 : 0
+          // Scroll into view
+          const element = document.getElementById(`client-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && highlightedIndex < filteredClients.length) {
+          handleClientSelect(filteredClients[highlightedIndex])
+        }
+        break
+      case 'Escape':
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+        break
+      case 'Tab':
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+        break
+    }
+  }
+
+  const clearClientSelection = () => {
+    setSelectedClient('')
+    setSelectedClientName('')
+    setClientSearchQuery('')
+    setShowClientDropdown(false)
+    setHighlightedIndex(-1)
+    clientInputRef.current?.focus()
   }
 
   const handleProductQuantityChange = (productId: string, quantity: number) => {
@@ -861,25 +986,85 @@ export default function CreateOrderPage() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Client Autocomplete */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Client *
               </label>
-              <select
-                value={selectedClient}
-                onChange={(e) => setSelectedClient(e.target.value)}
-                className={selectClassName}
-                required
-              >
-                <option value="">Choose a client...</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    ref={clientInputRef}
+                    type="text"
+                    value={clientSearchQuery}
+                    onChange={handleClientInputChange}
+                    onFocus={handleClientInputFocus}
+                    onKeyDown={handleClientKeyDown}
+                    placeholder="Type to search clients..."
+                    className={`${inputClassName} pl-9 pr-10`}
+                    autoComplete="off"
+                  />
+                  {selectedClient && (
+                    <button
+                      type="button"
+                      onClick={clearClientSelection}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                
+                {/* Dropdown - Fixed rounded corners */}
+                {showClientDropdown && (
+                  <div 
+                    ref={clientDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {filteredClients.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">
+                        No clients found
+                      </div>
+                    ) : (
+                      filteredClients.map((client, index) => (
+                        <button
+                          key={client.id}
+                          id={`client-option-${index}`}
+                          type="button"
+                          onClick={() => handleClientSelect(client)}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          className={`w-full px-4 py-3 text-left flex items-center justify-between transition-colors
+                            ${index === 0 ? 'rounded-t-lg' : ''}
+                            ${index === filteredClients.length - 1 ? 'rounded-b-lg' : ''}
+                            ${highlightedIndex === index ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                            ${selectedClient === client.id ? 'bg-blue-50' : ''}
+                          `}
+                        >
+                          <div>
+                            <div className="font-medium text-gray-900">{client.name}</div>
+                            <div className="text-sm text-gray-500">{client.email}</div>
+                          </div>
+                          {selectedClient === client.id && (
+                            <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Selected client indicator */}
+              {selectedClient && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                  <Check className="w-4 h-4" />
+                  <span>Selected: {selectedClientName}</span>
+                </div>
+              )}
             </div>
 
+            {/* Manufacturer - Keep as dropdown (auto-selects single option) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Manufacturer *

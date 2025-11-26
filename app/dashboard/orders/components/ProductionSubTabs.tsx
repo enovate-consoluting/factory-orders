@@ -1,20 +1,20 @@
 /**
- * Production Sub Tabs Component
- * Sub-navigation for production status (Approved, In Production, Shipped)
+ * Production Sub-Tabs Component
+ * Sub-navigation for production status filtering on Orders List page
  * Location: app/dashboard/orders/components/ProductionSubTabs.tsx
  * Last Modified: Nov 26 2025
  */
 
 import React from 'react';
-import { Award, Cog, PackageCheck } from 'lucide-react';
+import { CheckCircle, Wrench, Truck, Award } from 'lucide-react';
 import { ProductionSubTab, TabCounts } from '../types/orderList.types';
-import { TranslationStrings } from '../utils/orderListTranslations';
+import { Translations } from '../utils/orderListTranslations';
 
 interface ProductionSubTabsProps {
   activeSubTab: ProductionSubTab;
   tabCounts: TabCounts;
-  translations: TranslationStrings;
-  onSubTabChange: (subTab: ProductionSubTab) => void;
+  translations: Translations;
+  onSubTabChange: (tab: ProductionSubTab) => void;
 }
 
 export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
@@ -23,99 +23,87 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   translations: t,
   onSubTabChange
 }) => {
+  const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
+    {
+      key: 'sample_approved',
+      label: t.sampleApproved,
+      count: tabCounts.sample_approved,
+      icon: <Award className="w-4 h-4" />,
+      color: 'amber'
+    },
+    {
+      key: 'approved_for_production',
+      label: t.approvedForProd,
+      count: tabCounts.approved_for_production,
+      icon: <CheckCircle className="w-4 h-4" />,
+      color: 'green'
+    },
+    {
+      key: 'in_production',
+      label: t.inProduction,
+      count: tabCounts.in_production,
+      icon: <Wrench className="w-4 h-4" />,
+      color: 'blue'
+    },
+    {
+      key: 'shipped',
+      label: t.shipped,
+      count: tabCounts.shipped,
+      icon: <Truck className="w-4 h-4" />,
+      color: 'green'
+    }
+  ];
+
+  const getTabStyles = (tab: typeof subTabs[0], isActive: boolean) => {
+    if (isActive) {
+      switch (tab.color) {
+        case 'amber':
+          return 'bg-amber-100 text-amber-700 border-amber-300';
+        case 'green':
+          return 'bg-green-100 text-green-700 border-green-300';
+        case 'blue':
+          return 'bg-blue-100 text-blue-700 border-blue-300';
+        default:
+          return 'bg-gray-100 text-gray-700 border-gray-300';
+      }
+    }
+    return 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50';
+  };
+
+  const getBadgeStyles = (tab: typeof subTabs[0], isActive: boolean) => {
+    if (isActive) {
+      switch (tab.color) {
+        case 'amber':
+          return 'bg-amber-200 text-amber-800';
+        case 'green':
+          return 'bg-green-200 text-green-800';
+        case 'blue':
+          return 'bg-blue-200 text-blue-800';
+        default:
+          return 'bg-gray-200 text-gray-800';
+      }
+    }
+    return 'bg-gray-100 text-gray-600';
+  };
+
   return (
-    <div className="flex justify-center mb-3">
-      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-lg p-2 border border-indigo-200 inline-flex gap-4">
-        {/* Approved */}
-        <button
-          onClick={() => onSubTabChange('approved_for_production')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
-            activeSubTab === 'approved_for_production'
-              ? 'bg-white shadow-md border-2 border-green-500'
-              : 'bg-white/70 hover:bg-white border border-gray-200 hover:shadow'
-          }`}
-        >
-          <div className={`p-1 rounded-full ${
-            activeSubTab === 'approved_for_production' ? 'bg-green-100' : 'bg-gray-100'
-          }`}>
-            <Award className={`w-4 h-4 ${
-              activeSubTab === 'approved_for_production' ? 'text-green-600' : 'text-gray-600'
-            }`} />
-          </div>
-          <div className="flex flex-col items-start">
-            <span className={`text-xs font-medium ${
-              activeSubTab === 'approved_for_production' ? 'text-green-700' : 'text-gray-600'
-            }`}>
-              {t.approved}
+    <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
+      {subTabs.map((tab) => {
+        const isActive = activeSubTab === tab.key;
+        return (
+          <button
+            key={tab.key}
+            onClick={() => onSubTabChange(tab.key)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${getTabStyles(tab, isActive)}`}
+          >
+            {tab.icon}
+            <span className="font-medium text-sm">{tab.label}</span>
+            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getBadgeStyles(tab, isActive)}`}>
+              {tab.count}
             </span>
-            <span className={`text-sm font-bold ${
-              activeSubTab === 'approved_for_production' ? 'text-green-600' : 'text-gray-900'
-            }`}>
-              {tabCounts.approved_for_production}
-            </span>
-          </div>
-        </button>
-        
-        {/* In Production */}
-        <button
-          onClick={() => onSubTabChange('in_production')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
-            activeSubTab === 'in_production'
-              ? 'bg-white shadow-md border-2 border-blue-500'
-              : 'bg-white/70 hover:bg-white border border-gray-200 hover:shadow'
-          }`}
-        >
-          <div className={`p-1 rounded-full ${
-            activeSubTab === 'in_production' ? 'bg-blue-100' : 'bg-gray-100'
-          }`}>
-            <Cog className={`w-4 h-4 ${
-              activeSubTab === 'in_production' ? 'text-blue-600' : 'text-gray-600'
-            }`} />
-          </div>
-          <div className="flex flex-col items-start">
-            <span className={`text-xs font-medium ${
-              activeSubTab === 'in_production' ? 'text-blue-700' : 'text-gray-600'
-            }`}>
-              {t.production}
-            </span>
-            <span className={`text-sm font-bold ${
-              activeSubTab === 'in_production' ? 'text-blue-600' : 'text-gray-900'
-            }`}>
-              {tabCounts.in_production}
-            </span>
-          </div>
-        </button>
-        
-        {/* Shipped */}
-        <button
-          onClick={() => onSubTabChange('shipped')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
-            activeSubTab === 'shipped'
-              ? 'bg-white shadow-md border-2 border-emerald-500'
-              : 'bg-white/70 hover:bg-white border border-gray-200 hover:shadow'
-          }`}
-        >
-          <div className={`p-1 rounded-full ${
-            activeSubTab === 'shipped' ? 'bg-emerald-100' : 'bg-gray-100'
-          }`}>
-            <PackageCheck className={`w-4 h-4 ${
-              activeSubTab === 'shipped' ? 'text-emerald-600' : 'text-gray-600'
-            }`} />
-          </div>
-          <div className="flex flex-col items-start">
-            <span className={`text-xs font-medium ${
-              activeSubTab === 'shipped' ? 'text-emerald-700' : 'text-gray-600'
-            }`}>
-              {t.shipped}
-            </span>
-            <span className={`text-sm font-bold ${
-              activeSubTab === 'shipped' ? 'text-emerald-600' : 'text-gray-900'
-            }`}>
-              {tabCounts.shipped}
-            </span>
-          </div>
-        </button>
-      </div>
+          </button>
+        );
+      })}
     </div>
   );
 };

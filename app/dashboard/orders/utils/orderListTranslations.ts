@@ -1,293 +1,261 @@
 /**
  * Order List Translations
- * English and Chinese translations for Orders Listing page
+ * Bilingual (EN/ZH) translations for Orders Listing page
  * Location: app/dashboard/orders/utils/orderListTranslations.ts
  * Last Modified: Nov 26 2025
  */
 
 export type Language = 'en' | 'zh';
 
-export interface TranslationStrings {
-  // Header
+export interface Translations {
+  // Page titles
   orders: string;
   yourOrders: string;
   newOrder: string;
   
   // Tabs
   myOrders: string;
-  invoiceApproval: string;
-  sentToAdmin: string;
   sentToManufacturer: string;
+  sentToAdmin: string;
   productionStatus: string;
-  approvedForProduction: string;
+  invoiceApproval: string;
+  
+  // Production sub-tabs
+  sampleApproved: string;
+  approvedForProd: string;
   inProduction: string;
   shipped: string;
   
-  // Production sub-tabs
-  approved: string;
-  production: string;
-  
-  // Table Headers
+  // Table headers
   order: string;
-  orderNumber: string;
-  clientMfr: string;
   client: string;
-  manufacturer: string;
+  clientMfr: string;
   products: string;
-  productsWithFees: string;
   clientTotal: string;
-  totalFees: string;
   created: string;
-  orderCreated: string;
-  invoiceReady: string;
   actions: string;
-  fees: string;
   
-  // Order Details
-  untitledOrder: string;
-  product: string;
+  // Status labels
   withAdmin: string;
-  withClient: string;
   withManufacturer: string;
   needAction: string;
+  productsWithFees: string;
+  approved: string;
+  production: string;
   completed: string;
-  reviewInvoice: string;
-  createInvoice: string;
-  viewOrder: string;
-  sampleFee: string;
-  unitPrice: string;
-  shipping: string;
-  shippingNotSet: string;
-  withShipping: string;
-  noShipping: string;
-  qty: string;
-  daysAgo: string;
-  dayAgo: string;
-  
-  // Search
-  searchPlaceholder: string;
-  noOrders: string;
-  noOrdersMessage: string;
-  noInvoicesMessage: string;
-  noProductionOrders: string;
-  tryAdjustingSearch: string;
-  getStarted: string;
   
   // Actions
-  showPrices: string;
-  hidePrices: string;
-  viewDetails: string;
   editOrder: string;
+  viewDetails: string;
   deleteOrder: string;
   
-  // Delete Modal
+  // Delete modal
   confirmDelete: string;
+  deleteWarning: string;
+  superAdminWarning: string;
   superAdminOverride: string;
   areYouSure: string;
   permanentDelete: string;
   cancel: string;
   deleting: string;
   
-  // Status
-  draft: string;
-  newOrderStatus: string;
-  awaitingPrice: string;
-  priced: string;
-  readyToProduce: string;
+  // Empty states
+  noOrders: string;
+  noOrdersMessage: string;
+  noProductionOrders: string;
+  tryAdjustingSearch: string;
+  getStarted: string;
   
-  // Language Toggle
+  // Search
+  searchPlaceholder: string;
+  
+  // Price toggle
+  showPrices: string;
+  hidePrices: string;
+  
+  // Misc
+  untitledOrder: string;
+  product: string;
+  
+  // Language toggle
   switchToChinese: string;
+  
+  // Invoice Approval View
+  pendingApproval: string;
+  readyForProduction: string;
+  fees: string;
+  shipping: string;
+  productPrice: string;
+  sampleFee: string;
+  air: string;
+  boat: string;
 }
 
-export const translations: Record<Language, TranslationStrings> = {
+export const translations: Record<Language, Translations> = {
   en: {
-    // Header
-    orders: "Orders",
-    yourOrders: "Your Orders",
-    newOrder: "New Order",
+    // Page titles
+    orders: 'Orders',
+    yourOrders: 'Your Orders',
+    newOrder: 'New Order',
     
     // Tabs
-    myOrders: "My Orders",
-    invoiceApproval: "Invoice Approval",
-    sentToAdmin: "Sent to Admin",
-    sentToManufacturer: "Sent to Manufacturer",
-    productionStatus: "Production Status",
-    approvedForProduction: "Approved for Production",
-    inProduction: "In Production",
-    shipped: "Shipped",
+    myOrders: 'My Orders',
+    sentToManufacturer: 'Sent to Manufacturer',
+    sentToAdmin: 'Sent to Admin',
+    productionStatus: 'Production',
+    invoiceApproval: 'Invoice Approval',
     
     // Production sub-tabs
-    approved: "Approved",
-    production: "Production",
+    sampleApproved: 'Sample Approved',
+    approvedForProd: 'Approved for Prod',
+    inProduction: 'In Production',
+    shipped: 'Shipped',
     
-    // Table Headers
-    order: "Order",
-    orderNumber: "Order Number",
-    clientMfr: "Client/Mfr",
-    client: "Client",
-    manufacturer: "Manufacturer",
-    products: "Products",
-    productsWithFees: "Products with Fees",
-    clientTotal: "Client Total",
-    totalFees: "Total Fees",
-    created: "Created",
-    orderCreated: "Order Created",
-    invoiceReady: "Invoice Ready",
-    actions: "Actions",
-    fees: "Fees",
+    // Table headers
+    order: 'Order',
+    client: 'Client',
+    clientMfr: 'Client / Manufacturer',
+    products: 'Products',
+    clientTotal: 'Client Total',
+    created: 'Created',
+    actions: 'Actions',
     
-    // Order Details
-    untitledOrder: "Untitled Order",
-    product: "Product",
-    withAdmin: "With Admin",
-    withClient: "With Client",
-    withManufacturer: "With Manufacturer",
-    needAction: "Need Action",
-    completed: "Completed",
-    reviewInvoice: "Review Invoice",
-    createInvoice: "Create Invoice",
-    viewOrder: "View Order",
-    sampleFee: "Sample Fee",
-    unitPrice: "Unit Price",
-    shipping: "Shipping",
-    shippingNotSet: "No Shipping Selected",
-    withShipping: "w/ shipping",
-    noShipping: "no shipping",
-    qty: "Qty",
-    daysAgo: "days ago",
-    dayAgo: "day ago",
-    
-    // Search
-    searchPlaceholder: "Search orders, clients, or manufacturers...",
-    noOrders: "No orders",
-    noOrdersMessage: "No orders need your action right now",
-    noInvoicesMessage: "No orders with fees awaiting invoice approval",
-    noProductionOrders: "No orders in this production stage",
-    tryAdjustingSearch: "Try adjusting your search",
-    getStarted: "Get started by creating a new order",
+    // Status labels
+    withAdmin: 'with Admin',
+    withManufacturer: 'with Manufacturer',
+    needAction: 'need action',
+    productsWithFees: 'products with fees',
+    approved: 'Approved',
+    production: 'In Production',
+    completed: 'Completed',
     
     // Actions
-    showPrices: "Show Prices",
-    hidePrices: "Hide Prices",
-    viewDetails: "View Details",
-    editOrder: "Edit Order",
-    deleteOrder: "Delete Order",
+    editOrder: 'Edit Order',
+    viewDetails: 'View Details',
+    deleteOrder: 'Delete Order',
     
-    // Delete Modal
-    confirmDelete: "Confirm Delete",
-    superAdminOverride: "Super Admin Override",
-    areYouSure: "Are you sure you want to delete order",
-    permanentDelete: "This will permanently delete the order and all associated products, variants, and media files.",
-    cancel: "Cancel",
-    deleting: "Deleting...",
+    // Delete modal
+    confirmDelete: 'Confirm Delete',
+    deleteWarning: 'Are you sure you want to delete order',
+    superAdminWarning: 'Super Admin: This will permanently delete this order and all associated data.',
+    superAdminOverride: 'Super Admin Override',
+    areYouSure: 'Are you sure you want to delete order',
+    permanentDelete: 'This action cannot be undone.',
+    cancel: 'Cancel',
+    deleting: 'Deleting...',
     
-    // Status
-    draft: "Draft",
-    newOrderStatus: "New Order",
-    awaitingPrice: "Awaiting Price",
-    priced: "Priced",
-    readyToProduce: "Ready to Produce",
+    // Empty states
+    noOrders: 'No orders found',
+    noOrdersMessage: 'No orders need your attention right now.',
+    noProductionOrders: 'No orders in this production stage.',
+    tryAdjustingSearch: 'Try adjusting your search criteria.',
+    getStarted: 'Get started by creating a new order.',
     
-    // Language Toggle
-    switchToChinese: "中文"
+    // Search
+    searchPlaceholder: 'Search orders...',
+    
+    // Price toggle
+    showPrices: 'Show Prices',
+    hidePrices: 'Hide Prices',
+    
+    // Misc
+    untitledOrder: 'Untitled Order',
+    product: 'product',
+    
+    // Language toggle
+    switchToChinese: '中文',
+    
+    // Invoice Approval View
+    pendingApproval: 'Pending Approval',
+    readyForProduction: 'Ready for Production',
+    fees: 'Fees',
+    shipping: 'Shipping',
+    productPrice: 'Product Price',
+    sampleFee: 'Sample Fee',
+    air: 'Air',
+    boat: 'Boat',
   },
-  
   zh: {
-    // Header
-    orders: "订单",
-    yourOrders: "您的订单",
-    newOrder: "新建订单",
+    // Page titles
+    orders: '订单',
+    yourOrders: '您的订单',
+    newOrder: '新订单',
     
     // Tabs
-    myOrders: "我的订单",
-    invoiceApproval: "发票审批",
-    sentToAdmin: "发送给管理员",
-    sentToManufacturer: "发送给制造商",
-    productionStatus: "生产状态",
-    approvedForProduction: "已批准生产",
-    inProduction: "生产中",
-    shipped: "已发货",
+    myOrders: '我的订单',
+    sentToManufacturer: '已发送给制造商',
+    sentToAdmin: '已发送给管理员',
+    productionStatus: '生产状态',
+    invoiceApproval: '发票审批',
     
     // Production sub-tabs
-    approved: "已批准",
-    production: "生产中",
+    sampleApproved: '样品已批准',
+    approvedForProd: '已批准生产',
+    inProduction: '生产中',
+    shipped: '已发货',
     
-    // Table Headers
-    order: "订单",
-    orderNumber: "订单号",
-    clientMfr: "客户/制造商",
-    client: "客户",
-    manufacturer: "制造商",
-    products: "产品",
-    productsWithFees: "带费用的产品",
-    clientTotal: "客户总额",
-    totalFees: "总费用",
-    created: "创建时间",
-    orderCreated: "订单创建",
-    invoiceReady: "可开票时间",
-    actions: "操作",
-    fees: "费用",
+    // Table headers
+    order: '订单',
+    client: '客户',
+    clientMfr: '客户 / 制造商',
+    products: '产品',
+    clientTotal: '客户总计',
+    created: '创建日期',
+    actions: '操作',
     
-    // Order Details
-    untitledOrder: "未命名订单",
-    product: "产品",
-    withAdmin: "管理员处理中",
-    withClient: "客户处理中",
-    withManufacturer: "制造商处理中",
-    needAction: "需要处理",
-    completed: "已完成",
-    reviewInvoice: "查看发票",
-    createInvoice: "创建发票",
-    viewOrder: "查看订单",
-    sampleFee: "样品费",
-    unitPrice: "单价",
-    shipping: "运费",
-    shippingNotSet: "未选择运输",
-    withShipping: "含运费",
-    noShipping: "无运费",
-    qty: "数量",
-    daysAgo: "天前",
-    dayAgo: "天前",
-    
-    // Search
-    searchPlaceholder: "搜索订单、客户或制造商...",
-    noOrders: "没有订单",
-    noOrdersMessage: "目前没有需要您处理的订单",
-    noInvoicesMessage: "没有等待发票审批的订单",
-    noProductionOrders: "此生产阶段没有订单",
-    tryAdjustingSearch: "请尝试调整搜索条件",
-    getStarted: "创建新订单开始",
+    // Status labels
+    withAdmin: '在管理员处',
+    withManufacturer: '在制造商处',
+    needAction: '需要处理',
+    productsWithFees: '有费用的产品',
+    approved: '已批准',
+    production: '生产中',
+    completed: '已完成',
     
     // Actions
-    showPrices: "显示价格",
-    hidePrices: "隐藏价格",
-    viewDetails: "查看详情",
-    editOrder: "编辑订单",
-    deleteOrder: "删除订单",
+    editOrder: '编辑订单',
+    viewDetails: '查看详情',
+    deleteOrder: '删除订单',
     
-    // Delete Modal
-    confirmDelete: "确认删除",
-    superAdminOverride: "超级管理员权限",
-    areYouSure: "您确定要删除订单",
-    permanentDelete: "这将永久删除订单及所有相关产品、变体和媒体文件。",
-    cancel: "取消",
-    deleting: "删除中...",
+    // Delete modal
+    confirmDelete: '确认删除',
+    deleteWarning: '您确定要删除订单吗',
+    superAdminWarning: '超级管理员：这将永久删除此订单及所有相关数据。',
+    superAdminOverride: '超级管理员覆盖',
+    areYouSure: '您确定要删除订单',
+    permanentDelete: '此操作无法撤消。',
+    cancel: '取消',
+    deleting: '删除中...',
     
-    // Status
-    draft: "草稿",
-    newOrderStatus: "新订单",
-    awaitingPrice: "等待报价",
-    priced: "已报价",
-    readyToProduce: "准备生产",
+    // Empty states
+    noOrders: '未找到订单',
+    noOrdersMessage: '目前没有需要您处理的订单。',
+    noProductionOrders: '此生产阶段没有订单。',
+    tryAdjustingSearch: '请尝试调整搜索条件。',
+    getStarted: '开始创建新订单。',
     
-    // Language Toggle
-    switchToChinese: "English"
+    // Search
+    searchPlaceholder: '搜索订单...',
+    
+    // Price toggle
+    showPrices: '显示价格',
+    hidePrices: '隐藏价格',
+    
+    // Misc
+    untitledOrder: '未命名订单',
+    product: '产品',
+    
+    // Language toggle
+    switchToChinese: 'English',
+    
+    // Invoice Approval View
+    pendingApproval: '待审批',
+    readyForProduction: '准备生产',
+    fees: '费用',
+    shipping: '运费',
+    productPrice: '产品价格',
+    sampleFee: '样品费',
+    air: '空运',
+    boat: '海运',
   }
-};
-
-/**
- * Get translations for a specific language
- */
-export const getTranslations = (language: Language): TranslationStrings => {
-  return translations[language];
 };

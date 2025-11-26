@@ -13,6 +13,7 @@ export interface OrderProduct {
   routed_to: string;
   routed_at?: string;
   sample_fee?: number;
+  sample_status?: string;
   client_product_price?: number;
   product_price?: number;
   client_shipping_air_price?: number;
@@ -35,6 +36,11 @@ export interface Order {
   status: string;
   workflow_status: string;
   created_at: string;
+  // Sample request fields (order-level routing)
+  sample_routed_to?: string;
+  sample_required?: boolean;
+  sample_workflow_status?: string;
+  sample_status?: string;  // The actual sample status (pending, sample_approved, etc.)
   client?: {
     id: string;
     name: string;
@@ -50,12 +56,13 @@ export interface Order {
 
 export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status';
 
-export type ProductionSubTab = 'approved_for_production' | 'in_production' | 'shipped';
+export type ProductionSubTab = 'sample_approved' | 'approved_for_production' | 'in_production' | 'shipped';
 
 export interface TabCounts {
   my_orders: number;
   invoice_approval: number;
   sent_to_other: number;
+  sample_approved: number;
   approved_for_production: number;
   in_production: number;
   shipped: number;

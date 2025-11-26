@@ -1,9 +1,7 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
- * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
- * UPDATED: Added independent sample routing (Nov 2025)
- * CLEANUP: Extracted handlePrintAll to utils/printManufacturingSheet.ts (Nov 26 2025)
+ * FIXED: Sample data now saves correctly via direct data passing
+ * FIXED: Notes go to audit log, not accumulated in sample_notes
  * Last Modified: Nov 26 2025
  */
 
@@ -50,7 +48,6 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
     let productPrice = 0;
     let shippingPrice = 0;
     
-    // Admin, Super Admin, and Client ALWAYS see CLIENT prices
     if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
       productPrice = parseFloat(product.client_product_price || 0);
       
@@ -76,6 +73,14 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
   return total;
 };
 
+// Interface for sample save data (matches OrderSampleRequest)
+interface SampleSaveData {
+  fee: string;
+  eta: string;
+  status: string;
+  notes: string;
+}
+
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
@@ -96,7 +101,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // State for individual product selection
   const [selectedProductId, setSelectedProductId] = useState<string>('all');
   
-  // Order-level sample state
+  // Order-level sample state (for display, not for saving)
   const [orderSampleFee, setOrderSampleFee] = useState('');
   const [orderSampleETA, setOrderSampleETA] = useState('');
   const [orderSampleStatus, setOrderSampleStatus] = useState('pending');
@@ -194,13 +199,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [router, userRole, id]);
 
-  // Load order-level sample data
+  // Load order-level sample data for display
   useEffect(() => {
     if (order) {
       setOrderSampleFee(order.sample_fee?.toString() || '');
       setOrderSampleETA(order.sample_eta || '');
       setOrderSampleStatus(order.sample_status || 'pending');
-      setOrderSampleNotes(order.sample_notes || '');
+      // Don't load notes into field - they show in history only
+      setOrderSampleNotes('');
     }
   }, [order]);
 
@@ -209,17 +215,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const markOrderNotificationsAsRead = async () => {
       if (userRole === 'manufacturer' && manufacturerId && id) {
         try {
-          const { data, error } = await supabase
+          await supabase
             .from('manufacturer_notifications')
             .update({ is_read: true })
             .eq('manufacturer_id', manufacturerId)
             .eq('order_id', id)
-            .eq('is_read', false)
-            .select();
-
-          if (error) {
-            console.error('Error marking notifications as read:', error);
-          }
+            .eq('is_read', false);
         } catch (err) {
           console.error('Error in markOrderNotificationsAsRead:', err);
         }
@@ -311,7 +312,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  // Handler for order-level sample update
+  // Handler for order-level sample update (for parent state sync)
   const handleOrderSampleUpdate = (field: string, value: any) => {
     switch (field) {
       case 'sampleFee':
@@ -322,6 +323,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         break;
       case 'sampleStatus':
         setOrderSampleStatus(value);
+        break;
+      case 'sampleWorkflowStatus':
+        // handled by routing hook
         break;
       case 'sampleNotes':
         setOrderSampleNotes(value);
@@ -387,23 +391,70 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // Save order sample data
-  const saveOrderSampleData = async () => {
+  // FIXED: Save order sample data - receives data directly from component
+  const saveOrderSampleData = async (data: SampleSaveData) => {
     if (!order) return;
     
     setSavingOrderSample(true);
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const roleName = userRole === 'super_admin' ? 'Admin' : 
+                      userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
       
+      // Build change list for audit log
+      const changes: string[] = [];
+      
+      // Check fee change
+      const newFee = data.fee ? parseFloat(data.fee) : null;
+      const oldFee = order.sample_fee;
+      if (newFee !== oldFee) {
+        if (oldFee && newFee) {
+          changes.push(`Fee: $${oldFee} → $${newFee}`);
+        } else if (newFee) {
+          changes.push(`Fee set to $${newFee}`);
+        } else if (oldFee) {
+          changes.push(`Fee removed (was $${oldFee})`);
+        }
+      }
+      
+      // Check ETA change
+      const oldEta = order.sample_eta || '';
+      if (data.eta !== oldEta) {
+        if (oldEta && data.eta) {
+          changes.push(`ETA: ${oldEta} → ${data.eta}`);
+        } else if (data.eta) {
+          changes.push(`ETA set to ${data.eta}`);
+        } else if (oldEta) {
+          changes.push(`ETA removed`);
+        }
+      }
+      
+      // Check status change
+      const oldStatus = order.sample_status || 'pending';
+      if (data.status !== oldStatus) {
+        changes.push(`Status: ${oldStatus} → ${data.status}`);
+      }
+      
+      // If there's a note, add it
+      if (data.notes && data.notes.trim()) {
+        changes.push(`Note from ${roleName}: "${data.notes.trim()}"`);
+      }
+      
+      // If there are files to upload
+      if (orderSampleFiles.length > 0) {
+        changes.push(`${orderSampleFiles.length} file(s) uploaded`);
+      }
+      
+      // Update database - DO NOT save notes to sample_notes (goes to audit only)
       const updateData: any = {
         sample_required: true,
-        sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
-        sample_eta: orderSampleETA || null,
-        sample_status: orderSampleStatus || 'pending',
-        sample_notes: orderSampleNotes || null
+        sample_fee: newFee,
+        sample_eta: data.eta || null,
+        sample_status: data.status || 'pending',
+        sample_workflow_status: data.status || 'pending'
       };
       
-      console.log('Saving order sample data:', updateData);
+      console.log('Saving sample data:', updateData);
       
       const { error: updateError } = await supabase
         .from('orders')
@@ -453,13 +504,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
+      // Create audit log entry if there were any changes
+      if (changes.length > 0) {
+        await supabase.from('audit_log').insert({
+          user_id: user.id || crypto.randomUUID(),
+          user_name: user.name || user.email || 'Unknown User',
+          action_type: 'order_sample_updated',
+          target_type: 'order',
+          target_id: order.id,
+          new_value: changes.join(' | '),
+          timestamp: new Date().toISOString()
+        });
+      }
+      
       setOrderSampleFiles([]);
       await refetch();
-      setSavingOrderSample(false);
       
     } catch (error) {
       console.error('Error saving order sample data:', error);
       alert('Error saving sample data. Please try again.');
+    } finally {
       setSavingOrderSample(false);
     }
   };
@@ -562,15 +626,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.log('=== STARTING SAVE ALL & ROUTE ===');
       console.log(`Processing ${visibleProducts.length} products`);
       
-      // STEP 1: Save order-level sample data
-      if (isManufacturer && (orderSampleFee || orderSampleETA || orderSampleNotes)) {
+      // STEP 1: Save order-level sample data if manufacturer made changes
+      if (isManufacturer && (orderSampleFee || orderSampleETA)) {
         console.log('Step 1: Saving order-level sample data...');
         const updateData: any = {
           sample_required: true,
           sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
           sample_eta: orderSampleETA || null,
           sample_status: orderSampleStatus || 'pending',
-          sample_notes: orderSampleNotes || null
+          sample_workflow_status: orderSampleStatus || 'pending'
         };
         
         await supabase
@@ -623,12 +687,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               break;
           }
           
+          // Add routing note to audit log only (not to product notes)
           if (notes) {
-            const timestamp = new Date().toLocaleDateString();
-            const existing = product.manufacturer_notes || '';
-            productUpdate.manufacturer_notes = existing 
-              ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
-              : `[${timestamp} - Manufacturer] ${notes}`;
+            await supabase.from('audit_log').insert({
+              user_id: user.id || crypto.randomUUID(),
+              user_name: user.name || user.email || 'Manufacturer',
+              action_type: 'product_routed_' + selectedRoute,
+              target_type: 'order_product',
+              target_id: product.id,
+              new_value: `Route note: ${notes}`,
+              timestamp: new Date().toISOString()
+            });
           }
           
           if (Object.keys(productUpdate).length > 0) {
@@ -667,12 +736,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               break;
           }
           
+          // Add routing note to audit log only
           if (notes) {
-            const timestamp = new Date().toLocaleDateString();
-            const existing = product.manufacturer_notes || '';
-            productUpdate.manufacturer_notes = existing 
-              ? `${existing}\n\n[${timestamp} - Admin] ${notes}`
-              : `[${timestamp} - Admin] ${notes}`;
+            await supabase.from('audit_log').insert({
+              user_id: user.id || crypto.randomUUID(),
+              user_name: user.name || user.email || 'Admin',
+              action_type: 'product_routed_' + selectedRoute,
+              target_type: 'order_product',
+              target_id: product.id,
+              new_value: `Route note: ${notes}`,
+              timestamp: new Date().toISOString()
+            });
           }
           
           await supabase
@@ -700,7 +774,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // Print handler - now uses extracted utility
+  // Print handler
   const handlePrintAll = () => {
     const visibleProducts = getVisibleProducts();
     printManufacturingSheets(visibleProducts, order);
@@ -790,7 +864,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const visibleProducts = getVisibleProducts();
   const clientProducts = getClientProducts();
 
-  // Find sample files from both places
+  // Find sample files
   const existingSampleMedia = (() => {
     const samples: any[] = [];
     
@@ -820,12 +894,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   })();
 
   // ========================================
-  // CLIENT VIEW - Simplified, read-only
+  // CLIENT VIEW
   // ========================================
   if (isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
-        {/* Client Header */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -901,7 +974,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   // ========================================
-  // ADMIN/MANUFACTURER VIEW - Full functionality
+  // ADMIN/MANUFACTURER VIEW
   // ========================================
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
@@ -915,10 +988,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
-        {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
+        {/* Client & Manufacturer Info Cards */}
         {userRole !== 'manufacturer' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            {/* Client Card with Edit Button */}
+            {/* Client Card */}
             <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
@@ -1200,7 +1273,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
       
-      {/* Route Modal for individual products */}
+      {/* Modals */}
       <RouteModal
         isOpen={routeModal.isOpen}
         onClose={() => setRouteModal({ isOpen: false, product: null })}
@@ -1209,7 +1282,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* Save All Route Modal */}
       <SaveAllRouteModal
         isOpen={saveAllRouteModal.isOpen}
         isSaving={saveAllRouteModal.isSaving}
@@ -1219,7 +1291,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* History Modal */}
       <HistoryModal
         isOpen={historyModal.isOpen}
         onClose={() => setHistoryModal({ isOpen: false, productId: '', productName: '' })}

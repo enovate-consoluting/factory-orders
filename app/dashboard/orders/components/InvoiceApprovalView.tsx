@@ -23,12 +23,12 @@ import {
 } from '../utils/orderListCalculations';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 import { Order, OrderProduct } from '../types/orderList.types';
-import { TranslationStrings } from '../utils/orderListTranslations';
+import { Translations } from '../utils/orderListTranslations';
 
 interface InvoiceApprovalViewProps {
   filteredOrders: Order[];
   expandedOrders: Set<string>;
-  translations: TranslationStrings;
+  translations: Translations;
   userRole: string | null;
   onToggleExpansion: (orderId: string) => void;
   onNavigateToOrder: (orderId: string) => void;
@@ -48,7 +48,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
       return (
         <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded flex items-center gap-1">
           <Users className="w-3 h-3" />
-          {t.withClient}
+          With Client
         </span>
       );
     }
@@ -70,7 +70,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-300" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">{t.noOrders}</h3>
-          <p className="mt-1 text-sm text-gray-500">{t.noInvoicesMessage}</p>
+          <p className="mt-1 text-sm text-gray-500">No orders ready for invoicing.</p>
         </div>
       ) : (
         <div className="divide-y divide-gray-200">
@@ -123,12 +123,12 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                             <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                {t.orderCreated}: {new Date(order.created_at).toLocaleDateString()}
+                                Created: {new Date(order.created_at).toLocaleDateString()}
                               </span>
                               {earliestDate && (
                                 <span className="flex items-center gap-1 text-amber-600 font-medium">
                                   <Clock className="w-3 h-3" />
-                                  {t.invoiceReady}: {daysWaiting} {daysWaiting === 1 ? t.dayAgo : t.daysAgo}
+                                  Invoice Ready: {daysWaiting} {daysWaiting === 1 ? 'day ago' : 'days ago'}
                                 </span>
                               )}
                               <span className="font-semibold text-gray-900">
@@ -143,17 +143,17 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                               target="_blank"
                               onClick={(e) => e.stopPropagation()}
                               className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
-                              title={t.createInvoice}
+                              title="Create Invoice"
                             >
                               <FileText className="w-3.5 h-3.5" />
-                              {t.createInvoice}
+                              Create Invoice
                             </Link>
                             <Link
                               href={`/dashboard/orders/${order.id}`}
                               target="_blank"
                               onClick={(e) => e.stopPropagation()}
                               className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                              title={t.viewOrder}
+                              title="View Order"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </Link>
@@ -192,7 +192,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
-                                  <span>{t.qty}: {totalQty}</span>
+                                  <span>Qty: {totalQty}</span>
                                   {(product.client_product_price || 0) > 0 && (
                                     <span>${formatCurrency(product.client_product_price || 0)}/unit</span>
                                   )}
@@ -217,7 +217,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                   )}
                                   {daysReady > 0 && (
                                     <span className="text-amber-600 font-medium">
-                                      {daysReady} {t.daysAgo}
+                                      {daysReady} days ago
                                     </span>
                                   )}
                                 </div>
@@ -233,7 +233,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                   <div className="flex items-center gap-1 mt-0.5">
                                     <AlertTriangle className="w-3 h-3 text-amber-500" />
                                     <span className="text-xs text-amber-600 font-medium">
-                                      {t.shippingNotSet}
+                                      Shipping not set
                                     </span>
                                   </div>
                                 )}

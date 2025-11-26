@@ -8,13 +8,13 @@
 import React from 'react';
 import { Inbox, FileText, SendHorizontal, Layers } from 'lucide-react';
 import { TabType, TabCounts } from '../types/orderList.types';
-import { TranslationStrings } from '../utils/orderListTranslations';
+import { Translations } from '../utils/orderListTranslations';
 
 interface OrderListTabsProps {
   activeTab: TabType;
   tabCounts: TabCounts;
   userRole: string | null;
-  translations: TranslationStrings;
+  translations: Translations;
   onTabChange: (tab: TabType) => void;
   onProductionTabClick: () => void;
 }
