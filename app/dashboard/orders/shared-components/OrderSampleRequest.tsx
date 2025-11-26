@@ -2,7 +2,8 @@
  * Order Sample Request Component - UPGRADED WITH ROUTING
  * Order-level sample request with independent routing workflow
  * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
- * Last Modified: Nov 2025
+ * FIX: Now syncs sample_workflow_status when sampleStatus changes
+ * Last Modified: Nov 26 2025
  */
 
 import React, { useState, useEffect } from 'react';
@@ -105,6 +106,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     setIsDirty(true);
   };
 
+  // FIX: Handle status change and sync workflow status
+  const handleStatusChange = (newStatus: string) => {
+    // Update the sample status
+    handleFieldChange('sampleStatus', newStatus);
+    // Keep workflow status in sync with sample status
+    onUpdate('sampleWorkflowStatus', newStatus);
+  };
+
   const handleSave = async () => {
     if (onSave) {
       await onSave();
@@ -179,7 +188,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       client_rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Client Rejected' },
       in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'In Production' },
       shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
-      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' }
+      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' },
+      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Ready' },
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Approved' },
+      rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' }
     };
     
     const status = statuses[sampleWorkflowStatus] || statuses.pending;
@@ -341,7 +353,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           </label>
           <select
             value={sampleStatus}
-            onChange={(e) => handleFieldChange('sampleStatus', e.target.value)}
+            onChange={(e) => handleStatusChange(e.target.value)}
             disabled={!canEdit}
             className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
           >
