@@ -470,7 +470,7 @@ export default function ClientOrdersPage() {
 
                         {/* View Link */}
                         <a
-                          href={`/dashboard/orders/${order.id}`}
+                          href={`/dashboard/orders/client/${order.id}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
@@ -595,7 +595,7 @@ export default function ClientOrdersPage() {
 
                           {/* View Full Order Button */}
                           <a
-                            href={`/dashboard/orders/${order.id}`}
+                            href={`/dashboard/orders/client/${order.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="block w-full py-2.5 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors text-center"
