@@ -70,6 +70,7 @@ export default function DashboardLayout({
   });
   const [notifications, setNotifications] = useState<any[]>([]);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -82,15 +83,18 @@ export default function DashboardLayout({
 
     try {
       const parsedUser = JSON.parse(userData);
-      console.log('Logged in user:', parsedUser); // DEBUG
+      console.log('Logged in user:', parsedUser);
       setUser(parsedUser);
 
       // Load notifications based on role
       if (parsedUser.role === 'manufacturer') {
-        console.log('User is manufacturer, loading manufacturer data...'); // DEBUG
+        console.log('User is manufacturer, loading manufacturer data...');
         loadManufacturerData(parsedUser).then((cleanupFn) => {
           cleanup = cleanupFn;
         });
+      } else if (parsedUser.role === 'client') {
+        console.log('User is client, loading client data...');
+        loadClientData(parsedUser);
       } else if (parsedUser.id) {
         loadNotificationCounts(parsedUser.id);
         cleanup = subscribeToNotifications(parsedUser.id);
@@ -109,10 +113,84 @@ export default function DashboardLayout({
     };
   }, [router]);
 
+  // Load client specific data
+  const loadClientData = async (user: User) => {
+    try {
+      console.log('Loading client data for email:', user.email);
+
+      // Get client ID from clients table using email
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, name, email')
+        .eq('email', user.email)
+        .single();
+
+      console.log('Client query result:', client, 'Error:', clientError);
+
+      if (!client) {
+        console.error('No client found for email:', user.email);
+        return;
+      }
+
+      console.log('Found client ID:', client.id);
+      setClientId(client.id);
+
+      // Load client notifications (pending products count)
+      await loadClientNotifications(client.id);
+    } catch (error) {
+      console.error('Error loading client data:', error);
+    }
+  };
+
+  const loadClientNotifications = async (clientId: string) => {
+    try {
+      console.log('Loading notifications for client ID:', clientId);
+      
+      // Get orders for this client
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_products(
+            id,
+            product_status,
+            routed_to
+          )
+        `)
+        .eq('client_id', clientId);
+
+      if (error) {
+        console.error('Error loading client orders:', error);
+        return;
+      }
+
+      // Count pending products
+      let pendingCount = 0;
+      orders?.forEach(order => {
+        const clientProducts = order.order_products?.filter((p: any) => 
+          p.routed_to === 'client' && p.product_status === 'pending_client_approval'
+        ) || [];
+        pendingCount += clientProducts.length;
+      });
+
+      console.log('Client pending products count:', pendingCount);
+
+      setNotificationCounts({
+        orders: pendingCount,
+        products: 0,
+        total: pendingCount,
+        samples: 0,
+        production: 0
+      });
+    } catch (error) {
+      console.error('Error loading client notifications:', error);
+    }
+  };
+
   // Load manufacturer specific data
   const loadManufacturerData = async (user: User) => {
     try {
-      console.log('Loading manufacturer data for email:', user.email); // DEBUG
+      console.log('Loading manufacturer data for email:', user.email);
 
       // Get manufacturer ID from manufacturers table using email
       const { data: manufacturer, error: manError } = await supabase
@@ -121,14 +199,14 @@ export default function DashboardLayout({
         .eq('email', user.email)
         .single();
 
-      console.log('Manufacturer query result:', manufacturer, 'Error:', manError); // DEBUG
+      console.log('Manufacturer query result:', manufacturer, 'Error:', manError);
 
       if (!manufacturer) {
         console.error('No manufacturer found for email:', user.email);
         return;
       }
 
-      console.log('Found manufacturer ID:', manufacturer.id); // DEBUG
+      console.log('Found manufacturer ID:', manufacturer.id);
       setManufacturerId(manufacturer.id);
 
       // Load manufacturer notifications
@@ -138,7 +216,6 @@ export default function DashboardLayout({
       const subscriptionCleanup = subscribeToManufacturerNotifications(manufacturer.id);
 
       // FALLBACK: Poll for notifications every 5 seconds as backup
-      // This ensures updates even if Realtime has issues
       console.log('🔄 Setting up polling fallback (every 5s)...');
       const pollInterval = setInterval(() => {
         console.log('🔄 Polling for notification updates (fallback)...');
@@ -158,7 +235,7 @@ export default function DashboardLayout({
 
   const loadManufacturerNotifications = async (manufacturerId: string) => {
     try {
-      console.log('Loading notifications for manufacturer ID:', manufacturerId); // DEBUG
+      console.log('Loading notifications for manufacturer ID:', manufacturerId);
       
       const { data: notifs, error } = await supabase
         .from('manufacturer_notifications')
@@ -167,7 +244,7 @@ export default function DashboardLayout({
         .eq('is_read', false)
         .order('created_at', { ascending: false });
 
-      console.log('Notifications query result:', notifs, 'Error:', error); // DEBUG
+      console.log('Notifications query result:', notifs, 'Error:', error);
 
       if (error) {
         console.error('Error loading manufacturer notifications:', error);
@@ -185,8 +262,8 @@ export default function DashboardLayout({
         else if (notif.type === 'new_order' || notif.type === 'status_changed') orders++;
       });
 
-      console.log('Notification counts - Total:', notifs?.length || 0, 'Samples:', samples, 'Production:', production, 'Orders:', orders); // DEBUG
-      console.log('Updating notification state with unread count:', notifs?.length || 0); // DEBUG
+      console.log('Notification counts - Total:', notifs?.length || 0, 'Samples:', samples, 'Production:', production, 'Orders:', orders);
+      console.log('Updating notification state with unread count:', notifs?.length || 0);
 
       setNotifications(notifs || []);
       const newCounts = {
@@ -196,7 +273,7 @@ export default function DashboardLayout({
         samples,
         production
       };
-      console.log('Setting notificationCounts to:', newCounts); // DEBUG
+      console.log('Setting notificationCounts to:', newCounts);
       setNotificationCounts(newCounts);
     } catch (error) {
       console.error('Error loading manufacturer notifications:', error);
@@ -204,7 +281,7 @@ export default function DashboardLayout({
   };
 
   const subscribeToManufacturerNotifications = (manufacturerId: string) => {
-    console.log('Setting up real-time subscription for manufacturer:', manufacturerId); // DEBUG
+    console.log('Setting up real-time subscription for manufacturer:', manufacturerId);
 
     const channel = supabase
       .channel(`manufacturer-notifications-${manufacturerId}`)
@@ -231,24 +308,15 @@ export default function DashboardLayout({
         },
         (payload) => {
           console.log('✅ UPDATE event - Manufacturer notification updated:', payload);
-          console.log('Reloading notifications for manufacturer:', manufacturerId); // DEBUG
+          console.log('Reloading notifications for manufacturer:', manufacturerId);
           loadManufacturerNotifications(manufacturerId);
         }
       )
       .subscribe((status, err) => {
-        console.log('📡 Subscription status:', status); // DEBUG
+        console.log('📡 Subscription status:', status);
         if (err) {
           console.error('❌ Subscription error:', err);
         }
-        // if (status === 'SUBSCRIBED') {
-        //   console.log('✅ Successfully subscribed to manufacturer notifications!');
-        // } else if (status === 'CHANNEL_ERROR') {
-        //   console.error('❌ Channel error - subscription failed');
-        // } else if (status === 'TIMED_OUT') {
-        //   console.error('❌ Subscription timed out');
-        // } else if (status === 'CLOSED') {
-        //   console.log('⚠️ Subscription closed');
-        // }
       });
 
     return () => {
@@ -418,6 +486,7 @@ export default function DashboardLayout({
     return date.toLocaleDateString();
   };
 
+  // ADMIN/MANUFACTURER MENU
   const menuItems = [
     {
       type: 'section',
@@ -501,9 +570,33 @@ export default function DashboardLayout({
     }
   ];
 
-  const visibleMenuItems = menuItems.filter(item =>
-    item.roles?.includes(user?.role || '')
-  );
+  // CLIENT MENU - Simple navigation
+  const clientMenuItems = [
+    {
+      href: '/dashboard',
+      label: 'Dashboard',
+      icon: LayoutGrid,
+      roles: ['client'],
+    },
+    {
+      href: '/dashboard/orders/client',
+      label: 'Orders',
+      icon: ShoppingCart,
+      roles: ['client'],
+      notificationKey: 'orders',
+    },
+    {
+      href: '/dashboard/invoices',
+      label: 'Invoices',
+      icon: FileText,
+      roles: ['client'],
+    },
+  ];
+
+  // Use client menu if user is client, otherwise use regular menu
+  const visibleMenuItems = user?.role === 'client' 
+    ? clientMenuItems 
+    : menuItems.filter(item => item.roles?.includes(user?.role || ''));
 
   const getInitial = (name: string) => {
     return name ? name.charAt(0).toUpperCase() : 'U';
@@ -522,8 +615,9 @@ export default function DashboardLayout({
   };
 
   const getPageTitle = () => {
-    if (pathname === '/dashboard') return 'Dashboard';
+    if (pathname === '/dashboard') return user?.role === 'client' ? 'My Dashboard' : 'Dashboard';
     if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? 'Your Orders' : 'Orders Management';
+    if (pathname === '/dashboard/orders/client') return 'My Orders';
     if (pathname.startsWith('/dashboard/orders/create')) return 'Create Order';
     if (pathname.startsWith('/dashboard/orders/edit')) return 'Edit Order';
     if (pathname === '/dashboard/invoices') return 'Invoices';
@@ -537,7 +631,7 @@ export default function DashboardLayout({
     if (pathname === '/dashboard/review') return 'Review Orders';
     if (pathname === '/dashboard/settings/finance') return 'Finance Settings';
     if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
-    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit')) return 'Order Details';
+    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return 'Order Details';
     if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return 'Invoice Details';
     return 'Dashboard';
   };
@@ -588,23 +682,26 @@ export default function DashboardLayout({
       {/* Main Content */}
       <div className="lg:pl-72 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+        <header className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
           <div className="flex items-center justify-between px-4 lg:px-6 h-16">
             {/* Mobile Menu Button - left side */}
             <button
               onClick={() => setShowMobileMenu(true)}
               className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Open menu"
             >
               <Menu className="w-6 h-6 text-gray-700" />
             </button>
-            
-            {/* Page Title or Empty space */}
-            <div className="hidden lg:block text-lg font-medium text-gray-900">
-              {getPageTitle()}
+
+            {/* Page Title - centered on mobile, left on desktop */}
+            <div className="flex-1 lg:flex-none text-center lg:text-left">
+              <h1 className="text-base lg:text-lg font-medium text-gray-900 truncate px-2">
+                {getPageTitle()}
+              </h1>
             </div>
 
             {/* Notification Bell - right side */}
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
@@ -648,6 +745,27 @@ export default function DashboardLayout({
                     </div>
                     
                     <div className="max-h-96 overflow-y-auto">
+                      {/* CLIENT specific notifications */}
+                      {user?.role === 'client' && notificationCounts.orders > 0 && (
+                        <div className="p-3 bg-amber-50 border-b border-amber-100">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-amber-800">
+                                {notificationCounts.orders} order{notificationCounts.orders > 1 ? 's' : ''} need your approval
+                              </p>
+                              <Link 
+                                href="/dashboard/orders/client"
+                                className="text-xs text-amber-700 hover:text-amber-900 underline mt-1 inline-block"
+                                onClick={() => setShowNotifications(false)}
+                              >
+                                View Orders →
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Manufacturer specific notifications */}
                       {user?.role === 'manufacturer' && notificationCounts.samples! > 0 && (
                         <div className="p-3 bg-yellow-50 border-b border-yellow-100">
@@ -701,7 +819,7 @@ export default function DashboardLayout({
                         ))
                       ) : (
                         <div className="p-8 text-center text-gray-500">
-                          No new notifications
+                          {user?.role === 'client' ? 'No orders need your attention' : 'No new notifications'}
                         </div>
                       )}
                     </div>
@@ -767,7 +885,19 @@ function SidebarContent({
         </div>
       </div>
 
-      {/* Manufacturer Notification Summary - if manufacturer role */}
+      {/* CLIENT Notification Summary */}
+      {user?.role === 'client' && notificationCounts.total > 0 && (
+        <div className="mx-4 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Bell className="w-4 h-4 text-amber-600" />
+            <span className="text-sm font-medium text-amber-800">
+              {notificationCounts.total} order{notificationCounts.total > 1 ? 's' : ''} need{notificationCounts.total === 1 ? 's' : ''} your approval
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Manufacturer Notification Summary */}
       {user?.role === 'manufacturer' && notificationCounts.total > 0 && (
         <div className="mx-4 mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
@@ -806,11 +936,12 @@ function SidebarContent({
           const Icon = item.icon!;
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
           
-          // For manufacturers, always show total count on Orders
+          // Notification badge logic
           let notificationCount = 0;
-          if (user?.role === 'manufacturer' && item.href === '/dashboard/orders') {
+          if (user?.role === 'client' && item.href === '/dashboard/orders/client') {
             notificationCount = notificationCounts.total;
-            console.log('Orders menu badge count for manufacturer:', notificationCount); // DEBUG
+          } else if (user?.role === 'manufacturer' && item.href === '/dashboard/orders') {
+            notificationCount = notificationCounts.total;
           } else if (item.notificationKey) {
             notificationCount = notificationCounts[item.notificationKey as keyof NotificationCount] || 0;
           }

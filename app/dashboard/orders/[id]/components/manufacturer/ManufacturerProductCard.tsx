@@ -1,21 +1,43 @@
-// ManufacturerProductCard.tsx - WITH MANUFACTURER TOTALS
+/**
+ * Manufacturer Product Card Component - FINAL VERSION
+ * Product card for Manufacturer users with cost pricing
+ * FIXES: 
+ * - Shipping allocation moved INSIDE blue shipping box (more logical placement)
+ * - Always shows for manufacturers (not dependent on multiple products)
+ * - Fixed currency formatting to always show cents (.50 not .5)
+ * - Improved button spacing throughout
+ * - Uses new database fields (shipping_linked_products, shipping_link_note)
+ * Last Modified: Nov 21 2025 v3
+ */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { 
-  Package, Calendar, Clock, Lock, Unlock, Send, CheckCircle, 
-  XCircle, Loader2, MessageSquare, Save, History, AlertCircle,
-  DollarSign, CreditCard, Plane, Ship, Upload, X, Play, File,
-  RotateCcw, FileText, Image, Paperclip, ChevronDown, ChevronRight,
-  Calculator
+  Package, Clock, Lock, Unlock, Send, CheckCircle, 
+  Loader2, Save, DollarSign, Plane, Ship, 
+  Upload, X, ChevronDown, Calculator, Edit2, Eye, EyeOff,
+  Link2, AlertCircle
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
-import { ProductStatusBadge } from '../shared/StatusBadge';
+import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
+import { CollapsedProductHeader } from '../shared/CollapsedProductHeader';
+import { getProductStatusIcon } from '../shared/ProductStatusIcon';
+import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
 import { supabase } from '@/lib/supabase';
+
+// FIXED: Helper function to format currency - ALWAYS show 2 decimals for cents
+const formatCurrency = (amount: number): string => {
+  const formatted = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,  // Always show 2 decimals
+    maximumFractionDigits: 2,  // Always show 2 decimals
+  }).format(amount);
+  return formatted;
+};
 
 // Define the ref type for imperative handle
 export interface ManufacturerProductCardRef {
   saveAll: () => Promise<boolean>;
+  getState: () => any;
 }
 
 interface ManufacturerProductCardProps {
@@ -30,6 +52,10 @@ interface ManufacturerProductCardProps {
   manufacturerId?: string | null;
   isSuperAdminView?: boolean;
   autoCollapse?: boolean;
+  forceExpanded?: boolean;
+  onExpand?: () => void;
+  onDataChange?: (data: any) => void;
+  allOrderProducts?: OrderProduct[]; // For shipping allocation dropdown
 }
 
 export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, ManufacturerProductCardProps>(
@@ -44,58 +70,61 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     hasNewHistory = false,
     manufacturerId,
     isSuperAdminView = false,
-    autoCollapse = false
+    autoCollapse = false,
+    forceExpanded = false,
+    onExpand,
+    onDataChange,
+    allOrderProducts = []
   }, ref) {
-  const permissions = usePermissions() as any;
-  const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
+    const permissions = usePermissions() as any;
+    const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
 
-    // COLLAPSIBLE STATE - Updated to use autoCollapse prop
+    // State for finance margins - LOAD FROM SYSTEM CONFIG
+    const [productMargin, setProductMargin] = useState(80);
+    const [shippingMargin, setShippingMargin] = useState(5);
+    const [marginsLoaded, setMarginsLoaded] = useState(false);
+
+    // Collapsible state
     const [isCollapsed, setIsCollapsed] = useState(() => {
-      // Auto-collapse takes priority when there are multiple products
+      if (forceExpanded) return false;
       if (autoCollapse) return true;
-      
-      // For single products, check status
       const productStatus = (product as any)?.product_status;
-      
-      // Only auto-collapse for these specific statuses when NOT using autoCollapse
       return (productStatus === 'in_production' || productStatus === 'in_transit');
     });
     
-    // Auto-collapse when status changes to in_production
+    // Auto-collapse when status changes
     useEffect(() => {
-      // Don't override autoCollapse behavior
+      if (forceExpanded) return;
       if (autoCollapse) return;
-      
       const productStatus = (product as any)?.product_status;
-      
       if (productStatus === 'in_production' || productStatus === 'in_transit') {
         setIsCollapsed(true);
       }
-    }, [(product as any)?.product_status, autoCollapse]);
+    }, [(product as any)?.product_status, autoCollapse, forceExpanded]);
     
-    // State for notes
+    // State for notes - KEEPING BUT WILL COMMENT OUT THE DISPLAY
     const [tempNotes, setTempNotes] = useState('');
-    const [tempSampleNotes, setTempSampleNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
+    
+    // Loading states for save buttons
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [savingBulkSection, setSavingBulkSection] = useState(false);
+    const [savingVariantNotes, setSavingVariantNotes] = useState(false);
+    
     // State for tracking if sections have changes
-    const [sampleSectionDirty, setSampleSectionDirty] = useState(false);
     const [bulkSectionDirty, setBulkSectionDirty] = useState(false);
     
     const [processingProduct, setProcessingProduct] = useState(false);
     const bulkFileInputRef = useRef<HTMLInputElement>(null);
-    const sampleFileInputRef = useRef<HTMLInputElement>(null);
-    const [uploadingMedia, setUploadingMedia] = useState(false);
     const [uploadingBulkMedia, setUploadingBulkMedia] = useState(false);
     const [showNewHistoryDot, setShowNewHistoryDot] = useState(hasNewHistory);
     
-    // State for variant notes
+    // State for variant notes and quantities
     const [variantNotes, setVariantNotes] = useState<{[key: string]: string}>({});
+    const [itemQuantities, setItemQuantities] = useState<{[key: string]: string}>({});
     const [editingVariants, setEditingVariants] = useState(false);
-    
-    // State for sample section - convert to strings for inputs
-    const [sampleFee, setSampleFee] = useState((product as any).sample_fee?.toString() || '');
-    const [sampleEta, setSampleEta] = useState((product as any).sample_eta || '');
-    const [sampleStatus, setSampleStatus] = useState((product as any).sample_status || 'pending');
+    const [showAllVariants, setShowAllVariants] = useState(false);
+    const [variantsDirty, setVariantsDirty] = useState(false);
     
     // State for bulk section - convert to strings for inputs
     const [productPrice, setProductPrice] = useState((product as any).product_price?.toString() || '');
@@ -104,40 +133,118 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     // State for shipping prices - convert to strings for inputs
     const [shippingAirPrice, setShippingAirPrice] = useState((product as any).shipping_air_price?.toString() || '');
     const [shippingBoatPrice, setShippingBoatPrice] = useState((product as any).shipping_boat_price?.toString() || '');
+    const [selectedShippingMethod] = useState((product as any).selected_shipping_method || '');
+    
+    // State for sample data
+    const [sampleFee, setSampleFee] = useState((product as any).sample_fee?.toString() || '');
+    const [sampleETA, setSampleETA] = useState((product as any).sample_eta || '');
+    
+    // State for manufacturer notes
+    const [manufacturerNotes, setManufacturerNotes] = useState((product as any).manufacturer_notes || '');
     
     // State for pending file uploads
-    const [pendingSampleFiles, setPendingSampleFiles] = useState<File[]>([]);
     const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
+    
+    // NEW: State for shipping allocation
+    const [applyShippingToOthers, setApplyShippingToOthers] = useState(false);
+    const [selectedProductsForShipping, setSelectedProductsForShipping] = useState<string[]>([]);
+    
+    // Initialize shipping allocation from database
+    useEffect(() => {
+      if ((product as any).shipping_linked_products) {
+        try {
+          const linkedProducts = JSON.parse((product as any).shipping_linked_products);
+          if (Array.isArray(linkedProducts) && linkedProducts.length > 0) {
+            setApplyShippingToOthers(true);
+            setSelectedProductsForShipping(linkedProducts);
+          }
+        } catch (e) {
+          console.error('Error parsing shipping_linked_products:', e);
+        }
+      }
+    }, [(product as any).shipping_linked_products]);
     
     // Store original values for comparison
     const [originalValues, setOriginalValues] = useState({
-      sampleFee: (product as any).sample_fee?.toString() || '',
-      sampleEta: (product as any).sample_eta || '',
-      sampleStatus: (product as any).sample_status || 'pending',
-      sampleNotes: (product as any).sample_notes || '',
       productPrice: (product as any).product_price?.toString() || '',
       productionTime: (product as any).production_time || '',
       bulkNotes: (product as any).client_notes || '',
       shippingAirPrice: (product as any).shipping_air_price?.toString() || '',
-      shippingBoatPrice: (product as any).shipping_boat_price?.toString() || ''
+      shippingBoatPrice: (product as any).shipping_boat_price?.toString() || '',
+      sampleFee: (product as any).sample_fee?.toString() || '',
+      sampleETA: (product as any).sample_eta || '',
+      manufacturerNotes: (product as any).manufacturer_notes || ''
     });
     
-    // Calculate total quantity
-    const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    // LOAD MARGINS FROM SYSTEM CONFIG
+    useEffect(() => {
+      const loadMargins = async () => {
+        try {
+          const { data } = await supabase
+            .from('system_config')
+            .select('config_key, config_value')
+            .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
+          
+          if (data) {
+            data.forEach(config => {
+              if (config.config_key === 'default_margin_percentage') {
+                setProductMargin(parseFloat(config.config_value) || 80);
+                console.log('Loaded product margin:', config.config_value + '%');
+              } else if (config.config_key === 'default_shipping_margin_percentage') {
+                setShippingMargin(parseFloat(config.config_value) || 5);
+                console.log('Loaded shipping margin:', config.config_value + '%');
+              }
+            });
+          }
+          setMarginsLoaded(true);
+        } catch (error) {
+          console.error('Error loading margins:', error);
+          // Use defaults if loading fails
+          setProductMargin(80);
+          setShippingMargin(5);
+          setMarginsLoaded(true);
+        }
+      };
+      loadMargins();
+    }, []);
     
-    // CALCULATE MANUFACTURER TOTALS
+    // Initialize item quantities and notes from items
+    useEffect(() => {
+      const initialQuantities: {[key: string]: string} = {};
+      const initialNotes: {[key: string]: string} = {};
+      items.forEach(item => {
+        initialQuantities[item.id] = item.quantity?.toString() || '0';
+        initialNotes[item.id] = item.notes || '';
+      });
+      setItemQuantities(initialQuantities);
+      setVariantNotes(initialNotes);
+    }, [items]);
+    
+    // Calculate total quantity - NOW USES STATE VALUES
+    const totalQuantity = Object.keys(itemQuantities).reduce((sum, itemId) => {
+      return sum + (parseInt(itemQuantities[itemId]) || 0);
+    }, 0);
+    
+    // Filter variants for display
+    const visibleVariants = showAllVariants || editingVariants 
+      ? items 
+      : items.filter(item => {
+          const qty = parseInt(itemQuantities[item.id]) || 0;
+          return qty > 0;
+        });
+    
+    const hasHiddenVariants = items.some(item => {
+      const qty = parseInt(itemQuantities[item.id]) || 0;
+      return qty === 0;
+    });
+    
+    // Calculate manufacturer totals - USING formatCurrency
     const calculateManufacturerTotal = () => {
       let total = 0;
       
-      // Add product price (unit price × quantity)
       const unitPrice = parseFloat(productPrice) || 0;
       total += unitPrice * totalQuantity;
       
-      // Add sample fee if exists
-      const sampleAmount = parseFloat(sampleFee) || 0;
-      total += sampleAmount;
-      
-      // Add selected shipping price
       if ((product as any).selected_shipping_method === 'air') {
         const airShipping = parseFloat(shippingAirPrice) || 0;
         total += airShipping;
@@ -151,114 +258,28 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     
     const manufacturerTotal = calculateManufacturerTotal();
     
-    // Initialize variant notes from items
-    useEffect(() => {
-      const initialNotes: {[key: string]: string} = {};
-      items.forEach(item => {
-        initialNotes[item.id] = item.notes || '';
-      });
-      setVariantNotes(initialNotes);
-    }, [items]);
-    
     // Update original values when product changes
     useEffect(() => {
       setOriginalValues({
-        sampleFee: (product as any).sample_fee?.toString() || '',
-        sampleEta: (product as any).sample_eta || '',
-        sampleStatus: (product as any).sample_status || 'pending',
-        sampleNotes: (product as any).sample_notes || '',
         productPrice: (product as any).product_price?.toString() || '',
         productionTime: (product as any).production_time || '',
         bulkNotes: (product as any).client_notes || '',
         shippingAirPrice: (product as any).shipping_air_price?.toString() || '',
-        shippingBoatPrice: (product as any).shipping_boat_price?.toString() || ''
+        shippingBoatPrice: (product as any).shipping_boat_price?.toString() || '',
+        sampleFee: (product as any).sample_fee?.toString() || '',
+        sampleETA: (product as any).sample_eta || '',
+        manufacturerNotes: (product as any).manufacturer_notes || ''
       });
-      setSampleFee((product as any).sample_fee?.toString() || '');
-      setSampleEta((product as any).sample_eta || '');
-      setSampleStatus((product as any).sample_status || 'pending');
       setProductPrice((product as any).product_price?.toString() || '');
       setProductionTime((product as any).production_time || '');
       setShippingAirPrice((product as any).shipping_air_price?.toString() || '');
       setShippingBoatPrice((product as any).shipping_boat_price?.toString() || '');
-      setPendingSampleFiles([]);
+      setSampleFee((product as any).sample_fee?.toString() || '');
+      setSampleETA((product as any).sample_eta || '');
+      setManufacturerNotes((product as any).manufacturer_notes || '');
       setPendingBulkFiles([]);
     }, [product]);
 
-    // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF
-    useImperativeHandle(ref, () => ({
-      saveAll: async () => {
-        console.log('SaveAll called for product:', (product as any).id);
-        let changesMade = false;
-        
-        // Check if sample section has any changes (not just dirty flag)
-        const hasSampleChanges = 
-          sampleSectionDirty || 
-          sampleFee !== originalValues.sampleFee || 
-          sampleEta !== originalValues.sampleEta || 
-          sampleStatus !== originalValues.sampleStatus ||
-          (tempSampleNotes && tempSampleNotes.trim() !== '') || 
-          pendingSampleFiles.length > 0;
-          
-        if (hasSampleChanges) {
-          console.log('Saving sample section...');
-          await handleSaveSampleSection();
-          changesMade = true;
-        }
-        
-        // Check if bulk section has any changes
-        const hasBulkChanges = 
-          bulkSectionDirty || 
-          productPrice !== originalValues.productPrice || 
-          productionTime !== originalValues.productionTime ||
-          shippingAirPrice !== originalValues.shippingAirPrice ||
-          shippingBoatPrice !== originalValues.shippingBoatPrice ||
-          (tempBulkNotes && tempBulkNotes.trim() !== '') || 
-          pendingBulkFiles.length > 0;
-          
-        if (hasBulkChanges) {
-          console.log('Saving bulk section...');
-          await handleSaveBulkSection();
-          changesMade = true;
-        }
-        
-        // Save variant notes if editing
-        if (editingVariants) {
-          console.log('Saving variant notes...');
-          await handleSaveVariantNotes();
-          changesMade = true;
-        }
-        
-        // Save generic notes if any
-        if (tempNotes && tempNotes.trim() !== '') {
-          console.log('Saving generic notes...');
-          await handleSaveGenericNotes();
-          changesMade = true;
-        }
-        
-        console.log('SaveAll complete for product:', (product as any).id, 'Changes made:', changesMade);
-        return changesMade;
-      }
-    }), [
-      // Add all dependencies
-      sampleSectionDirty,
-      bulkSectionDirty,
-      editingVariants,
-      tempNotes,
-      tempSampleNotes,
-      tempBulkNotes,
-      sampleFee,
-      sampleEta,
-      sampleStatus,
-      productPrice,
-      productionTime,
-      shippingAirPrice,
-      shippingBoatPrice,
-      pendingSampleFiles,
-      pendingBulkFiles,
-      originalValues,
-      (product as any).id
-    ]);
-    
     // Get current user information
     const getCurrentUser = () => {
       const userData = localStorage.getItem('user');
@@ -275,21 +296,272 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       };
     };
 
+    // FIXED: EXPOSE SAVE ALL FUNCTION TO PARENT - NOW CALCULATES CLIENT PRICES AND USES NEW DB FIELDS
+    useImperativeHandle(ref, () => ({
+      saveAll: async () => {
+        console.log('=== SaveAll called for product:', (product as any).product_order_number);
+        console.log('Product margin:', productMargin + '%');
+        console.log('Shipping margin:', shippingMargin + '%');
+        
+        try {
+          // STEP 1: Save all product pricing data with CLIENT PRICE CALCULATIONS
+          console.log('Step 1: Calculating client prices and saving...');
+          
+          // Calculate CLIENT prices using margins from system config
+          const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
+          const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+          const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
+          const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
+          
+          // Apply margins to get client prices
+          const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+          const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
+          const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
+          const clientSampleFee = mfgSampleFee ? mfgSampleFee * (1 + productMargin / 100) : null; // Sample uses product margin
+          
+          console.log('Manufacturer prices:', { mfgProductPrice, mfgAirPrice, mfgBoatPrice });
+          console.log('Client prices:', { clientProductPrice, clientAirPrice, clientBoatPrice });
+          
+          // Combine ALL notes
+          let finalManufacturerNotes = manufacturerNotes || '';
+          let finalInternalNotes = (product as any).internal_notes || '';
+          
+          if (tempBulkNotes && tempBulkNotes.trim()) {
+            const timestamp = new Date().toLocaleDateString();
+            finalManufacturerNotes = manufacturerNotes 
+              ? `${manufacturerNotes}\n\n[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`
+              : `[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`;
+          }
+          
+          if (tempNotes && tempNotes.trim()) {
+            finalInternalNotes = tempNotes.trim();
+          }
+          
+          // Prepare shipping allocation data for THIS product
+          let shippingLinkNote = '';
+          if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+            const selectedNames = selectedProductsForShipping.map(id => {
+              const prod = allOrderProducts.find(p => (p as any).id === id);
+              return (prod as any)?.product_order_number || id;
+            }).join(', ');
+            shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
+          }
+          
+          const productUpdateData: any = {
+            // Manufacturer prices
+            product_price: mfgProductPrice,
+            shipping_air_price: mfgAirPrice,
+            shipping_boat_price: mfgBoatPrice,
+            sample_fee: mfgSampleFee,
+            
+            // CLIENT PRICES WITH MARGINS APPLIED
+            client_product_price: clientProductPrice,
+            client_shipping_air_price: clientAirPrice,
+            client_shipping_boat_price: clientBoatPrice,
+            client_sample_fee: clientSampleFee,
+            
+            // Other fields
+            production_time: productionTime || null,
+            sample_eta: sampleETA || null,
+            manufacturer_notes: finalManufacturerNotes || null,
+            internal_notes: finalInternalNotes || null,
+            
+            // NEW: Shipping allocation fields
+            shipping_linked_products: applyShippingToOthers && selectedProductsForShipping.length > 0 
+              ? JSON.stringify(selectedProductsForShipping)
+              : null,
+            shipping_link_note: shippingLinkNote || null
+          };
+          
+          console.log('Updating product with:', productUpdateData);
+          
+          const { error: productError } = await supabase
+            .from('order_products')
+            .update(productUpdateData)
+            .eq('id', (product as any).id);
+          
+          if (productError) {
+            console.error('Error updating product:', productError);
+            throw productError;
+          }
+          
+          console.log('Product updated successfully with client prices');
+          
+          // Update linked products if shipping is shared
+          if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+            for (const linkedProductId of selectedProductsForShipping) {
+              const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
+              
+              await supabase
+                .from('order_products')
+                .update({ 
+                  shipping_link_note: linkNote,
+                  // Clear their shipping prices since they're included elsewhere
+                  shipping_air_price: 0,
+                  shipping_boat_price: 0,
+                  client_shipping_air_price: 0,
+                  client_shipping_boat_price: 0
+                })
+                .eq('id', linkedProductId);
+            }
+          }
+          
+          // STEP 2: Save variant quantities and notes
+          console.log('Step 2: Saving variant quantities and notes...');
+          
+          for (const item of items) {
+            const newQty = parseInt(itemQuantities[item.id]) || 0;
+            const newNote = variantNotes[item.id] || '';
+            
+            console.log(`Saving variant ${item.variant_combo}: qty=${newQty}, note="${newNote}"`);
+            
+            const { error: itemError } = await supabase
+              .from('order_items')
+              .update({ 
+                quantity: newQty,
+                notes: newNote 
+              })
+              .eq('id', item.id);
+            
+            if (itemError) {
+              console.error(`Error updating item ${item.id}:`, itemError);
+            }
+          }
+          
+          // STEP 3: Upload any pending files
+          if (pendingBulkFiles.length > 0) {
+            console.log('Step 3: Uploading pending files...');
+            const user = getCurrentUser();
+            
+            for (const file of pendingBulkFiles) {
+              const timestamp = Date.now();
+              const randomStr = Math.random().toString(36).substring(2, 8);
+              const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
+              
+              console.log(`Uploading file: ${file.name}`);
+              
+              const { error: uploadError } = await supabase.storage
+                .from('order-media')
+                .upload(storagePath, file);
+              
+              if (!uploadError) {
+                const { data: { publicUrl } } = supabase.storage
+                  .from('order-media')
+                  .getPublicUrl(storagePath);
+                
+                await supabase
+                  .from('order_media')
+                  .insert({
+                    order_product_id: (product as any).id,
+                    file_url: publicUrl,
+                    file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                    uploaded_by: user.id,
+                    original_filename: file.name,
+                    display_name: file.name
+                  });
+                
+                console.log(`File uploaded successfully: ${file.name}`);
+              } else {
+                console.error(`Error uploading file ${file.name}:`, uploadError);
+              }
+            }
+          }
+          
+          // Update order status if needed
+          try {
+            const { data: orderData } = await supabase
+              .from('orders')
+              .select('status')
+              .eq('id', (product as any).order_id)
+              .single();
+            
+            if (orderData && orderData.status === 'sent_to_manufacturer') {
+              await supabase
+                .from('orders')
+                .update({ status: 'in_progress' })
+                .eq('id', (product as any).order_id);
+            }
+          } catch (orderError) {
+            console.error('Error updating order status:', orderError);
+          }
+          
+          console.log('=== SaveAll completed successfully for product:', (product as any).product_order_number);
+          
+          // Clear temp states after successful save
+          setTempNotes('');
+          setTempBulkNotes('');
+          setPendingBulkFiles([]);
+          setBulkSectionDirty(false);
+          setEditingVariants(false);
+          setVariantsDirty(false);
+          setShowAllVariants(false);
+          
+          if (finalManufacturerNotes !== manufacturerNotes) {
+            setManufacturerNotes(finalManufacturerNotes);
+          }
+          
+          return true;
+          
+        } catch (error) {
+          console.error('Error in saveAll:', error);
+          return false;
+        }
+      },
+      getState: () => {
+        return {
+          productPrice,
+          productionTime,
+          shippingAir: shippingAirPrice,
+          shippingBoat: shippingBoatPrice,
+          selectedShippingMethod,
+          sampleFee,
+          sampleETA,
+          manufacturerNotes: manufacturerNotes,
+          tempBulkNotes,
+          tempNotes,
+          itemQuantities,
+          variantNotes,
+          pendingBulkFiles
+        };
+      }
+    }), [
+      productPrice,
+      productionTime,
+      shippingAirPrice,
+      shippingBoatPrice,
+      selectedShippingMethod,
+      sampleFee,
+      sampleETA,
+      manufacturerNotes,
+      tempBulkNotes,
+      tempNotes,
+      itemQuantities,
+      variantNotes,
+      pendingBulkFiles,
+      items,
+      productMargin,
+      shippingMargin,
+      applyShippingToOthers,
+      selectedProductsForShipping,
+      allOrderProducts,
+      (product as any).id,
+      (product as any).order_id,
+      (product as any).product_order_number,
+      (product as any).internal_notes
+    ]);
+
     // Separate media types
     const referenceMedia = media.filter(m => m.file_type === 'document' || m.file_type === 'image');
-    const sampleMedia = media.filter(m => m.file_type?.startsWith('sample'));
 
-    // Better variant type detection
+    // Get variant type name
     const getVariantTypeName = () => {
       if (items.length > 0 && items[0].variant_combo) {
         const combo = items[0].variant_combo.toLowerCase();
         
-        // Check for shoe sizes
         if (/\b\d+(\.\d+)?\b/.test(combo) && (combo.includes('us') || combo.includes('eu') || combo.includes('uk') || /^\d+(\.\d+)?$/.test(combo.trim()))) {
           return 'Shoe Size';
         }
         
-        // Check for clothing sizes
         if (combo.includes('small') || combo.includes('medium') || combo.includes('large') || 
             combo.includes('s /') || combo.includes('m /') || combo.includes('l /') ||
             combo.includes('xl') || combo.includes('xxl') || combo.includes('xxxl') ||
@@ -297,7 +569,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           return 'Size';
         }
         
-        // Check for colors
         if (combo.includes('color') || combo.includes('colour') || 
             combo.includes('red') || combo.includes('blue') || combo.includes('green') || 
             combo.includes('black') || combo.includes('white')) {
@@ -309,36 +580,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       return 'Variant';
     };
 
-    const getProductStatusIcon = (status: string) => {
-      const normalizedStatus = status || 'pending';
-      switch (normalizedStatus) {
-        case 'completed':
-          return <CheckCircle className="w-5 h-5 text-green-500" />;
-        case 'in_production':
-          return <Package className="w-5 h-5 text-blue-500" />;
-        case 'shipped':
-        case 'in_transit':
-          return <Ship className="w-5 h-5 text-purple-500" />;
-        case 'sample_requested':
-          return <AlertCircle className="w-5 h-5 text-yellow-500" />;
-        case 'revision_requested':
-          return <RotateCcw className="w-5 h-5 text-orange-500" />;
-        case 'pending_client_approval':
-          return <Clock className="w-5 h-5 text-purple-500" />;
-        case 'rejected':
-          return <XCircle className="w-5 h-5 text-red-500" />;
-        case 'sent_to_manufacturer':
-          return <Send className="w-5 h-5 text-blue-500" />;
-        default:
-          return <Clock className="w-5 h-5 text-gray-500" />;
-      }
-    };
-
-    const getCorrectProductStatus = () => {
-      return (product as any).product_status || 'sent_to_manufacturer';
-    };
-
-    const displayStatus = getCorrectProductStatus();
+    const displayStatus = (product as any).product_status || 'sent_to_manufacturer';
 
     const handleToggleLock = async () => {
       setProcessingProduct(true);
@@ -354,8 +596,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           })
           .eq('id', (product as any).id);
 
-        // Auto-collapse when locking
-        if (newLockStatus) {
+        if (newLockStatus && !forceExpanded) {
           setIsCollapsed(true);
         }
 
@@ -367,182 +608,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
-    // FIXED: Save Sample Section - now properly saves all fields
-    const handleSaveSampleSection = async () => {
-      console.log('Starting sample save with:', { sampleFee, sampleEta, sampleStatus, tempSampleNotes });
-      
-      try {
-        const user = getCurrentUser();
-        const changes = [];
-        
-        // Validate no negative prices
-        const fee = parseFloat(sampleFee) || 0;
-        if (fee < 0) {
-          alert('Sample fee cannot be negative');
-          return;
-        }
-        
-        // Check what changed
-        if (sampleFee !== originalValues.sampleFee) {
-          changes.push(`Sample Fee: $${originalValues.sampleFee || '0'} → $${sampleFee || '0'}`);
-        }
-        if (sampleEta !== originalValues.sampleEta) {
-          changes.push(`Sample ETA: ${originalValues.sampleEta || 'not set'} → ${sampleEta || 'not set'}`);
-        }
-        if (sampleStatus !== originalValues.sampleStatus) {
-          changes.push(`Sample Status: ${originalValues.sampleStatus} → ${sampleStatus}`);
-        }
-        
-        // Handle sample notes - just replace, don't append
-        let finalSampleNotes = tempSampleNotes.trim() || (product as any).sample_notes || '';
-        
-        // Prepare update data - use empty string instead of null for text fields
-        const updateData: any = {
-          sample_fee: sampleFee ? parseFloat(sampleFee) : null,
-          sample_eta: sampleEta || null,
-          sample_status: sampleStatus || 'pending'  // Ensure we always have a status
-        };
-
-        // Only update notes if there's a new note
-        if (tempSampleNotes && tempSampleNotes.trim()) {
-          updateData.sample_notes = finalSampleNotes;
-        }
-        
-        console.log('Update data:', updateData);
-        
-        // Update database - don't use .select() to avoid relationship issues
-        const { error } = await supabase
-          .from('order_products')
-          .update(updateData)
-          .eq('id', (product as any).id);
-
-        if (error) {
-          console.error('Error updating sample section:', error);
-          console.error('Error details:', {
-            message: error.message,
-            details: (error as any).details,
-            hint: (error as any).hint,
-            code: (error as any).code
-          });
-          alert(`Failed to save sample section: ${error.message || 'Unknown error'}`);
-          return;
-        }
-        
-        console.log('Sample section updated successfully');
-
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
-        try {
-          const { data: orderData } = await supabase
-            .from('orders')
-            .select('status')
-            .eq('id', (product as any).order_id)
-            .single();
-
-          if (orderData && orderData.status === 'sent_to_manufacturer') {
-            await supabase
-              .from('orders')
-              .update({ status: 'in_progress' })
-              .eq('id', (product as any).order_id);
-            console.log('Order status updated to in_progress');
-          }
-        } catch (orderError) {
-          console.error('Error updating order status:', orderError);
-          // Don't fail the whole operation just because order status update failed
-        }
-
-        // Upload pending sample files if any
-        if (pendingSampleFiles.length > 0) {
-          console.log('Uploading sample files...');
-
-          // Count existing sample files to get the next counter
-          const existingSampleFiles = media.filter((m: any) =>
-            m.file_type === 'sample_image' || m.file_type === 'sample_document'
-          );
-          let sampleFileCounter = existingSampleFiles.length + 1;
-
-          for (const file of pendingSampleFiles) {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-
-            // Create display name using product code and sequential number
-            const displayName = `${productOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
-
-            const { error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(filePath, file);
-
-            if (!uploadError) {
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath);
-
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: (product as any).id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-                  uploaded_by: user.id,
-                  original_filename: file.name,
-                  display_name: displayName
-                });
-
-              sampleFileCounter++;
-            }
-          }
-          console.log('Files uploaded successfully');
-        }
-
-        // Log audit if there were changes - do this separately
-        if (changes.length > 0) {
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'sample_section_updated',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                old_value: JSON.stringify(originalValues),
-                new_value: changes.join(', '),
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-            // Don't fail the whole operation just because audit log failed
-          }
-        }
-
-        // Update original values to new values
-        setOriginalValues(prev => ({
-          ...prev,
-          sampleFee,
-          sampleEta,
-          sampleStatus,
-          sampleNotes: finalSampleNotes
-        }));
-        
-        // Clear temporary states
-        setTempSampleNotes('');
-        setPendingSampleFiles([]);
-        setSampleSectionDirty(false);
-        setShowNewHistoryDot(true);
-        
-        // Call onUpdate to refresh parent
-        await onUpdate();
-        
-      } catch (error) {
-        console.error('Error in handleSaveSampleSection:', error);
-        alert('An error occurred while saving. Please try again.');
-      }
-    };
-
-    // FIXED: Save Bulk Section - now includes shipping prices
+    // Save Bulk Section - WITH CLIENT PRICE CALCULATIONS AND NEW DB FIELDS
     const handleSaveBulkSection = async () => {
-      console.log('Starting bulk save with:', { productPrice, productionTime, shippingAirPrice, shippingBoatPrice });
+      console.log('Starting bulk save with margins - Product:', productMargin + '%, Shipping:', shippingMargin + '%');
       
+      setSavingBulkSection(true);
       try {
         const user = getCurrentUser();
         const changes = [];
@@ -551,45 +621,79 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         const price = parseFloat(productPrice) || 0;
         const airPrice = parseFloat(shippingAirPrice) || 0;
         const boatPrice = parseFloat(shippingBoatPrice) || 0;
+        const samplePrice = parseFloat(sampleFee) || 0;
         
-        if (price < 0 || airPrice < 0 || boatPrice < 0) {
+        if (price < 0 || airPrice < 0 || boatPrice < 0 || samplePrice < 0) {
           alert('Prices cannot be negative');
           return;
         }
         
-        // Check what changed
-        if (productPrice !== originalValues.productPrice) {
-          changes.push(`Product Price: $${originalValues.productPrice || '0'} → $${productPrice || '0'}`);
-        }
-        if (productionTime !== originalValues.productionTime) {
-          changes.push(`Production Time: ${originalValues.productionTime || 'not set'} → ${productionTime || 'not set'}`);
-        }
-        if (shippingAirPrice !== originalValues.shippingAirPrice) {
-          changes.push(`Air Shipping: $${originalValues.shippingAirPrice || '0'} → $${shippingAirPrice || '0'}`);
-        }
-        if (shippingBoatPrice !== originalValues.shippingBoatPrice) {
-          changes.push(`Boat Shipping: $${originalValues.shippingBoatPrice || '0'} → $${shippingBoatPrice || '0'}`);
-        }
-        
-        // Handle bulk notes - just replace, don't append
+        // Handle bulk notes
         let finalBulkNotes = tempBulkNotes.trim() || (product as any).client_notes || '';
+        let finalManufacturerNotes = manufacturerNotes;
         
-        // Prepare update data
+        if (tempBulkNotes && tempBulkNotes.trim()) {
+          const timestamp = new Date().toLocaleDateString();
+          finalManufacturerNotes = manufacturerNotes 
+            ? `${manufacturerNotes}\n\n[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`
+            : `[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`;
+        }
+        
+        // Prepare shipping allocation data
+        let shippingLinkNote = '';
+        if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+          const selectedNames = selectedProductsForShipping.map(id => {
+            const prod = allOrderProducts.find(p => (p as any).id === id);
+            return (prod as any)?.product_order_number || id;
+          }).join(', ');
+          shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
+        }
+        
+        // CALCULATE CLIENT PRICES WITH MARGINS
+        const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
+        const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+        const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
+        const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
+        
+        // Apply margins
+        const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+        const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
+        const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
+        const clientSampleFee = mfgSampleFee ? mfgSampleFee * (1 + productMargin / 100) : null;
+        
+        // Prepare update data with BOTH manufacturer and client prices AND shipping allocation
         const updateData: any = {
-          product_price: productPrice ? parseFloat(productPrice) : null,
+          // Manufacturer prices
+          product_price: mfgProductPrice,
+          shipping_air_price: mfgAirPrice,
+          shipping_boat_price: mfgBoatPrice,
+          sample_fee: mfgSampleFee,
+          
+          // CLIENT PRICES WITH MARGINS
+          client_product_price: clientProductPrice,
+          client_shipping_air_price: clientAirPrice,
+          client_shipping_boat_price: clientBoatPrice,
+          client_sample_fee: clientSampleFee,
+          
+          // Other fields
           production_time: productionTime || null,
-          shipping_air_price: shippingAirPrice ? parseFloat(shippingAirPrice) : null,
-          shipping_boat_price: shippingBoatPrice ? parseFloat(shippingBoatPrice) : null
+          sample_eta: sampleETA || null,
+          manufacturer_notes: finalManufacturerNotes || null,
+          
+          // NEW: Shipping allocation fields
+          shipping_linked_products: applyShippingToOthers && selectedProductsForShipping.length > 0 
+            ? JSON.stringify(selectedProductsForShipping)
+            : null,
+          shipping_link_note: shippingLinkNote || null
         };
 
-        // Only update notes if there's a new note
         if (tempBulkNotes && tempBulkNotes.trim()) {
           updateData.client_notes = finalBulkNotes;
         }
         
-        console.log('Update data:', updateData);
+        console.log('Update data with client prices and shipping allocation:', updateData);
         
-        // Update database - don't use .select() to avoid relationship issues
+        // Update database
         const { error } = await supabase
           .from('order_products')
           .update(updateData)
@@ -601,54 +705,44 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           return;
         }
         
-        console.log('Bulk section updated successfully');
+        console.log('Bulk section updated successfully with client prices');
 
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer'
-        try {
-          const { data: orderData } = await supabase
-            .from('orders')
-            .select('status')
-            .eq('id', (product as any).order_id)
-            .single();
-
-          if (orderData && orderData.status === 'sent_to_manufacturer') {
+        // Update linked products if shipping is shared
+        if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+          for (const linkedProductId of selectedProductsForShipping) {
+            const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
+            
             await supabase
-              .from('orders')
-              .update({ status: 'in_progress' })
-              .eq('id', (product as any).order_id);
-            console.log('Order status updated to in_progress');
+              .from('order_products')
+              .update({ 
+                shipping_link_note: linkNote,
+                // Clear their shipping prices since they're included elsewhere
+                shipping_air_price: 0,
+                shipping_boat_price: 0,
+                client_shipping_air_price: 0,
+                client_shipping_boat_price: 0
+              })
+              .eq('id', linkedProductId);
           }
-        } catch (orderError) {
-          console.error('Error updating order status:', orderError);
-          // Don't fail the whole operation just because order status update failed
         }
 
-        // Upload pending bulk files if any
+        // Upload files
         if (pendingBulkFiles.length > 0) {
           console.log('Uploading bulk files...');
 
-          // Count existing bulk/product files to get the next counter
-          const existingBulkFiles = media.filter((m: any) =>
-            m.file_type === 'image' || m.file_type === 'document'
-          );
-          let bulkFileCounter = existingBulkFiles.length + 1;
-
           for (const file of pendingBulkFiles) {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-            const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-
-            // Create display name using product code and sequential number
-            const displayName = `${productOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`;
-            const filePath = `${(product as any).order_id}/${(product as any).id}/${displayName}`;
+            const timestamp = Date.now();
+            const randomStr = Math.random().toString(36).substring(2, 8);
+            const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
 
             const { error: uploadError } = await supabase.storage
               .from('order-media')
-              .upload(filePath, file);
+              .upload(storagePath, file);
 
             if (!uploadError) {
               const { data: { publicUrl } } = supabase.storage
                 .from('order-media')
-                .getPublicUrl(filePath);
+                .getPublicUrl(storagePath);
 
               await supabase
                 .from('order_media')
@@ -658,34 +752,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   file_type: file.type.startsWith('image/') ? 'image' : 'document',
                   uploaded_by: user.id,
                   original_filename: file.name,
-                  display_name: displayName
+                  display_name: file.name
                 });
-
-              bulkFileCounter++;
             }
           }
           console.log('Files uploaded successfully');
-        }
-
-        // Log audit if there were changes - do this separately
-        if (changes.length > 0) {
-          try {
-            await supabase
-              .from('audit_log')
-              .insert({
-                user_id: user.id,
-                user_name: user.name,
-                action_type: 'bulk_section_updated',
-                target_type: 'order_product',
-                target_id: (product as any).id,
-                old_value: JSON.stringify(originalValues),
-                new_value: changes.join(', '),
-                timestamp: new Date().toISOString()
-              });
-          } catch (auditError) {
-            console.error('Failed to log audit:', auditError);
-            // Don't fail the whole operation just because audit log failed
-          }
         }
 
         // Update original values
@@ -695,8 +766,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           productionTime,
           shippingAirPrice,
           shippingBoatPrice,
+          sampleFee,
+          sampleETA,
+          manufacturerNotes: finalManufacturerNotes,
           bulkNotes: finalBulkNotes
         }));
+        
+        setManufacturerNotes(finalManufacturerNotes);
         
         // Clear temporary states
         setTempBulkNotes('');
@@ -704,74 +780,19 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         setBulkSectionDirty(false);
         setShowNewHistoryDot(true);
         
-        // Call onUpdate to refresh parent
+        if (onExpand) onExpand();
+        
         await onUpdate();
         
       } catch (error) {
         console.error('Error in handleSaveBulkSection:', error);
         alert('An error occurred while saving. Please try again.');
+      } finally {
+        setSavingBulkSection(false);
       }
     };
 
-    // Save Generic Note - just replace, don't append
-    const handleSaveGenericNotes = async () => {
-      if (!tempNotes || tempNotes.trim() === '') return;
-      
-      try {
-        const user = getCurrentUser();
-        
-        const { error } = await supabase
-          .from('order_products')
-          .update({ internal_notes: tempNotes.trim() })
-          .eq('id', (product as any).id);
-
-        if (error) {
-          console.error('Database error:', error);
-          alert('Failed to save note. Please try again.');
-          return;
-        }
-
-        // Try to log audit but don't fail if it doesn't work
-        try {
-          await supabase
-            .from('audit_log')
-            .insert({
-              user_id: user.id,
-              user_name: user.name,
-              action_type: 'note_added',
-              target_type: 'order_product',
-              target_id: (product as any).id,
-              new_value: `General Note: "${tempNotes.trim()}"`,
-              timestamp: new Date().toISOString()
-            });
-        } catch (auditError) {
-          console.error('Failed to log audit:', auditError);
-        }
-
-        setTempNotes('');
-        setShowNewHistoryDot(true);
-        await onUpdate();
-      } catch (error) {
-        console.error('Error saving notes:', error);
-        alert('Failed to save note. Please try again.');
-      }
-    };
-
-    // Handle sample file selection
-    const handleSampleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const newFiles = Array.from(files);
-      setPendingSampleFiles(prev => [...prev, ...newFiles]);
-      setSampleSectionDirty(true);
-      
-      if (sampleFileInputRef.current) {
-        sampleFileInputRef.current.value = '';
-      }
-    };
-
-    // Handle bulk file selection
+    // Other handler functions
     const handleBulkFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
@@ -783,10 +804,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       if (bulkFileInputRef.current) {
         bulkFileInputRef.current.value = '';
       }
-    };
-
-    const removePendingSampleFile = (index: number) => {
-      setPendingSampleFiles(prev => prev.filter((_, i) => i !== index));
     };
 
     const removePendingBulkFile = (index: number) => {
@@ -817,180 +834,83 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       }
     };
 
+    // Save variant quantities and notes
     const handleSaveVariantNotes = async () => {
+      setSavingVariantNotes(true);
       try {
         let hasChanges = false;
+        
+        // Save both quantities and notes
         for (const item of items) {
+          const newQty = parseInt(itemQuantities[item.id]) || 0;
           const newNote = variantNotes[item.id] || '';
-          if (newNote !== (item.notes || '')) {
+          
+          if (newQty !== item.quantity || newNote !== (item.notes || '')) {
             await supabase
               .from('order_items')
-              .update({ notes: newNote })
+              .update({ 
+                quantity: newQty,
+                notes: newNote 
+              })
               .eq('id', item.id);
             hasChanges = true;
-          }
-        }
-
-        // Update ORDER status to 'in_progress' if currently 'sent_to_manufacturer' and changes were made
-        if (hasChanges) {
-          try {
-            const { data: orderData } = await supabase
-              .from('orders')
-              .select('status')
-              .eq('id', (product as any).order_id)
-              .single();
-
-            if (orderData && orderData.status === 'sent_to_manufacturer') {
-              await supabase
-                .from('orders')
-                .update({ status: 'in_progress' })
-                .eq('id', (product as any).order_id);
-              console.log('Order status updated to in_progress');
-            }
-          } catch (orderError) {
-            console.error('Error updating order status:', orderError);
-            // Don't fail the whole operation just because order status update failed
+            console.log(`Updated item ${item.id}: qty=${newQty}, note="${newNote}"`);
           }
         }
 
         setEditingVariants(false);
+        setVariantsDirty(false);
+        setShowAllVariants(false);
         await onUpdate();
       } catch (error) {
         console.error('Error saving variant notes:', error);
+      } finally {
+        setSavingVariantNotes(false);
       }
     };
 
-    const truncateFilename = (filename: string, maxLength: number = 15) => {
-      if (!filename) return 'File';
-      if (filename.length <= maxLength) return filename;
-      const ext = filename.split('.').pop();
-      const name = filename.substring(0, maxLength - 5);
-      return `${name}...${ext}`;
+    // Handle expand/collapse
+    const handleExpand = () => {
+      setIsCollapsed(false);
+      if (onExpand) onExpand();
     };
 
-    // COLLAPSED HEADER COMPONENT - WITH TOTAL
-    const CollapsedHeader = () => (
-      <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
-        <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              {/* Expand Button */}
-              <button
-                onClick={() => setIsCollapsed(false)}
-                className="p-1 hover:bg-gray-200 rounded transition-colors"
-                title="Expand details"
-              >
-                <ChevronRight className="w-5 h-5 text-gray-600" />
-              </button>
-              
-              {getProductStatusIcon(displayStatus)}
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg text-gray-900">
-                    {(product as any).description || (product as any).product?.title || 'Product'}
-                  </h3>
-                  <ProductStatusBadge status={displayStatus} />
-                  {(product as any).is_locked && (
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                      🔒 Locked
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                  <span>{(product as any).product_order_number}</span>
-                  <span>•</span>
-                  <span>Qty: {totalQuantity}</span>
-                  {productionTime && (
-                    <>
-                      <span>•</span>
-                      <span>Production: {productionTime}</span>
-                    </>
-                  )}
-                  {/* MANUFACTURER TOTAL IN COLLAPSED VIEW */}
-                  {manufacturerTotal > 0 && (
-                    <>
-                      <span>•</span>
-                      <span className="font-semibold text-green-600">
-                        Total: ${manufacturerTotal.toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                  {/* Show tracking info if shipped */}
-                  {displayStatus === 'shipped' && (product as any).tracking_number && (
-                    <>
-                      <span>•</span>
-                      <span className="text-blue-600">Tracking: {(product as any).tracking_number}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
-              {onViewHistory && (
-                <button
-                  onClick={handleViewHistory}
-                  className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
-                >
-                  <History className="w-4 h-4" />
-                  {showNewHistoryDot && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                  )}
-                </button>
-              )}
-              
-              {/* ALWAYS show Route button for manufacturers */}
-              {onRoute && (
-                <button
-                  onClick={() => onRoute(product)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                >
-                  Route
-                </button>
-              )}
-              
-              <button
-                onClick={handleToggleLock}
-                disabled={processingProduct}
-                className={`p-2 rounded-lg transition-colors ${
-                  (product as any).is_locked 
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                    : 'bg-green-50 text-green-600 hover:bg-green-100'
-                } disabled:opacity-50`}
-                title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
-              >
-                {processingProduct ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (product as any).is_locked ? (
-                  <Lock className="w-4 h-4" />
-                ) : (
-                  <Unlock className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    const handleCollapse = () => {
+      setIsCollapsed(true);
+    };
 
-    // MAIN RENDER - Show collapsed or full view based on state
+    // Use shared CollapsedProductHeader when collapsed
     if (isCollapsed) {
-      return <CollapsedHeader />;
+      return (
+        <CollapsedProductHeader
+          product={product}
+          totalQuantity={totalQuantity}
+          totalPrice={manufacturerTotal}
+          isManufacturerView={true}
+          onExpand={handleExpand}
+          onViewHistory={handleViewHistory}
+          onRoute={onRoute ? () => onRoute(product) : undefined}
+          onToggleLock={handleToggleLock}
+          isLocked={(product as any).is_locked}
+          processingLock={processingProduct}
+          hasNewHistory={showNewHistoryDot}
+          userRole={userRole}
+          trackingNumber={(product as any).tracking_number}
+        />
+      );
     }
-// FULL EXPANDED VIEW WITH MANUFACTURER TOTAL BADGE
+
+    // FULL EXPANDED VIEW
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header with Collapse Button */}
         <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              {/* Collapse Button - ALWAYS show when multiple products (autoCollapse=true) */}
+              {/* Collapse Button */}
               {autoCollapse && (
                 <button
-                  onClick={() => setIsCollapsed(true)}
+                  onClick={handleCollapse}
                   className="p-1 hover:bg-gray-200 rounded transition-colors mt-1"
                   title="Collapse details"
                 >
@@ -1005,11 +925,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
                   <ProductStatusBadge status={displayStatus} />
-                  {/* MANUFACTURER TOTAL BADGE */}
+                  {/* MANUFACTURER TOTAL BADGE - USING formatCurrency */}
                   {manufacturerTotal > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
                       <Calculator className="w-4 h-4" />
-                      Mfg Total: ${manufacturerTotal.toFixed(2)}
+                      Mfg Total: ${formatCurrency(manufacturerTotal)}
                     </span>
                   )}
                 </div>
@@ -1032,7 +952,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   onClick={handleViewHistory}
                   className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
                 >
-                  <History className="w-4 h-4" />
+                  <Clock className="w-4 h-4" />
                   <span className="hidden sm:inline">History</span>
                   {showNewHistoryDot && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
@@ -1070,255 +990,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* Generic Notes Section */}
+          {/* COMMENTED OUT Generic Notes Section - Keeping for potential future use */}
+          {/* 
           <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
             <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
-            
-            {(product as any).internal_notes && (
-              <div className="mb-2 p-2 bg-gray-50 rounded text-sm text-gray-700">
-                <strong>Current notes:</strong>
-                <div className="whitespace-pre-wrap mt-1">{(product as any).internal_notes}</div>
-              </div>
-            )}
-            
-            <div className="space-y-2">
-              <textarea
-                value={tempNotes}
-                onChange={(e) => setTempNotes(e.target.value)}
-                placeholder="Add general notes or instructions for this product..."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-              />
-              {tempNotes && (
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setTempNotes('')}
-                    className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSaveGenericNotes}
-                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center gap-1"
-                  >
-                    <Save className="w-3 h-3" />
-                    Save Note
-                  </button>
-                </div>
-              )}
-            </div>
+            ... notes section code ...
           </div>
-
-          {/* Sample Request Section */}
-          <div className="mt-3 bg-amber-50 rounded-lg p-4 border border-amber-300">
-            <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
-              <AlertCircle className="w-4 h-4 mr-2" />
-              Sample Request
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample Price
-                </label>
-                <div className="relative">
-                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={sampleFee}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === '' || parseFloat(val) >= 0) {
-                        setSampleFee(val);
-                        setSampleSectionDirty(true);
-                      }
-                    }}
-                    placeholder="Enter price"
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Sample ETA
-                </label>
-                <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                  <input
-                    type="date"
-                    value={sampleEta}
-                    onChange={(e) => {
-                      setSampleEta(e.target.value);
-                      setSampleSectionDirty(true);
-                    }}
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-amber-800 mb-1">
-                  Status
-                </label>
-                <select
-                  value={sampleStatus}
-                  onChange={(e) => {
-                    setSampleStatus(e.target.value);
-                    setSampleSectionDirty(true);
-                  }}
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-white text-gray-900"
-                >
-                  <option value="pending">Pending</option>
-                  <option value="in_production">In Production</option>
-                  <option value="ready">Ready</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Sample Notes */}
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-amber-800 mb-1">
-                Sample Notes / Instructions
-              </label>
-              
-              {(product as any).sample_notes && (
-                <div className="mb-2 p-2 bg-amber-100 rounded text-sm text-amber-800">
-                  <strong>Current notes:</strong>
-                  <div className="whitespace-pre-wrap mt-1">{(product as any).sample_notes}</div>
-                </div>
-              )}
-              
-              <textarea
-                value={tempSampleNotes}
-                onChange={(e) => {
-                  setTempSampleNotes(e.target.value);
-                  setSampleSectionDirty(true);
-                }}
-                placeholder="Add sample-specific instructions, requirements, materials..."
-                rows={3}
-                className="w-full px-3 py-2 border border-amber-300 rounded-lg bg-white text-gray-900 font-medium text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-              />
-            </div>
-
-            {/* Sample Media */}
-            <div className="mb-3">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-amber-800">
-                  Sample Media {sampleMedia.length > 0 && `(${sampleMedia.length})`}
-                </label>
-                <button 
-                  onClick={() => sampleFileInputRef.current?.click()}
-                  disabled={uploadingMedia}
-                  className="text-xs px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center gap-1 disabled:opacity-50 transition-colors"
-                >
-                  {uploadingMedia ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  Add Files
-                </button>
-              </div>
-              
-              <input
-                ref={sampleFileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
-                onChange={handleSampleFileUpload}
-                className="hidden"
-              />
-              
-              {sampleMedia.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {sampleMedia.map((file) => (
-                    <div key={file.id} className="group relative inline-flex">
-                      <button
-                        onClick={() => handleFileClick(file.file_url)}
-                        className="px-2 py-1 bg-white border border-amber-200 rounded text-xs text-amber-700 hover:bg-amber-50 hover:border-amber-300 transition-colors flex items-center gap-1"
-                        title={file.display_name || file.original_filename || 'Sample File'}
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        <span>{file.display_name || file.original_filename || 'Sample File'}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMedia(file.id)}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                        title="Delete file"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {pendingSampleFiles.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-amber-700 mb-1">Files to upload (will save with section):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {pendingSampleFiles.map((file, index) => {
-                      const existingSampleFiles = media.filter((m: any) =>
-                        m.file_type === 'sample_image' || m.file_type === 'sample_document'
-                      );
-                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-                      const displayName = `${productOrderNumber}-sample-${String(existingSampleFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
-
-                      return (
-                        <div key={index} className="group relative inline-flex">
-                          <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800 flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            <span>{displayName}</span>
-                          </div>
-                          <button
-                            onClick={() => removePendingSampleFile(index)}
-                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove file"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Save button for Sample Section */}
-            {sampleSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 border-t border-amber-200">
-                <button
-                  onClick={() => {
-                    setSampleFee(originalValues.sampleFee);
-                    setSampleEta(originalValues.sampleEta);
-                    setSampleStatus(originalValues.sampleStatus);
-                    setTempSampleNotes('');
-                    setPendingSampleFiles([]);
-                    setSampleSectionDirty(false);
-                  }}
-                  className="px-4 py-1.5 text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded-lg hover:bg-amber-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveSampleSection}
-                  className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 flex items-center gap-1"
-                >
-                  <Save className="w-3 h-3" />
-                  Save Sample Section
-                </button>
-              </div>
-            )}
-          </div>
+          */}
 
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
@@ -1327,14 +1005,24 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               Bulk Order Information
             </h4>
 
+            {/* Show if this product has linked shipping from another product */}
+            {(product as any).shipping_link_note && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-800">
+                  <span className="font-medium">Shipping Note:</span> {(product as any).shipping_link_note}
+                </div>
+              </div>
+            )}
+
             {/* Bulk Order Notes */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <h5 className="text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
               
-              {(product as any).client_notes && (
+              {manufacturerNotes && (
                 <div className="mb-2 p-2 bg-blue-50 rounded text-sm text-blue-700">
                   <strong>Current notes:</strong>
-                  <div className="whitespace-pre-wrap mt-1">{(product as any).client_notes}</div>
+                  <div className="whitespace-pre-wrap mt-1">{manufacturerNotes}</div>
                 </div>
               )}
               
@@ -1350,97 +1038,32 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               />
             </div>
 
-            {/* Bulk Order Media */}
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-700">
-                  Bulk Order Media {referenceMedia.length > 0 && `(${referenceMedia.length})`}
-                </label>
-                <button 
-                  onClick={() => bulkFileInputRef.current?.click()}
-                  disabled={uploadingBulkMedia}
-                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50 transition-colors"
-                >
-                  {uploadingBulkMedia ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Upload className="w-3 h-3" />
-                  )}
-                  Add Files
-                </button>
-              </div>
-              
-              <input
-                ref={bulkFileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
-                onChange={handleBulkFileUpload}
-                className="hidden"
-              />
-              
-              {referenceMedia.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {referenceMedia.map((file) => (
-                    <div key={file.id} className="group relative inline-flex">
-                      <button
-                        onClick={() => handleFileClick(file.file_url)}
-                        className="px-2 py-1 bg-white border border-gray-200 rounded text-xs text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors flex items-center gap-1"
-                        title={file.display_name || file.original_filename || 'Product File'}
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        <span>{file.display_name || file.original_filename || 'Product File'}</span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteMedia(file.id)}
-                        className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                        title="Delete file"
-                      >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {pendingBulkFiles.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
-                  <div className="flex flex-wrap gap-1">
-                    {pendingBulkFiles.map((file, index) => {
-                      const existingBulkFiles = media.filter((m: any) =>
-                        m.file_type === 'image' || m.file_type === 'document'
-                      );
-                      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-                      const productOrderNumber = (product as any).product_order_number || 'PRD-0000';
-                      const displayName = `${productOrderNumber}-bulk-${String(existingBulkFiles.length + index + 1).padStart(2, '0')}.${fileExt}`;
+            {/* Bulk Order Media - Using Shared Component */}
+            <input
+              ref={bulkFileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
+              onChange={handleBulkFileUpload}
+              className="hidden"
+            />
+            
+            <FileUploadDisplay
+              files={referenceMedia}
+              pendingFiles={pendingBulkFiles}
+              onFileClick={handleFileClick}
+              onDeleteFile={handleDeleteMedia}
+              onRemovePending={removePendingBulkFile}
+              onAddFiles={() => bulkFileInputRef.current?.click()}
+              title="Bulk Order Media"
+              loading={uploadingBulkMedia}
+            />
 
-                      return (
-                        <div key={index} className="group relative inline-flex">
-                          <div className="px-2 py-1 bg-blue-100 border border-blue-300 rounded text-xs text-blue-800 flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            <span>{displayName}</span>
-                          </div>
-                          <button
-                            onClick={() => removePendingBulkFile(index)}
-                            className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove file"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Product Price and Production Info */}
+            {/* Product Price and Production Info - USING formatCurrency */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Price
+                  Product Price (Your Cost)
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1482,9 +1105,75 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* Shipping Options & Pricing */}
+            {/* Shipping Options & Pricing - MOVED ALLOCATION FEATURE INSIDE HERE */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
-              <h5 className="text-sm font-semibold text-gray-800 mb-3">Shipping Options & Pricing</h5>
+              <div className="flex items-center justify-between mb-3">
+                <h5 className="text-sm font-semibold text-gray-800">Shipping Options & Pricing</h5>
+                
+                {/* MOVED HERE: Shipping Allocation Checkbox - ALWAYS VISIBLE FOR MANUFACTURERS */}
+                {allOrderProducts && allOrderProducts.length > 1 && (
+                  <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyShippingToOthers}
+                      onChange={(e) => {
+                        setApplyShippingToOthers(e.target.checked);
+                        if (!e.target.checked) {
+                          setSelectedProductsForShipping([]);
+                        }
+                        setBulkSectionDirty(true);
+                      }}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <Link2 className="w-4 h-4 text-yellow-600" />
+                    <span>Apply fee to multiple products</span>
+                  </label>
+                )}
+              </div>
+              
+              {/* Shipping Allocation Dropdown - Shows when checkbox is checked */}
+              {applyShippingToOthers && allOrderProducts && allOrderProducts.length > 1 && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-gray-600 mb-2">
+                    Select which products share this shipping fee:
+                  </p>
+                  <div className="max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
+                    {allOrderProducts
+                      .filter(p => (p as any).id !== (product as any).id)
+                      .map(p => (
+                        <label key={(p as any).id} className="flex items-start gap-2 py-1.5 px-2 hover:bg-gray-50 cursor-pointer rounded">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductsForShipping.includes((p as any).id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProductsForShipping(prev => [...prev, (p as any).id]);
+                              } else {
+                                setSelectedProductsForShipping(prev => prev.filter(id => id !== (p as any).id));
+                              }
+                              setBulkSectionDirty(true);
+                            }}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-0.5"
+                          />
+                          <div className="flex-1">
+                            <span className="text-xs font-semibold text-gray-900">
+                              {(p as any).product_order_number}
+                            </span>
+                            <span className="text-xs text-gray-600 ml-2">
+                              - {(p as any).description || (p as any).product?.title || 'No description'}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                  </div>
+                  {selectedProductsForShipping.length > 0 && (
+                    <div className="flex items-center gap-1 text-xs text-green-600 font-medium mt-2">
+                      <CheckCircle className="w-3 h-3" />
+                      Shipping will be linked with {selectedProductsForShipping.length} product{selectedProductsForShipping.length > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+              )}
               
               {(product as any).selected_shipping_method && (
                 <div className="mb-4 p-3 bg-white rounded-lg border-2 border-blue-400 shadow-sm">
@@ -1498,7 +1187,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         <div>
                           <span className="text-base font-bold text-blue-800">AIR SHIPPING</span>
                           {shippingAirPrice && (
-                            <p className="text-sm text-blue-600">Price: ${parseFloat(shippingAirPrice).toFixed(2)}</p>
+                            <p className="text-sm text-blue-600">Price: ${formatCurrency(parseFloat(shippingAirPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1510,7 +1199,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         <div>
                           <span className="text-base font-bold text-cyan-800">BOAT SHIPPING</span>
                           {shippingBoatPrice && (
-                            <p className="text-sm text-cyan-600">Price: ${parseFloat(shippingBoatPrice).toFixed(2)}</p>
+                            <p className="text-sm text-cyan-600">Price: ${formatCurrency(parseFloat(shippingBoatPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1522,7 +1211,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Air Shipping Price
+                    Air Shipping Price (Your Cost)
                   </label>
                   <div className="relative">
                     <Plane className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1539,14 +1228,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         }
                       }}
                       placeholder="Enter air price"
-                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+                      disabled={(product as any).shipping_link_note ? true : false}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                 </div>
                 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Boat Shipping Price
+                    Boat Shipping Price (Your Cost)
                   </label>
                   <div className="relative">
                     <Ship className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1563,14 +1253,15 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         }
                       }}
                       placeholder="Enter boat price"
-                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+                      disabled={(product as any).shipping_link_note ? true : false}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* MANUFACTURER PRICING SUMMARY */}
+            {/* MANUFACTURER PRICING SUMMARY - USING formatCurrency */}
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-300">
               <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
                 <Calculator className="w-4 h-4 mr-2" />
@@ -1579,85 +1270,171 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="space-y-2 text-sm">
                 {productPrice && totalQuantity > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-700">Product: ${parseFloat(productPrice).toFixed(2)} × {totalQuantity} units</span>
-                    <span className="font-semibold text-gray-900">${(parseFloat(productPrice) * totalQuantity).toFixed(2)}</span>
+                    <span className="text-gray-700">
+                      Product: ${formatCurrency(parseFloat(productPrice))} × {totalQuantity} units
+                    </span>
+                    <span className="font-semibold text-gray-900">
+                      ${formatCurrency(parseFloat(productPrice) * totalQuantity)}
+                    </span>
                   </div>
                 )}
-                {sampleFee && parseFloat(sampleFee) > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Sample Fee</span>
-                    <span className="font-semibold text-gray-900">${parseFloat(sampleFee).toFixed(2)}</span>
-                  </div>
-                )}
-                {(product as any).selected_shipping_method && (
+                {(product as any).selected_shipping_method && !((product as any).shipping_link_note) && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">
                       Shipping ({(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'})
+                      {applyShippingToOthers && selectedProductsForShipping.length > 0 && (
+                        <span className="text-xs text-green-600 ml-1">
+                          (shared with {selectedProductsForShipping.length} products)
+                        </span>
+                      )}
                     </span>
                     <span className="font-semibold text-gray-900">
                       ${(product as any).selected_shipping_method === 'air' 
-                        ? (parseFloat(shippingAirPrice) || 0).toFixed(2)
-                        : (parseFloat(shippingBoatPrice) || 0).toFixed(2)}
+                        ? formatCurrency(parseFloat(shippingAirPrice) || 0)
+                        : formatCurrency(parseFloat(shippingBoatPrice) || 0)}
                     </span>
+                  </div>
+                )}
+                {(product as any).shipping_link_note && (
+                  <div className="text-xs text-blue-600 italic">
+                    {(product as any).shipping_link_note}
                   </div>
                 )}
                 <div className="pt-2 border-t border-green-300">
                   <div className="flex justify-between">
                     <span className="font-semibold text-green-800">Total Manufacturing Cost</span>
-                    <span className="font-bold text-green-800 text-base">${manufacturerTotal.toFixed(2)}</span>
+                    <span className="font-bold text-green-800 text-base">
+                      ${formatCurrency(manufacturerTotal)}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Save button for Bulk Section */}
+            {/* Save button for Bulk Section - IMPROVED SPACING */}
             {bulkSectionDirty && (
-              <div className="flex justify-end gap-2 pt-2 mt-4 border-t border-gray-200">
+              <div className="flex justify-end gap-3 pt-3 mt-4 border-t border-gray-200">
                 <button
                   onClick={() => {
                     setProductPrice(originalValues.productPrice);
                     setProductionTime(originalValues.productionTime);
                     setShippingAirPrice(originalValues.shippingAirPrice);
                     setShippingBoatPrice(originalValues.shippingBoatPrice);
+                    setSampleFee(originalValues.sampleFee);
+                    setSampleETA(originalValues.sampleETA);
+                    setManufacturerNotes(originalValues.manufacturerNotes);
                     setTempBulkNotes('');
                     setPendingBulkFiles([]);
                     setBulkSectionDirty(false);
+                    setApplyShippingToOthers(false);
+                    setSelectedProductsForShipping([]);
                   }}
-                  className="px-4 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  disabled={savingBulkSection}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveBulkSection}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1"
+                  disabled={savingBulkSection}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors font-medium"
                 >
-                  <Save className="w-3 h-3" />
-                  Save Bulk Section
+                  {savingBulkSection ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3 h-3" />
+                      Save Bulk Section
+                    </>
+                  )}
                 </button>
               </div>
             )}
 
-            {/* Variant Details Table */}
+            {/* IMPROVED Variant Details Table with BETTER BUTTON SPACING */}
             <div className="mb-4">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">
-                {getVariantTypeName()} Details
-              </h5>
+              <div className="flex items-center justify-between mb-2">
+                <h5 className="text-sm font-medium text-gray-700">
+                  {getVariantTypeName()} Details
+                  {!showAllVariants && hasHiddenVariants && !editingVariants && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      (Showing {visibleVariants.length} of {items.length})
+                    </span>
+                  )}
+                </h5>
+                <div className="flex items-center gap-2">
+                  {!editingVariants && hasHiddenVariants && (
+                    <button
+                      onClick={() => setShowAllVariants(!showAllVariants)}
+                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                    >
+                      {showAllVariants ? (
+                        <>
+                          <EyeOff className="w-3 h-3" />
+                          Hide Empty
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3 h-3" />
+                          Show All
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {!editingVariants ? (
+                    <button
+                      onClick={() => {
+                        setEditingVariants(true);
+                        setShowAllVariants(true);
+                      }}
+                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      Edit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '25%'}}>
+                      <th className="text-left py-2 px-3 text-sm font-medium text-gray-700" style={{width: '30%'}}>
                         {getVariantTypeName()}
                       </th>
-                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '10%'}}>Qty</th>
-                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '65%'}}>Notes</th>
+                      <th className="text-left py-2 px-1 text-sm font-medium text-gray-700" style={{width: '20%'}}>Qty</th>
+                      <th className="text-left py-2 pl-2 pr-3 text-sm font-medium text-gray-700" style={{width: '50%'}}>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
+                    {visibleVariants.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900">{item.variant_combo}</td>
-                        <td className="py-2 px-1 text-sm font-medium text-gray-900">{item.quantity}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{item.variant_combo}</td>
+                        <td className="py-2 px-1">
+                          {editingVariants ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={itemQuantities[item.id] || '0'}
+                              onChange={(e) => {
+                                setItemQuantities(prev => ({
+                                  ...prev,
+                                  [item.id]: e.target.value
+                                }));
+                                setVariantsDirty(true);
+                              }}
+                              className="w-24 px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-900">
+                              {itemQuantities[item.id] || '0'}
+                            </span>
+                          )}
+                        </td>
                         <td className="py-2 pl-2 pr-3">
                           <input
                             type="text"
@@ -1667,10 +1444,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                                 ...prev,
                                 [item.id]: e.target.value
                               }));
+                              setVariantsDirty(true);
                               if (!editingVariants) setEditingVariants(true);
                             }}
                             placeholder="Add note..."
-                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                            disabled={!editingVariants}
+                            className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-700"
                           />
                         </td>
                       </tr>
@@ -1680,26 +1459,42 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
               
               {editingVariants && (
-                <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 flex justify-end gap-3">
                   <button
                     onClick={() => {
                       const originalNotes: {[key: string]: string} = {};
+                      const originalQtys: {[key: string]: string} = {};
                       items.forEach(item => {
                         originalNotes[item.id] = item.notes || '';
+                        originalQtys[item.id] = item.quantity?.toString() || '0';
                       });
                       setVariantNotes(originalNotes);
+                      setItemQuantities(originalQtys);
                       setEditingVariants(false);
+                      setVariantsDirty(false);
+                      setShowAllVariants(false);
                     }}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    disabled={savingVariantNotes}
+                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveVariantNotes}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1"
+                    disabled={savingVariantNotes}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors font-medium"
                   >
-                    <Save className="w-3 h-3" />
-                    Save Variant Notes
+                    {savingVariantNotes ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-3 h-3" />
+                        Save Variant Details
+                      </>
+                    )}
                   </button>
                 </div>
               )}
@@ -1709,4 +1504,4 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       </div>
     );
   }
-);   
+);

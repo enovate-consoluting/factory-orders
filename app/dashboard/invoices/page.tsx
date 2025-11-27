@@ -1,393 +1,949 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { 
-  FileText, Plus, Calendar, Building, DollarSign, 
-  Package, ChevronRight, Filter, Search
+  FileText, Calendar, Search, CheckCircle, Clock, Send, 
+  AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
+  ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
+  Package, Shield, Inbox
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 
-interface InvoiceableOrder {
+// Format currency helper
+const formatCurrencyUtil = (amount: number): string => {
+  return amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+interface Invoice {
+  id: string;
+  invoice_number: string;
+  amount: number;
+  paid_amount: number;
+  status: 'draft' | 'sent' | 'paid' | 'cancelled';
+  due_date: string;
+  created_at: string;
+  sent_at?: string;
+  order_id?: string;
+  order?: {
+    id: string;
+    order_number: string;
+    order_name: string;
+  };
+  client?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+interface OrderForApproval {
   id: string;
   order_number: string;
   order_name: string;
-  status: string;
+  created_at: string;
   client: {
     id: string;
     name: string;
   };
+  products: ProductForApproval[];
   total_value: number;
-  order_total: number;
-  invoiced_amount: number;
-  ready_to_invoice: number;
-  approved_products: number;
-  total_products: number;
-  has_samples: boolean;
-  sample_total: number;
-  production_total: number;
-  invoices?: any[]; // Add this to fix TypeScript error
+  earliest_ready_date: Date | null;
 }
+
+interface ProductForApproval {
+  id: string;
+  product_order_number: string;
+  description: string;
+  sample_fee: number;
+  client_product_price: number;
+  client_shipping_air_price: number;
+  client_shipping_boat_price: number;
+  selected_shipping_method: string;
+  total_quantity: number;
+  total_value: number;
+  routed_at: string;
+}
+
+type TabType = 'approval' | 'drafts' | 'sent' | 'paid' | 'all';
+
+// Helper to calculate days since a date
+const daysSinceDate = (dateString: string | Date | null): number => {
+  if (!dateString) return 0;
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - date.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
 
 export default function InvoicesPage() {
   const router = useRouter();
   const supabase = createClientComponentClient();
   
-  const [orders, setOrders] = useState<InvoiceableOrder[]>([]);
+  const [activeTab, setActiveTab] = useState<TabType>('approval');
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('ready');
   const [searchTerm, setSearchTerm] = useState('');
+  const [user, setUser] = useState<any>(null);
+  const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   
+  // Client-specific states
+  const [isClient, setIsClient] = useState(false);
+  const [clientId, setClientId] = useState<string | null>(null);
+  
+  // Data
+  const [ordersForApproval, setOrdersForApproval] = useState<OrderForApproval[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  
+  // Stats
+  const [stats, setStats] = useState({
+    forApproval: 0,
+    drafts: 0,
+    sent: 0,
+    paid: 0
+  });
+
   useEffect(() => {
-    fetchInvoiceableOrders();
-  }, [activeTab]);
-  
-  const fetchInvoiceableOrders = async () => {
-    try {
-      const { data: ordersData, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          client:clients(*),
-          order_products (
-            id,
-            product_status,
-            sample_fee,
-            product_price,
-            shipping_air_price,
-            shipping_boat_price,
-            order_items (
-              quantity
-            )
-          ),
-          invoices (
-            id,
-            amount,
-            status
-          )
-        `)
-        .neq('status', 'draft')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      const processedOrders = ordersData?.map(order => {
-        // Look for products that are approved or in production
-        const approvedProducts = order.order_products.filter(
-          (p: any) => {
-            return p.product_status === 'approved_for_production' || 
-                   p.product_status === 'in_production' ||
-                   p.product_status === 'completed';
-          }
-        );
-        
-        // Calculate totals for APPROVED products only
-        let sampleTotal = 0;
-        let productionTotal = 0;
-        
-        approvedProducts.forEach((product: any) => {
-          // Add sample fee
-          const fee = parseFloat(product.sample_fee || 0);
-          sampleTotal += fee;
-          
-          // Calculate production total (product price × quantity + BOTH shipping)
-          const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-          const productPrice = parseFloat(product.product_price || 0);
-          const airShipping = parseFloat(product.shipping_air_price || 0);
-          const boatShipping = parseFloat(product.shipping_boat_price || 0);
-          
-          productionTotal += (totalQty * productPrice) + airShipping + boatShipping;
-        });
-        
-        const totalValue = sampleTotal + productionTotal;  // For invoice calculations
-        
-        // Calculate ENTIRE order total (ALL products, not just approved) - INCLUDING BOTH SHIPPING
-        let orderTotal = 0;
-        order.order_products.forEach((product: any) => {
-          // Add sample fee + BOTH shipping for ALL products
-          const sampleFee = parseFloat(product.sample_fee || 0);
-          const airShipping = parseFloat(product.shipping_air_price || 0);
-          const boatShipping = parseFloat(product.shipping_boat_price || 0);
-          
-          // Calculate production cost using product_price
-          const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-          const productPrice = parseFloat(product.product_price || 0);
-          
-          // Add everything together
-          orderTotal += sampleFee + (totalQty * productPrice) + airShipping + boatShipping;
-        });
-        
-        // Calculate already invoiced amount (only SENT invoices)
-        const invoicedAmount = order.invoices?.reduce((sum: number, inv: any) => {
-          if (inv.status === 'sent') {
-            return sum + parseFloat(inv.amount || 0);
-          }
-          return sum;
-        }, 0) || 0;
-        
-        return {
-          id: order.id,
-          order_number: order.order_number,
-          order_name: order.order_name,
-          status: order.status,
-          client: order.client,
-          total_value: totalValue,      // Approved products total (for calculations)
-          order_total: orderTotal,       // ENTIRE order total (for display) - should be $2,528
-          invoiced_amount: invoicedAmount,
-          ready_to_invoice: Math.max(0, totalValue - invoicedAmount),
-          approved_products: approvedProducts.length,
-          total_products: order.order_products.length,
-          has_samples: sampleTotal > 0,
-          sample_total: sampleTotal,
-          production_total: productionTotal,
-          invoices: order.invoices || [] // Include invoices in the processed data
-        };
-      }).filter(order => order.approved_products > 0) || [];
-
-      // Filter based on tab
-      let filtered = processedOrders;
-      if (activeTab === 'ready') {
-        filtered = processedOrders.filter(o => o.ready_to_invoice > 0);
-      } else if (activeTab === 'draft') {
-        filtered = processedOrders.filter(o => 
-          o.invoices?.some((inv: any) => inv.status === 'draft')
-        );
-      } else if (activeTab === 'sent') {
-        filtered = processedOrders.filter(o => 
-          o.invoices?.some((inv: any) => inv.status === 'sent')
-        );
+    const userData = localStorage.getItem('user');
+    if (userData) {
+      const parsedUser = JSON.parse(userData);
+      setUser(parsedUser);
+      
+      // Check if user is a client
+      if (parsedUser.role === 'client') {
+        setIsClient(true);
+        setActiveTab('sent'); // Clients only see sent invoices
+        fetchClientId(parsedUser.email);
       }
+    }
+  }, []);
 
-      setOrders(filtered);
+  useEffect(() => {
+    if (isClient && !clientId) {
+      // Wait for clientId to be fetched before loading data
+      return;
+    }
+    fetchData();
+  }, [activeTab, isClient, clientId]);
+
+  const fetchClientId = async (email: string) => {
+    try {
+      const { data: clientData, error } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('email', email)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching client:', error);
+        return;
+      }
+      
+      if (clientData) {
+        setClientId(clientData.id);
+      }
     } catch (error) {
-      console.error('Error fetching orders:', error);
-      notify.error('Failed to load invoiceable orders');
+      console.error('Error fetching client ID:', error);
+    }
+  };
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      if (!isClient) {
+        await fetchStats();
+      }
+      
+      if (activeTab === 'approval' && !isClient) {
+        await fetchOrdersForApproval();
+      } else {
+        await fetchInvoices();
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      notify.error('Failed to load data');
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredOrders = orders.filter(order => {
+  const fetchStats = async () => {
+    try {
+      // Count products for approval
+      const { data: approvalData } = await supabase
+        .from('order_products')
+        .select('id')
+        .eq('routed_to', 'admin')
+        .or('client_product_price.gt.0,sample_fee.gt.0')
+        .not('product_status', 'in', '("approved_for_production","in_production","shipped","completed")');
+      
+      // Count invoices by status
+      const { data: invoiceData } = await supabase
+        .from('invoices')
+        .select('id, status');
+      
+      setStats({
+        forApproval: approvalData?.length || 0,
+        drafts: invoiceData?.filter(i => i.status === 'draft').length || 0,
+        sent: invoiceData?.filter(i => i.status === 'sent').length || 0,
+        paid: invoiceData?.filter(i => i.status === 'paid').length || 0
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const fetchOrdersForApproval = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          order_name,
+          created_at,
+          client:clients(id, name),
+          order_products(
+            id,
+            product_order_number,
+            description,
+            product_status,
+            routed_to,
+            routed_at,
+            sample_fee,
+            client_product_price,
+            client_shipping_air_price,
+            client_shipping_boat_price,
+            selected_shipping_method,
+            product:products(title),
+            order_items(quantity)
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Process orders - filter to only those with invoiceable products
+      const processed: OrderForApproval[] = [];
+      
+      data?.forEach(order => {
+        const invoiceableProducts = order.order_products?.filter((p: any) => 
+          p.routed_to === 'admin' && 
+          (parseFloat(p.sample_fee || 0) > 0 || parseFloat(p.client_product_price || 0) > 0) &&
+          p.product_status !== 'approved_for_production' &&
+          p.product_status !== 'in_production' &&
+          p.product_status !== 'shipped' &&
+          p.product_status !== 'completed'
+        ) || [];
+
+        if (invoiceableProducts.length === 0) return;
+
+        let totalValue = 0;
+        let earliestDate: Date | null = null;
+
+        const products: ProductForApproval[] = invoiceableProducts.map((p: any) => {
+          const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
+          
+          let productTotal = parseFloat(p.sample_fee || 0);
+          productTotal += parseFloat(p.client_product_price || 0) * totalQty;
+          
+          if (p.selected_shipping_method === 'air') {
+            productTotal += parseFloat(p.client_shipping_air_price || 0);
+          } else if (p.selected_shipping_method === 'boat') {
+            productTotal += parseFloat(p.client_shipping_boat_price || 0);
+          }
+
+          totalValue += productTotal;
+
+          if (p.routed_at) {
+            const routedDate = new Date(p.routed_at);
+            if (!earliestDate || routedDate < earliestDate) {
+              earliestDate = routedDate;
+            }
+          }
+
+          return {
+            id: p.id,
+            product_order_number: p.product_order_number,
+            description: p.description || p.product?.title || 'Product',
+            sample_fee: parseFloat(p.sample_fee || 0),
+            client_product_price: parseFloat(p.client_product_price || 0),
+            client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
+            client_shipping_boat_price: parseFloat(p.client_shipping_boat_price || 0),
+            selected_shipping_method: p.selected_shipping_method,
+            total_quantity: totalQty,
+            total_value: productTotal,
+            routed_at: p.routed_at
+          };
+        });
+
+        processed.push({
+          id: order.id,
+          order_number: order.order_number,
+          order_name: order.order_name || 'Untitled Order',
+          created_at: order.created_at,
+          client: Array.isArray(order.client) ? order.client[0] : order.client,
+          products,
+          total_value: totalValue,
+          earliest_ready_date: earliestDate
+        });
+      });
+
+      // Sort by earliest ready date (oldest first)
+      processed.sort((a, b) => {
+        if (!a.earliest_ready_date) return 1;
+        if (!b.earliest_ready_date) return -1;
+        return a.earliest_ready_date.getTime() - b.earliest_ready_date.getTime();
+      });
+
+      setOrdersForApproval(processed);
+    } catch (error) {
+      console.error('Error fetching orders for approval:', error);
+    }
+  };
+
+  const fetchInvoices = async () => {
+    try {
+      let query = supabase
+        .from('invoices')
+        .select(`
+          *,
+          order:orders(id, order_number, order_name),
+          client:clients(id, name, email)
+        `)
+        .order('created_at', { ascending: false });
+
+      // CLIENT FILTER - Only show sent invoices for their client_id
+      if (isClient && clientId) {
+        query = query
+          .eq('client_id', clientId)
+          .eq('status', 'sent');
+      } else {
+        // Admin filters
+        if (activeTab === 'drafts') {
+          query = query.eq('status', 'draft');
+        } else if (activeTab === 'sent') {
+          query = query.eq('status', 'sent');
+        } else if (activeTab === 'paid') {
+          query = query.eq('status', 'paid');
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setInvoices(data || []);
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    try {
+      setDeleting(true);
+      
+      // Delete invoice items first
+      await supabase
+        .from('invoice_items')
+        .delete()
+        .eq('invoice_id', invoiceId);
+      
+      // Delete invoice
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId);
+      
+      if (error) throw error;
+      
+      notify.success('Invoice deleted');
+      setShowDeleteConfirm(null);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      notify.error('Failed to delete invoice');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const toggleOrderExpansion = (orderId: string) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const hasShippingSelected = (product: ProductForApproval): boolean => {
+    return !!(product.selected_shipping_method && 
+             ((product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) ||
+              (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0)));
+  };
+
+  // Filter based on search
+  const filteredOrders = ordersForApproval.filter(order => {
     if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
     return (
-      order.order_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.client.name.toLowerCase().includes(searchTerm.toLowerCase())
+      order.order_name?.toLowerCase().includes(search) ||
+      order.order_number?.toLowerCase().includes(search) ||
+      order.client?.name?.toLowerCase().includes(search)
     );
   });
 
-  if (loading) {
+  const filteredInvoices = invoices.filter(invoice => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading invoices...</div>
-      </div>
+      invoice.invoice_number?.toLowerCase().includes(search) ||
+      invoice.order?.order_name?.toLowerCase().includes(search) ||
+      invoice.order?.order_number?.toLowerCase().includes(search) ||
+      invoice.client?.name?.toLowerCase().includes(search)
     );
-  }
+  });
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">Invoices</h1>
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                setLoading(true);
-                fetchInvoiceableOrders();
-              }}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Refresh
-            </button>
-            <button
-              onClick={() => router.push('/dashboard/invoices/create')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Create Invoice
-            </button>
-          </div>
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'draft':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
+            <FileText className="w-3 h-3" />
+            Draft
+          </span>
+        );
+      case 'sent':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+            <Send className="w-3 h-3" />
+            Sent
+          </span>
+        );
+      case 'paid':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+            <CheckCircle className="w-3 h-3" />
+            Paid
+          </span>
+        );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">
+            Cancelled
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const canDelete = (invoice: Invoice): boolean => {
+    // Super Admin can delete any invoice
+    if (user?.role === 'super_admin') return true;
+    // Admin can only delete drafts
+    if (user?.role === 'admin' && invoice.status === 'draft') return true;
+    return false;
+  };
+
+  // Render Invoice Approval view - MATCHES ORDERS PAGE EXACTLY
+  const renderInvoiceApprovalView = () => {
+    return (
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-3 border-b bg-amber-50">
+          <h2 className="text-base font-semibold text-gray-900">Orders Ready for Invoicing</h2>
         </div>
-
-        {/* Tabs */}
-        <div className="flex gap-6 border-b border-gray-200">
-          <button
-            onClick={() => setActiveTab('ready')}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'ready'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Ready to Invoice
-            {orders.filter(o => o.ready_to_invoice > 0).length > 0 && (
-              <span className="ml-2 bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs">
-                {orders.filter(o => o.ready_to_invoice > 0).length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('draft')}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'draft'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Draft Invoices
-          </button>
-          <button
-            onClick={() => setActiveTab('sent')}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'sent'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Sent Invoices
-          </button>
-          <button
-            onClick={() => setActiveTab('all')}
-            className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'all'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            All Orders
-          </button>
-        </div>
-      </div>
-
-      {/* Search Bar */}
-      <div className="mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by order name, number, or client..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-500"
-          />
-        </div>
-      </div>
-
-      {/* Orders List */}
-      <div className="space-y-4">
+        
         {filteredOrders.length === 0 ? (
           <div className="text-center py-12">
-            <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">
-              {activeTab === 'ready' 
-                ? 'No orders ready for invoicing' 
-                : 'No orders found'}
+            <CheckCircle className="mx-auto h-12 w-12 text-green-300" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">All caught up!</h3>
+            <p className="mt-1 text-sm text-gray-500">No orders waiting for invoice approval</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {filteredOrders.map((order) => {
+              const isExpanded = expandedOrders.has(order.id);
+              const daysWaiting = order.earliest_ready_date ? daysSinceDate(order.earliest_ready_date) : 0;
+
+              return (
+                <div key={order.id} className="bg-white hover:bg-gray-50 transition-colors">
+                  {/* Order Header */}
+                  <div 
+                    className="p-3 cursor-pointer"
+                    onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleOrderExpansion(order.id);
+                          }}
+                          className="p-0.5 hover:bg-gray-200 rounded"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                          )}
+                        </button>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <h3 className="font-semibold text-gray-900 text-sm">
+                                  {order.order_name}
+                                </h3>
+                                <span className="text-xs text-gray-500">
+                                  {order.order_number}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {order.client?.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  Order Created: {new Date(order.created_at).toLocaleDateString()}
+                                </span>
+                                {daysWaiting > 0 && (
+                                  <span className="flex items-center gap-1 text-amber-600 font-medium">
+                                    <Clock className="w-3 h-3" />
+                                    Invoice Ready: {daysWaiting} {daysWaiting === 1 ? 'day' : 'days'} ago
+                                  </span>
+                                )}
+                                <span className="font-semibold text-gray-900">
+                                  {order.products.length} products • Total: ${formatCurrencyUtil(order.total_value)}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <Link
+                                href={`/dashboard/invoices/create?order=${order.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                Create Invoice
+                              </Link>
+                              <Link
+                                href={`/dashboard/orders/${order.id}`}
+                                target="_blank"
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                title="View Order"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Link>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Expanded Products */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3">
+                      <div className="bg-gray-50 rounded-lg p-2 space-y-1">
+                        {order.products.map((product) => {
+                          const daysReady = daysSinceDate(product.routed_at);
+                          const hasShipping = hasShippingSelected(product);
+                          
+                          return (
+                            <div 
+                              key={product.id} 
+                              className="bg-white rounded p-2 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                              onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900 text-sm">
+                                      {product.product_order_number}
+                                    </p>
+                                    <span className="text-xs text-gray-600">
+                                      {product.description}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                                    <span>Qty: {product.total_quantity}</span>
+                                    {product.client_product_price > 0 && (
+                                      <span>${formatCurrencyUtil(product.client_product_price)}/unit</span>
+                                    )}
+                                    {product.sample_fee > 0 && (
+                                      <span>Sample: ${formatCurrencyUtil(product.sample_fee)}</span>
+                                    )}
+                                    {product.selected_shipping_method && hasShipping && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-300 rounded-full">
+                                        {product.selected_shipping_method === 'air' ? (
+                                          <Plane className="w-3 h-3 text-green-600" />
+                                        ) : (
+                                          <Ship className="w-3 h-3 text-green-600" />
+                                        )}
+                                        <span className="text-green-700 font-medium">
+                                          ${formatCurrencyUtil(
+                                            product.selected_shipping_method === 'air' 
+                                              ? product.client_shipping_air_price
+                                              : product.client_shipping_boat_price
+                                          )}
+                                        </span>
+                                      </span>
+                                    )}
+                                    {daysReady > 0 && (
+                                      <span className="text-amber-600 font-medium">
+                                        {daysReady} days ago
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                                <div className="text-right">
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    ${formatCurrencyUtil(product.total_value)}
+                                  </p>
+                                  {!hasShipping && (
+                                    <div className="flex items-center gap-1 mt-0.5">
+                                      <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                      <span className="text-xs text-amber-600 font-medium">
+                                        No Shipping Selected
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Render Invoice List (Drafts, Sent, Paid, All)
+  const renderInvoiceList = () => {
+    return (
+      <div className="bg-white rounded-lg shadow">
+        {filteredInvoices.length === 0 ? (
+          <div className="text-center py-12">
+            <FileText className="mx-auto h-12 w-12 text-gray-300" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {isClient ? 'No invoices yet' : 'No invoices found'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {isClient 
+                ? 'Your invoices will appear here once they are sent to you'
+                : activeTab === 'drafts' && 'No draft invoices'
+              }
+              {!isClient && activeTab === 'sent' && 'No sent invoices awaiting payment'}
+              {!isClient && activeTab === 'paid' && 'No paid invoices yet'}
+              {!isClient && activeTab === 'all' && 'Create your first invoice to get started'}
             </p>
           </div>
         ) : (
-          filteredOrders.map(order => (
-            <div
-              key={order.id}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
-            >
-              <div className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    {/* Order Header */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <h3 className="font-semibold text-lg text-gray-900">
-                        {order.order_name || order.order_number}
-                      </h3>
-                      <span className="text-sm text-gray-500">
-                        #{order.order_number}
-                      </span>
-                    </div>
-
-                    {/* Client Info */}
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-                      <div className="flex items-center gap-1">
-                        <Building className="w-4 h-4" />
-                        <span>{order.client.name}</span>
-                      </div>
-                      <span className="text-gray-400">•</span>
-                      <span>
-                        {order.approved_products} of {order.total_products} products approved
-                      </span>
-                    </div>
-
-                    {/* Financial Summary */}
-                    <div className="grid grid-cols-3 gap-4">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Invoice
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Order
+                  </th>
+                  {!isClient && (
+                    <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Client
+                    </th>
+                  )}
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Amount
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Due Date
+                  </th>
+                  <th className="text-right py-3 px-4 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredInvoices.map(invoice => (
+                  <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="py-3 px-4">
+                      <span className="font-semibold text-gray-900">{invoice.invoice_number}</span>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(invoice.created_at).toLocaleDateString()}
+                      </p>
+                    </td>
+                    <td className="py-3 px-4">
                       <div>
-                        <p className="text-xs text-gray-500 mb-1">Order Total</p>
-                        <p className="font-semibold text-gray-900">
-                          ${order.order_total.toFixed(2)}
-                        </p>
+                        <p className="text-sm text-gray-900">{invoice.order?.order_name || invoice.order?.order_number || '-'}</p>
+                        {invoice.order?.order_number && invoice.order?.order_name && (
+                          <p className="text-xs text-gray-500">#{invoice.order.order_number}</p>
+                        )}
                       </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Sent Invoices</p>
-                        <p className="font-semibold text-gray-600">
-                          ${order.invoiced_amount.toFixed(2)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-1">Ready to Invoice</p>
-                        <p className="font-semibold text-green-600">
-                          ${order.ready_to_invoice.toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex flex-col gap-2 ml-4">
-                    {order.ready_to_invoice > 0 && (
-                      <button
-                        onClick={() => router.push(`/dashboard/invoices/create?order=${order.id}`)}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                      >
-                        Create Invoice
-                      </button>
+                    </td>
+                    {!isClient && (
+                      <td className="py-3 px-4">
+                        <span className="text-sm text-gray-700">{invoice.client?.name || '-'}</span>
+                      </td>
                     )}
-                    <button
-                      onClick={() => router.push(`/dashboard/orders/${order.id}`)}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
-                    >
-                      View Order
-                    </button>
-                  </div>
-                </div>
-
-                {/* Breakdown if has samples */}
-                {order.has_samples && order.ready_to_invoice > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-sm text-gray-700 font-medium mb-2">Available to invoice:</p>
-                    <div className="flex gap-4">
-                      {order.sample_total > 0 && (
-                        <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-amber-600" />
-                          <span className="text-sm text-gray-700">
-                            Sample fees: <span className="font-semibold text-gray-900">${order.sample_total.toFixed(2)}</span>
-                          </span>
-                        </div>
+                    <td className="py-3 px-4">
+                      {getStatusBadge(invoice.status)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <span className="font-semibold text-gray-900">
+                        ${formatCurrencyUtil(parseFloat(invoice.amount?.toString() || '0'))}
+                      </span>
+                      {invoice.status === 'paid' && invoice.paid_amount > 0 && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          Paid: ${formatCurrencyUtil(parseFloat(invoice.paid_amount?.toString() || '0'))}
+                        </p>
                       )}
-                      {order.production_total > 0 && (
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-4 h-4 text-green-600" />
+                    </td>
+                    <td className="py-3 px-4">
+                      {invoice.due_date ? (
+                        <div>
                           <span className="text-sm text-gray-700">
-                            Production: <span className="font-semibold text-gray-900">${order.production_total.toFixed(2)}</span>
+                            {new Date(invoice.due_date).toLocaleDateString()}
                           </span>
+                          {invoice.status === 'sent' && new Date(invoice.due_date) < new Date() && (
+                            <p className="text-xs text-red-600 font-medium mt-0.5">Overdue</p>
+                          )}
                         </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
                       )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {invoice.order?.id && (
+                          <Link
+                            href={`/dashboard/orders/${invoice.order.id}`}
+                            target="_blank"
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="View Order"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Link>
+                        )}
+                        {!isClient && canDelete(invoice) && (
+                          <button
+                            onClick={() => setShowDeleteConfirm(invoice.id)}
+                            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                            title={user?.role === 'super_admin' ? 'Delete (Super Admin)' : 'Delete Draft'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+    );
+  };
+
+  return (
+    <div className="p-4 md:p-6">
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
+              {user?.role === 'super_admin' && (
+                <div className="flex items-center gap-2 mb-3 text-amber-600">
+                  <Shield className="w-4 h-4" />
+                  <span className="text-sm">Super Admin Override</span>
+                </div>
+              )}
+              <p className="text-gray-600">
+                Are you sure you want to delete invoice{' '}
+                <strong>{invoices.find(i => i.id === showDeleteConfirm)?.invoice_number}</strong>?
+              </p>
+              <p className="text-red-600 text-sm mt-2">
+                This action cannot be undone.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(null)}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteInvoice(showDeleteConfirm)}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex justify-between items-center mb-4">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {isClient ? 'My Invoices' : 'Invoices'}
+          </h1>
+          {!isClient && (
+            <button
+              onClick={() => fetchData()}
+              className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Tabs - Hidden for clients */}
+        {!isClient && (
+          <div className="border-b border-gray-200 mb-4">
+            <nav className="-mb-px flex flex-wrap gap-y-2">
+              <button
+                onClick={() => setActiveTab('approval')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'approval'
+                    ? 'border-amber-500 text-amber-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>For Approval</span>
+                {stats.forApproval > 0 && (
+                  <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.forApproval}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('drafts')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'drafts'
+                    ? 'border-gray-500 text-gray-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>Drafts</span>
+                {stats.drafts > 0 && (
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.drafts}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('sent')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'sent'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <span>Sent</span>
+                {stats.sent > 0 && (
+                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.sent}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('paid')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'paid'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>Paid</span>
+                {stats.paid > 0 && (
+                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.paid}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'all'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Inbox className="w-4 h-4" />
+                <span>All Invoices</span>
+              </button>
+            </nav>
+          </div>
+        )}
+
+        {/* Search Bar */}
+        <div className="flex-1 max-w-md">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder={activeTab === 'approval' && !isClient ? "Search orders..." : "Search invoices..."}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Loading State */}
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'approval' && !isClient ? renderInvoiceApprovalView() : renderInvoiceList()}
+        </>
+      )}
     </div>
   );
 }

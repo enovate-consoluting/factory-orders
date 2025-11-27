@@ -1,19 +1,82 @@
+/**
+ * Order Detail Page - /dashboard/orders/[id]
+ * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
+ * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
+ * UPDATED: Added independent sample routing (Nov 2025)
+ * Last Modified: Nov 2025
+ */
+
 'use client';
 
 import { use, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
+import { useSampleRouting } from './hooks/useSampleRouting'; // NEW: Sample routing hook
+
+// Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
-import { StatusBadge } from './components/shared/StatusBadge';
+import { OrderSampleRequest } from '../shared-components/OrderSampleRequest';
+import { ProductDistributionBar } from './components/shared/ProductDistributionBar';
+
+// Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
+// Note: ClientProductCard doesn't exist - using AdminProductCard for client view (shows client prices)
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
+
+// Modals
 import { HistoryModal } from './components/modals/HistoryModal';
 import { RouteModal } from './components/modals/RouteModal';
+import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
+
+// Utilities
+import { getProductCounts } from '../utils/orderCalculations';
+
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, AlertCircle, Send, Save, Loader2, Edit2, Eye, EyeOff, X, Check, ChevronDown, Printer } from 'lucide-react';
-import { formatOrderNumber } from '@/lib/utils/orderUtils';
+import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer, User, Clock, CheckCircle } from 'lucide-react';
+
+// Calculate order total based on user role
+const calculateOrderTotal = (order: any, userRole: string): number => {
+  if (!order?.order_products) return 0;
+  
+  let total = 0;
+  
+  order.order_products.forEach((product: any) => {
+    // Get quantities
+    const totalQty = product.order_items?.reduce((sum: number, item: any) => 
+      sum + (item.quantity || 0), 0) || 0;
+    
+    let productPrice = 0;
+    let shippingPrice = 0;
+    
+    // Admin, Super Admin, and Client ALWAYS see CLIENT prices
+    if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
+      // Use CLIENT prices - these already have margins built in
+      productPrice = parseFloat(product.client_product_price || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.client_shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
+      }
+    } else if (userRole === 'manufacturer') {
+      // Manufacturer sees their cost prices only
+      productPrice = parseFloat(product.product_price || 0);
+      
+      if (product.selected_shipping_method === 'air') {
+        shippingPrice = parseFloat(product.shipping_air_price || 0);
+      } else if (product.selected_shipping_method === 'boat') {
+        shippingPrice = parseFloat(product.shipping_boat_price || 0);
+      }
+    }
+    
+    const productTotal = (productPrice * totalQty) + shippingPrice;
+    total += productTotal;
+  });
+  
+  return total;
+};
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -23,78 +86,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const permissions = usePermissions();
   const userRole = getUserRole();
   
-  // State for finance margins
-  const [productMargin, setProductMargin] = useState(80); // Default 80%
-  const [shippingMargin, setShippingMargin] = useState(5); // Default 5%
-  const [marginsLoaded, setMarginsLoaded] = useState(false);
-  
-  // NEW: State for editing client
+  // State for editing client
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [availableClients, setAvailableClients] = useState<any[]>([]);
   const [savingClient, setSavingClient] = useState(false);
-  // NEW: State for showing all products (super admin only)
+  
+  // State for showing all products
   const [showAllProducts, setShowAllProducts] = useState(false);
   
-  // NEW: State for individual product selection
+  // State for individual product selection
   const [selectedProductId, setSelectedProductId] = useState<string>('all');
   
-  // UPDATED: Calculate total amount with CLIENT prices for everyone except manufacturers
-  const calculateOrderTotal = () => {
-    if (!order?.order_products) return 0;
-    
-    let total = 0;
-    const isManufacturer = userRole === 'manufacturer';
-    
-    order.order_products.forEach((product: any) => {
-      // Get total quantity for this product
-      const totalQty = product.order_items?.reduce((sum: number, item: any) => 
-        sum + (item.quantity || 0), 0) || 0;
-      
-      // IMPORTANT: Use different prices based on role
-      let productPrice = 0;
-      let sampleFee = 0;
-      let shippingPrice = 0;
-      
-      if (isManufacturer) {
-        // Manufacturers see their original prices (no markup)
-        productPrice = parseFloat(product.product_price || 0);
-        sampleFee = parseFloat(product.sample_fee || 0);
-        
-        if (product.selected_shipping_method === 'air') {
-          shippingPrice = parseFloat(product.shipping_air_price || 0);
-        } else if (product.selected_shipping_method === 'boat') {
-          shippingPrice = parseFloat(product.shipping_boat_price || 0);
-        }
-      } else {
-        // Admin/Super Admin see CLIENT prices (with dynamic markup from settings)
-        const mfgProductPrice = parseFloat(product.product_price || 0);
-        const mfgSampleFee = parseFloat(product.sample_fee || 0);
-        
-        // Apply product margin (80% from settings)
-        productPrice = mfgProductPrice * (1 + productMargin / 100);
-        sampleFee = mfgSampleFee * (1 + productMargin / 100);
-        
-        // Apply shipping margin (0% from settings)
-        if (product.selected_shipping_method === 'air') {
-          const mfgShipping = parseFloat(product.shipping_air_price || 0);
-          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
-        } else if (product.selected_shipping_method === 'boat') {
-          const mfgShipping = parseFloat(product.shipping_boat_price || 0);
-          shippingPrice = mfgShipping * (1 + shippingMargin / 100);
-        }
-      }
-      
-      // Calculate totals
-      total += productPrice * totalQty;
-      total += sampleFee;
-      total += shippingPrice;
-    });
-    
-    return total;
-  };
+  // Order-level sample state
+  const [orderSampleFee, setOrderSampleFee] = useState('');
+  const [orderSampleETA, setOrderSampleETA] = useState('');
+  const [orderSampleStatus, setOrderSampleStatus] = useState('pending');
+  const [orderSampleNotes, setOrderSampleNotes] = useState('');
+  const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([]);
+  const [savingOrderSample, setSavingOrderSample] = useState(false);
   
-  const totalAmount = calculateOrderTotal();
   const [workflowUpdating, setWorkflowUpdating] = useState(false);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
@@ -108,7 +119,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     productName: ''
   });
 
-  // Route Modal State for individual products
+  // Route Modal State
   const [routeModal, setRouteModal] = useState<{
     isOpen: boolean;
     product: any;
@@ -117,24 +128,46 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     product: null
   });
 
-  // NEW: Master Route Modal State for Save All & Route
-  const [masterRouteModal, setMasterRouteModal] = useState({
+  // Save All Route Modal State
+  const [saveAllRouteModal, setSaveAllRouteModal] = useState({
     isOpen: false,
     isSaving: false
   });
 
-  // NEW: Track dirty state for manufacturer cards
+  // Track manufacturer card refs
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
 
+  // Calculate total based on role
+  const totalAmount = calculateOrderTotal(order, userRole || '');
+
+  // Role checks
+  const isManufacturer = userRole === 'manufacturer';
+  const isSuperAdmin = userRole === 'super_admin';
+  const isAdmin = userRole === 'admin';
+  const isClient = userRole === 'client';
+
+  // ========================================
+  // NEW: SAMPLE ROUTING HOOK
+  // Independent routing for sample requests
+  // ========================================
+  const sampleRouting = useSampleRouting(
+    id,
+    {
+      routed_to: (order?.sample_routed_to as 'admin' | 'manufacturer' | 'client') || 'admin',
+      workflow_status: order?.sample_workflow_status || 'pending',
+      routed_at: order?.sample_routed_at || null,
+      routed_by: order?.sample_routed_by || null
+    },
+    userRole || 'admin',
+    refetch
+  );
+
   useEffect(() => {
-    // Fetch sub manufacturers for assignment
     const fetchSubManufacturers = async () => {
       const userData = localStorage.getItem('user');
       if (!userData) return;
       const user = JSON.parse(userData);
-      // Only fetch if manufacturer
       if (userRole === 'manufacturer') {
-        // Use manufacturer_id from localStorage if available, otherwise fall back to user.id
         const manufacturerIdToUse = user.manufacturer_id || user.id;
         const { data, error } = await supabase
           .from('users')
@@ -145,37 +178,42 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
     };
     fetchSubManufacturers();
+    
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/');
       return;
     }
 
-    // Get manufacturer ID if user is a manufacturer
     if (userRole === 'manufacturer') {
       fetchManufacturerId(JSON.parse(userData));
     }
 
-    // Load viewed history from localStorage
     const viewed = localStorage.getItem(`viewedHistory_${id}`);
     if (viewed) {
       setViewedHistory(JSON.parse(viewed));
     }
 
-    // NEW: Fetch available clients for editing
     if (userRole === 'admin' || userRole === 'super_admin') {
       fetchAvailableClients();
     }
   }, [router, userRole, id]);
 
-  // Auto-mark manufacturer notifications as read when order is viewed
+  // Load order-level sample data
+  useEffect(() => {
+    if (order) {
+      setOrderSampleFee(order.sample_fee?.toString() || '');
+      setOrderSampleETA(order.sample_eta || '');
+      setOrderSampleStatus(order.sample_status || 'pending');
+      setOrderSampleNotes(order.sample_notes || '');
+    }
+  }, [order]);
+
+  // Auto-mark manufacturer notifications as read
   useEffect(() => {
     const markOrderNotificationsAsRead = async () => {
       if (userRole === 'manufacturer' && manufacturerId && id) {
         try {
-          console.log('Marking notifications as read for order:', id); // DEBUG
-
-          // Mark all unread manufacturer notifications for this order as read
           const { data, error } = await supabase
             .from('manufacturer_notifications')
             .update({ is_read: true })
@@ -186,8 +224,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
           if (error) {
             console.error('Error marking notifications as read:', error);
-          } else {
-            console.log('Successfully marked', data?.length || 0, 'notifications as read'); // DEBUG
           }
         } catch (err) {
           console.error('Error in markOrderNotificationsAsRead:', err);
@@ -197,33 +233,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
     markOrderNotificationsAsRead();
   }, [userRole, manufacturerId, id]);
-
-  // Load finance margins from database
-  useEffect(() => {
-    const loadMargins = async () => {
-      try {
-        const { data } = await supabase
-          .from('system_config')
-          .select('config_key, config_value')
-          .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage']);
-        
-        if (data) {
-          data.forEach(config => {
-            if (config.config_key === 'default_margin_percentage') {
-              setProductMargin(parseFloat(config.config_value) || 80);
-            } else if (config.config_key === 'default_shipping_margin_percentage') {
-              setShippingMargin(parseFloat(config.config_value) || 0);
-            }
-          });
-        }
-        setMarginsLoaded(true);
-      } catch (error) {
-        console.error('Error loading margins:', error);
-        setMarginsLoaded(true);
-      }
-    };
-    loadMargins();
-  }, []);
 
   const fetchManufacturerId = async (user: any) => {
     try {
@@ -241,7 +250,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // NEW: Fetch available clients
   const fetchAvailableClients = async () => {
     try {
       const { data, error } = await supabase
@@ -257,28 +265,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // NEW: Handle client change
   const handleClientChange = async () => {
     if (!selectedClientId || !order) return;
     
     setSavingClient(true);
     try {
-      // Get the new client data
       const newClient = availableClients.find(c => c.id === selectedClientId);
       if (!newClient) throw new Error('Client not found');
       
-      // Generate new order number with new client prefix
       const clientPrefix = newClient.name.substring(0, 3).toUpperCase();
       const currentOrderNumber = order.order_number;
       
-      // Extract the numeric part from current order number (e.g., "001200" from "BUD-001200")
       const numericPart = currentOrderNumber.includes('-') 
         ? currentOrderNumber.split('-')[1]
         : currentOrderNumber.replace(/[^0-9]/g, '');
       
       const newOrderNumber = `${clientPrefix}-${numericPart}`;
       
-      // Update order with new client and order number
       const { error } = await supabase
         .from('orders')
         .update({ 
@@ -289,7 +292,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       if (error) throw error;
       
-      // Log to audit
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       await supabase
         .from('audit_log')
@@ -304,7 +306,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      // Close edit mode and refresh
       setIsEditingClient(false);
       await refetch();
     } catch (error) {
@@ -312,6 +313,161 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       alert('Error updating client. Please try again.');
     } finally {
       setSavingClient(false);
+    }
+  };
+
+  // Handler for order-level sample update
+  const handleOrderSampleUpdate = (field: string, value: any) => {
+    switch (field) {
+      case 'sampleFee':
+        setOrderSampleFee(value);
+        break;
+      case 'sampleETA':
+        setOrderSampleETA(value);
+        break;
+      case 'sampleStatus':
+        setOrderSampleStatus(value);
+        break;
+      case 'sampleNotes':
+        setOrderSampleNotes(value);
+        break;
+    }
+  };
+
+  const handleOrderSampleFileUpload = (files: FileList | null) => {
+    if (!files) return;
+    
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    const newFiles = Array.from(files).filter(file => {
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (newFiles.length > 0) {
+      setOrderSampleFiles(prev => [...prev, ...newFiles]);
+    }
+  };
+
+  const removeOrderSampleFile = (index: number) => {
+    setOrderSampleFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const deleteExistingSampleFile = async (mediaId: string) => {
+    try {
+      const { data: fileInfo } = await supabase
+        .from('order_media')
+        .select('original_filename, display_name')
+        .eq('id', mediaId)
+        .single();
+      
+      const { error } = await supabase
+        .from('order_media')
+        .delete()
+        .eq('id', mediaId);
+      
+      if (error) throw error;
+      
+      if (fileInfo) {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        await supabase
+          .from('audit_log')
+          .insert({
+            user_id: user.id || crypto.randomUUID(),
+            user_name: user.name || user.email || 'Unknown User',
+            action_type: 'order_sample_updated',
+            target_type: 'order',
+            target_id: order.id,
+            new_value: `File removed: ${fileInfo.original_filename || fileInfo.display_name}`,
+            timestamp: new Date().toISOString()
+          });
+      }
+      
+      await refetch();
+    } catch (error) {
+      console.error('Error deleting media:', error);
+      alert('Error deleting file. Please try again.');
+    }
+  };
+  
+  // Save order sample data
+  const saveOrderSampleData = async () => {
+    if (!order) return;
+    
+    setSavingOrderSample(true);
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      // Build update data
+      const updateData: any = {
+        sample_required: true,
+        sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+        sample_eta: orderSampleETA || null,
+        sample_status: orderSampleStatus || 'pending',
+        sample_notes: orderSampleNotes || null
+      };
+      
+      console.log('Saving order sample data:', updateData);
+      
+      // Update the order with sample data
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', order.id);
+      
+      if (updateError) {
+        console.error('Error updating order sample:', updateError);
+        throw updateError;
+      }
+      
+      // Upload sample files if any
+      if (orderSampleFiles.length > 0) {
+        for (let i = 0; i < orderSampleFiles.length; i++) {
+          const file = orderSampleFiles[i];
+          const timestamp = Date.now();
+          const randomStr = Math.random().toString(36).substring(2, 8);
+          
+          const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+          const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
+          const uniqueFileName = `${fileNameWithoutExt}_sample_${timestamp}_${randomStr}.${fileExt}`;
+          const filePath = `${order.id}/${uniqueFileName}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('order-media')
+            .upload(filePath, file);
+          
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath);
+            
+            await supabase
+              .from('order_media')
+              .insert({
+                order_id: order.id,
+                order_product_id: null,
+                file_url: publicUrl,
+                file_type: 'order_sample',
+                uploaded_by: user.id || crypto.randomUUID(),
+                original_filename: file.name,
+                display_name: file.name,
+                is_sample: true,
+                created_at: new Date().toISOString()
+              });
+          }
+        }
+      }
+      
+      setOrderSampleFiles([]);
+      await refetch();
+      setSavingOrderSample(false);
+      
+    } catch (error) {
+      console.error('Error saving order sample data:', error);
+      alert('Error saving sample data. Please try again.');
+      setSavingOrderSample(false);
     }
   };
 
@@ -323,10 +479,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         .from('orders')
         .update({ status: newStatus })
         .eq('id', order.id);
-
+      
       if (error) throw error;
       
-      // Log to audit
       await supabase
         .from('audit_log')
         .insert({
@@ -340,7 +495,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      refetch();
+      await refetch();
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -370,7 +525,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           timestamp: new Date().toISOString()
         });
 
-      refetch();
+      await refetch();
     } catch (error) {
       console.error('Error updating payment status:', error);
     }
@@ -383,7 +538,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       productName
     });
     
-    // Update viewed history count
     const historyCount = getHistoryCount(productId);
     const newViewed = { ...viewedHistory, [productId]: historyCount };
     setViewedHistory(newViewed);
@@ -397,411 +551,516 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     });
   };
 
-  // Handle Save All & Route
   const handleSaveAllAndRoute = async () => {
-    setMasterRouteModal({
+    setSaveAllRouteModal({
       isOpen: true,
       isSaving: false
     });
   };
 
-  // Handle Print All for Manufacturers
-  const handlePrintAll = () => {
-    const visibleProducts = getVisibleProducts();
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Order ${order.order_number} - Product Sheets</title>
-        <style>
-          @page {
-            size: portrait;
-            margin: 0.5in;
-          }
-          @media print { 
-            .page-break { page-break-after: always; }
-            @page { 
-              size: portrait;
-              margin: 0.5in;
-            }
-          }
-          body { font-family: Arial, sans-serif; }
-          .product-sheet { padding: 20px; margin-bottom: 30px; }
-          .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
-          h1 { font-size: 24px; margin: 0 0 10px 0; }
-          h2 { font-size: 18px; margin: 20px 0 10px 0; color: #333; }
-          .info-row { display: flex; margin-bottom: 8px; }
-          .label { font-weight: bold; width: 150px; }
-          .value { flex: 1; border-bottom: 1px dotted #999; min-height: 20px; }
-          .notes-box { border: 1px solid #999; min-height: 100px; margin-top: 10px; padding: 10px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td { border: 1px solid #999; padding: 8px; text-align: left; }
-          th { background-color: #f0f0f0; }
-        </style>
-      </head>
-      <body>
-        ${visibleProducts.map((product: any, index: number) => {
-          const items = product.order_items || [];
-          const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-
-          return `
-            <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
-              <div class="header">
-                <h1>Order: ${order.order_number}</h1>
-                <div>Client: ${order.client?.name || 'N/A'}</div>
-                <div>Date: ${new Date().toLocaleDateString()}</div>
-              </div>
-              
-              <h2>Product: ${product.product_order_number}</h2>
-              <div class="info-row">
-                <div class="label">Description:</div>
-                <div class="value">${product.description || ''}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Total Quantity:</div>
-                <div class="value">${totalQty}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Product Price:</div>
-                <div class="value">$${product.product_price || '________'}</div>
-              </div>
-              <div class="info-row">
-                <div class="label">Production Time:</div>
-                <div class="value">${product.production_time || '________'}</div>
-              </div>
-              
-              <h2>Variants</h2>
-              <table>
-                <thead>
-                  <tr><th>Variant</th><th>Quantity</th><th>Notes</th></tr>
-                </thead>
-                <tbody>
-                  ${items.map((item: any) => `
-                    <tr>
-                      <td>${item.variant_combo || ''}</td>
-                      <td>${item.quantity || 0}</td>
-                      <td>${item.notes || ''}</td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-              
-              <h2>Production Notes</h2>
-              <div class="notes-box">${product.manufacturer_notes || ''}</div>
-              
-              <h2>Additional Notes (Write Here)</h2>
-              <div class="notes-box"></div>
-            </div>
-          `;
-        }).join('')}
-      </body>
-      </html>
-    `;
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.onload = () => {
-        printWindow.print();
-      };
-    }
-  };
-
-  // Handle Master Route (when route is selected in modal)
-  const handleMasterRoute = async (selectedRoute: string, notes?: string) => {
-    setMasterRouteModal(prev => ({ ...prev, isSaving: true }));
+  // SAVE ALL & ROUTE handler
+  const handleSaveAllRoute = async (selectedRoute: string, notes?: string) => {
+    setSaveAllRouteModal(prev => ({ ...prev, isSaving: true }));
     
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const visibleProducts = getVisibleProducts();
-      const isManufacturer = userRole === 'manufacturer';
       
-      // Step 1: Save all pending changes in manufacturer cards (if manufacturer)
-      if (isManufacturer) {
-        console.log('Saving all pending changes...');
-        for (const [productId, cardRef] of manufacturerCardRefs.current) {
-          if (cardRef && cardRef.saveAll) {
-            console.log(`Saving changes for product ${productId}`);
-            await cardRef.saveAll();
-          }
-        }
+      console.log('=== STARTING SAVE ALL & ROUTE ===');
+      console.log(`Processing ${visibleProducts.length} products`);
+      
+      // STEP 1: Save order-level sample data
+      if (isManufacturer && (orderSampleFee || orderSampleETA || orderSampleNotes)) {
+        console.log('Step 1: Saving order-level sample data...');
+        const updateData: any = {
+          sample_required: true,
+          sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+          sample_eta: orderSampleETA || null,
+          sample_status: orderSampleStatus || 'pending',
+          sample_notes: orderSampleNotes || null
+        };
+        
+        await supabase
+          .from('orders')
+          .update(updateData)
+          .eq('id', order.id);
+        
+        console.log('Order sample saved');
       }
       
-      // Step 2: Apply the selected route to ALL visible products
-      console.log(`Applying route "${selectedRoute}" to all products...`);
-      
-      for (const product of visibleProducts) {
-        let updates: any = {};
-        
-        if (isManufacturer) {
-          // MANUFACTURER ROUTING
+      // STEP 2: Process all products
+      if (isManufacturer) {
+        for (let i = 0; i < visibleProducts.length; i++) {
+          const product = visibleProducts[i];
+          console.log(`\nStep 2.${i + 1}: Processing product ${product.product_order_number}`);
+          
+          // Get the card ref
+          const cardRef = manufacturerCardRefs.current.get(product.id);
+          
+          if (cardRef && typeof cardRef.saveAll === 'function') {
+            // Call the saveAll function which handles client price calculations
+            console.log('Calling saveAll on manufacturer card...');
+            const success = await cardRef.saveAll();
+            if (!success) {
+              console.error('Failed to save product data');
+            }
+          }
+          
+          // Apply routing after save
+          let productUpdate: any = {};
+          
           switch (selectedRoute) {
             case 'send_to_admin':
-              updates.product_status = 'pending_admin';
-              updates.routed_to = 'admin';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
+              productUpdate.product_status = 'pending_admin';
+              productUpdate.routed_to = 'admin';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
               break;
-              
             case 'in_production':
-              updates.product_status = 'in_production';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.is_locked = true;
+              productUpdate.product_status = 'in_production';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.is_locked = true;
               break;
-              
             case 'shipped':
-              updates.product_status = 'shipped';
-              updates.routed_to = 'admin';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.shipped_date = new Date().toISOString();
+              productUpdate.product_status = 'shipped';
+              productUpdate.routed_to = 'admin';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.shipped_date = new Date().toISOString();
               break;
           }
-        } else {
-          // ADMIN ROUTING
+          
+          if (notes) {
+            const timestamp = new Date().toLocaleDateString();
+            const existing = product.manufacturer_notes || '';
+            productUpdate.manufacturer_notes = existing 
+              ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
+              : `[${timestamp} - Manufacturer] ${notes}`;
+          }
+          
+          if (Object.keys(productUpdate).length > 0) {
+            await supabase
+              .from('order_products')
+              .update(productUpdate)
+              .eq('id', product.id);
+          }
+        }
+      } else {
+        // Admin routing
+        for (const product of visibleProducts) {
+          let productUpdate: any = {};
+          
           switch (selectedRoute) {
             case 'approve_for_production':
-              updates.product_status = 'approved_for_production';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
-              updates.is_locked = false;
+              productUpdate.product_status = 'approved_for_production';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
+              productUpdate.is_locked = false;
               break;
-              
             case 'request_sample':
-              updates.sample_required = true;
-              updates.product_status = 'sample_requested';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
+              productUpdate.sample_required = true;
+              productUpdate.product_status = 'sample_requested';
+              productUpdate.routed_to = 'manufacturer';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
               break;
-              
             case 'send_for_approval':
-              updates.requires_client_approval = true;
-              updates.product_status = 'pending_client_approval';
-              updates.routed_to = 'admin';
-              break;
-              
-            case 'send_back_to_manufacturer':
-              updates.product_status = 'revision_requested';
-              updates.routed_to = 'manufacturer';
-              updates.routed_at = new Date().toISOString();
-              updates.routed_by = user.id || null;
+              productUpdate.requires_client_approval = true;
+              productUpdate.product_status = 'pending_client_approval';
+              productUpdate.routed_to = 'client';
+              productUpdate.routed_at = new Date().toISOString();
+              productUpdate.routed_by = user.id || null;
               break;
           }
-        }
-        
-        // Add notes if provided
-        if (notes) {
-          const timestamp = new Date().toLocaleDateString();
-          const userIdentifier = isManufacturer ? 'Manufacturer' : 'Admin';
-          updates.manufacturer_notes = product.manufacturer_notes 
-            ? `${product.manufacturer_notes}\n\n[${timestamp} - ${userIdentifier}] ${notes}`
-            : `[${timestamp} - ${userIdentifier}] ${notes}`;
-        }
-        
-        // Update product
-        await supabase
-          .from('order_products')
-          .update(updates)
-          .eq('id', product.id);
-        
-        // Log to audit
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: user.id || crypto.randomUUID(),
-            user_name: user.name || user.email || (isManufacturer ? 'Manufacturer' : 'Admin'),
-            action_type: `product_routed_${selectedRoute}`,
-            target_type: 'order_product',
-            target_id: product.id,
-            old_value: `${product.product_status || 'pending'} / routed_to: ${product.routed_to || (isManufacturer ? 'manufacturer' : 'admin')}`,
-            new_value: `${updates.product_status} / routed_to: ${updates.routed_to}`,
-            timestamp: new Date().toISOString()
-          });
-      }
-      
-      // Create notifications
-      if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
-        const { data: orderData } = await supabase
-          .from('orders')
-          .select('created_by, order_number')
-          .eq('id', order.id)
-          .single();
-        
-        if (orderData?.created_by) {
-          let message = '';
-          if (selectedRoute === 'send_to_admin') {
-            message = `Manufacturer has sent ${visibleProducts.length} products for review - Order ${orderData.order_number}`;
-          } else if (selectedRoute === 'shipped') {
-            message = `${visibleProducts.length} products have been shipped - Order ${orderData.order_number}`;
+          
+          if (notes) {
+            const timestamp = new Date().toLocaleDateString();
+            const existing = product.manufacturer_notes || '';
+            productUpdate.manufacturer_notes = existing 
+              ? `${existing}\n\n[${timestamp} - Admin] ${notes}`
+              : `[${timestamp} - Admin] ${notes}`;
           }
           
           await supabase
-            .from('notifications')
-            .insert({
-              user_id: orderData.created_by,
-              type: selectedRoute === 'shipped' ? 'products_shipped' : 'manufacturer_update',
-              message: message,
-              is_read: false,
-              created_at: new Date().toISOString()
-            });
-        }
-      } else if (!isManufacturer && (selectedRoute === 'approve_for_production' || selectedRoute === 'request_sample' || selectedRoute === 'send_back_to_manufacturer')) {
-        const { data: manufacturerUsers } = await supabase
-          .from('users')
-          .select('id')
-          .eq('role', 'manufacturer');
-        
-        if (manufacturerUsers && manufacturerUsers.length > 0) {
-          let message = '';
-          if (selectedRoute === 'approve_for_production') {
-            message = `Admin has approved ${visibleProducts.length} products for production - Order ${order.order_number}`;
-          } else if (selectedRoute === 'request_sample') {
-            message = `Admin has requested samples for ${visibleProducts.length} products - Order ${order.order_number}`;
-          } else if (selectedRoute === 'send_back_to_manufacturer') {
-            message = `Admin has requested revisions for ${visibleProducts.length} products - Order ${order.order_number}`;
-          }
-          
-          for (const mfgUser of manufacturerUsers) {
-            await supabase
-              .from('notifications')
-              .insert({
-                user_id: mfgUser.id,
-                type: 'admin_update',
-                message: message,
-                is_read: false,
-                created_at: new Date().toISOString()
-              });
-          }
+            .from('order_products')
+            .update(productUpdate)
+            .eq('id', product.id);
         }
       }
       
-      console.log('All products routed successfully');
-      setMasterRouteModal({ isOpen: false, isSaving: false });
-      await refetch();
+      console.log('=== SAVE ALL & ROUTE COMPLETED ===');
+      setSaveAllRouteModal({ isOpen: false, isSaving: false });
+      
+      // Redirect manufacturers
+      if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
+        setTimeout(() => {
+          router.push('/dashboard/orders');
+        }, 500);
+      } else {
+        await refetch();
+      }
       
     } catch (error) {
-      console.error('Error in master route:', error);
-      alert('An error occurred. Please try again.');
-      setMasterRouteModal(prev => ({ ...prev, isSaving: false }));
+      console.error('ERROR IN SAVE ALL & ROUTE:', error);
+      alert('Error occurred while saving. Please try again.');
+      setSaveAllRouteModal(prev => ({ ...prev, isSaving: false }));
+    }
+  };
+  
+  const handlePrintAll = () => {
+    const visibleProducts = getVisibleProducts();
+    
+    const printHTML = visibleProducts.map((product: any, index: number) => {
+      const items = product.order_items || [];
+      const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+      
+      const variantsRows = items.length > 0 
+        ? items.map((item: any) => 
+            `<tr>
+              <td style="width: 30%;">${item.variant_combo || 'N/A'}</td>
+              <td style="width: 15%; text-align: center;">${item.quantity || 0}</td>
+              <td style="width: 55%;">${item.notes || ''}</td>
+            </tr>`
+          ).join('')
+        : `<tr>
+            <td colspan="3" style="text-align: center; color: #999;">
+              No variants configured
+            </td>
+          </tr>`;
+
+      return `
+        <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
+          <div class="header">
+            <div class="header-title">MANUFACTURING SHEET</div>
+            <div class="product-name">${product.description || product.product?.title || 'Product'}</div>
+            <div class="header-details">
+              <span>Order: <strong>${order.order_number}</strong></span>
+              <span>Product: <strong>${product.product_order_number}</strong></span>
+              <span>Client: <strong>${order.client?.name || 'N/A'}</strong></span>
+            </div>
+          </div>
+          
+          <div class="section" style="margin-top: 40px;">
+            <div class="section-header">SAMPLE INFORMATION</div>
+            <div class="sample-row" style="margin-top: 30px; margin-bottom: 25px;">
+              <div class="field-group">
+                <label>Sample Fee: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Sample ETA:</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Status:</label>
+                <input type="text" class="field-line" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <div class="section-header">PRICING & PRODUCTION</div>
+            <div class="pricing-row" style="margin-top: 30px;">
+              <div class="field-group">
+                <label>Unit Price: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Total Quantity:</label>
+                <span class="filled-value">${totalQty} units</span>
+              </div>
+              <div class="field-group">
+                <label>Prod. Time:</label>
+                <input type="text" class="field-line" />
+              </div>
+            </div>
+            <div class="pricing-row" style="margin-top: 25px; margin-bottom: 25px;">
+              <div class="field-group">
+                <label>Shipping Air: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Shipping Boat: $</label>
+                <input type="text" class="field-line" />
+              </div>
+              <div class="field-group">
+                <label>Total Cost: $</label>
+                <input type="text" class="field-line" />
+              </div>
+            </div>
+          </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <h2>VARIANTS & QUANTITIES</h2>
+            <table style="margin-top: 15px;">
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Variant/Size</th>
+                  <th style="width: 15%;">Qty</th>
+                  <th style="width: 55%;">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${variantsRows}
+                <tr class="total-row">
+                  <td><strong>TOTAL</strong></td>
+                  <td style="text-align: center;"><strong>${totalQty}</strong></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="section" style="margin-top: 45px;">
+            <h2>PRODUCTION NOTES</h2>
+            <div class="notes-box"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Order ${order.order_number} - Manufacturing Sheets</title>
+        <style>
+          @page { 
+            size: letter portrait; 
+            margin: 0.75in;
+          }
+          
+          @media print { 
+            .page-break { 
+              page-break-after: always;
+            }
+          }
+          
+          body { 
+            font-family: Arial, sans-serif;
+            color: #000;
+            margin: 0;
+            padding: 0;
+            font-size: 12pt;
+            background: white;
+          }
+          
+          .product-sheet { 
+            padding: 0;
+            max-width: 100%;
+            min-height: 100%;
+          }
+          
+          .header { 
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000;
+          }
+          
+          .header-title {
+            font-size: 13pt;
+            letter-spacing: 2px;
+            color: #333;
+            margin-bottom: 12px;
+            font-weight: 600;
+          }
+          
+          .product-name { 
+            font-size: 20pt;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #000;
+          }
+          
+          .header-details {
+            display: flex;
+            justify-content: center;
+            gap: 35px;
+            font-size: 11pt;
+            color: #333;
+            margin-top: 12px;
+          }
+          
+          .section {
+            margin-bottom: 30px;
+          }
+          
+          .section-header {
+            background: #e8f4f8;
+            padding: 10px;
+            text-align: center;
+            font-size: 13pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            color: #2c5282;
+            border-radius: 4px;
+          }
+          
+          h2 {
+            font-size: 12pt;
+            margin: 0 0 8px 0;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #333;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: bold;
+          }
+          
+          .sample-row, .pricing-row {
+            display: flex;
+            gap: 35px;
+            margin: 20px 0;
+            padding: 0 10px;
+          }
+          
+          .field-group {
+            flex: 1;
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+          }
+          
+          .field-group label {
+            font-size: 12pt;
+            font-weight: 600;
+            white-space: nowrap;
+          }
+          
+          .field-line {
+            border: none;
+            border-bottom: 1px solid #333;
+            outline: none;
+            flex: 1;
+            min-width: 60px;
+            font-size: 11pt;
+            background: transparent;
+            padding-bottom: 3px;
+          }
+          
+          .filled-value {
+            font-weight: bold;
+            padding-left: 5px;
+            font-size: 12pt;
+          }
+          
+          table { 
+            width: 100%; 
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 11pt;
+          }
+          
+          th { 
+            background: #f5f5f5;
+            border: 1px solid #333;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: bold;
+          }
+          
+          td { 
+            border: 1px solid #333;
+            padding: 12px 8px;
+          }
+          
+          .total-row {
+            background: #f5f5f5;
+            font-weight: bold;
+          }
+          
+          .notes-box { 
+            border: 1px solid #333;
+            min-height: 280px;
+            padding: 15px;
+            background: white;
+            margin-top: 12px;
+          }
+        </style>
+      </head>
+      <body>
+        ${printHTML}
+      </body>
+      </html>
+    `;
+    
+    const printWindow = window.open('', '', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 250);
+      };
     }
   };
 
-  // Helper function to get history count for a product
   const getHistoryCount = (productId: string): number => {
+    if (productId.startsWith('order-sample-')) {
+      if (!order?.audit_log) return 0;
+      return order.audit_log.filter((log: any) => 
+        log.action_type === 'order_sample_updated' && 
+        log.target_id === order.id
+      ).length || 0;
+    }
+    
     const product = order?.order_products?.find((p: any) => p.id === productId);
     return product?.audit_log?.length || 0;
   };
 
-  // Helper function to check if product has new history
   const hasNewHistory = (productId: string): boolean => {
     const currentCount = getHistoryCount(productId);
     const viewedCount = viewedHistory[productId] || 0;
     return currentCount > viewedCount;
   };
 
-  // Get all products before filtering
-  const getAllProducts = () => {
-    if (!order?.order_products) return [];
-    
-    const isManufacturer = userRole === 'manufacturer';
-    const isTeamMember = userRole !== null && userRole === 'manufacturer_team_member';
-    const isSubManufacturer = userRole !== null && userRole === 'sub_manufacturer';
-    const isSuperAdmin = userRole === 'super_admin';
-    
-    // If super admin and showAllProducts is true, show everything
-    if (isSuperAdmin && showAllProducts) {
-      return order.order_products;
-    }
-    
-    // Original filtering logic
-    const filteredProducts = order.order_products.filter((product: any) => {
-      // Always show products that are in_production or completed to everyone
-      if (product.product_status === 'in_production' || product.product_status === 'completed') {
-        return true;
-      }
-      
-      // If routed_to is not set, default to admin
-      const routedTo = product.routed_to || 'admin';
-      
-      // For manufacturer, show products routed to manufacturer
-      if (isManufacturer || isTeamMember) {
-        return routedTo === 'manufacturer';
-      }
-
-      // Sub manufacturer sees products if order is assigned to them
-      if (isSubManufacturer && order.sub_manufacturer_id === JSON.parse(localStorage.getItem('user') || '{}').id) {
-        return true;
-      }
-      
-      // For admin/others, show products routed to admin
-      return routedTo === 'admin';
-    });
-    
-    return filteredProducts;
+  const getOrderSampleHistoryCount = (): number => {
+    if (!order?.audit_log) return 0;
+    return order.audit_log.filter((log: any) => 
+      log.action_type === 'order_sample_updated' && 
+      log.target_id === order.id
+    ).length || 0;
   };
 
-  // UPDATED: Filter products based on selection
+  const hasNewOrderSampleHistory = (): boolean => {
+    const currentCount = getOrderSampleHistoryCount();
+    const viewedCount = viewedHistory['order-sample-' + id] || 0;
+    return currentCount > viewedCount;
+  };
+
+  const getAllProducts = () => {
+    if (!order?.order_products) return [];
+    return order.order_products;
+  };
+
   const getVisibleProducts = () => {
     const allProducts = getAllProducts();
     
-    // If a specific product is selected, return only that product
-    if (selectedProductId !== 'all') {
-      return allProducts.filter((product: any) => product.id === selectedProductId);
+    // CLIENT: Only see products routed to 'client'
+    if (isClient) {
+      return allProducts.filter((product: any) => product.routed_to === 'client');
     }
     
-    // Otherwise return all products
-    const isManufacturer = userRole === 'manufacturer';
-    const isTeamMember = userRole !== null && userRole === 'manufacturer_team_member';
-    const isSubManufacturer = userRole !== null && userRole === 'sub_manufacturer';
-    
-    // SORT: Put shipped products at the top for admins
-    if (!(isManufacturer || isTeamMember || isSubManufacturer)) {
-      return allProducts.sort((a: any, b: any) => {
-        // Shipped products come first
-        if (a.product_status === 'shipped' && b.product_status !== 'shipped') return -1;
-        if (a.product_status !== 'shipped' && b.product_status === 'shipped') return 1;
-        
-        // Then in_transit products
-        if (a.product_status === 'in_transit' && b.product_status !== 'in_transit') return -1;
-        if (a.product_status !== 'in_transit' && b.product_status === 'in_transit') return 1;
-        
-        // Then completed products
-        if (a.product_status === 'completed' && b.product_status !== 'completed') return -1;
-        if (a.product_status !== 'completed' && b.product_status === 'completed') return 1;
-        
-        // Then everything else in original order
-        return 0;
-      });
+    if (selectedProductId !== 'all') {
+      return allProducts.filter((product: any) => product.id === selectedProductId);
     }
     
     return allProducts;
   };
 
-  // Get counts for different product locations
-  const getProductCounts = () => {
-    if (!order?.order_products) {
-      return { total: 0, withAdmin: 0, withManufacturer: 0, inProduction: 0, completed: 0, visible: 0 };
-    }
-    
-    const products = order.order_products;
-    const visibleProducts = getVisibleProducts();
-    
-    return {
-      total: products.length,
-      withAdmin: products.filter((p: any) => (p.routed_to === 'admin' || !p.routed_to) && p.product_status !== 'completed' && p.product_status !== 'in_production').length,
-      withManufacturer: products.filter((p: any) => p.routed_to === 'manufacturer' && p.product_status !== 'in_production' && p.product_status !== 'completed').length,
-      inProduction: products.filter((p: any) => p.product_status === 'in_production').length,
-      completed: products.filter((p: any) => p.product_status === 'completed').length,
-      visible: visibleProducts.length
-    };
+  // Get products routed to client (for client count display)
+  const getClientProducts = () => {
+    const allProducts = getAllProducts();
+    return allProducts.filter((product: any) => product.routed_to === 'client');
   };
 
-  // Calculate if all products are paid
+  // Use the extracted utility function
+  const productCounts = getProductCounts(order);
+
   const allProductsPaid = order?.order_products?.length > 0 && 
     order.order_products.every((p: any) => p.payment_status === 'paid');
 
@@ -825,14 +1084,129 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
-  const productCounts = getProductCounts();
-  const isManufacturer = userRole === 'manufacturer';
-  const isSuperAdmin = userRole === 'super_admin';
-  const isAdmin = userRole === 'admin';
+  const clientProducts = getClientProducts();
 
+  // FIXED: Look for sample files in BOTH places:
+  // 1. Direct order.order_media (for files with order_product_id = null)
+  // 2. Inside order_products.order_media (for files attached to first product with is_sample = true)
+  const existingSampleMedia = (() => {
+    const samples: any[] = [];
+    
+    // Check direct order_media (if any)
+    if (order?.order_media) {
+      order.order_media.forEach((m: any) => {
+        if (m.is_sample === true || m.file_type === 'order_sample') {
+          samples.push(m);
+        }
+      });
+    }
+    
+    // Check inside each product's order_media for files marked as samples
+    if (order?.order_products) {
+      order.order_products.forEach((product: any) => {
+        if (product.order_media) {
+          product.order_media.forEach((m: any) => {
+            if (m.is_sample === true) {
+              // Avoid duplicates (in case same file appears in both places)
+              if (!samples.find((s: any) => s.id === m.id)) {
+                samples.push(m);
+              }
+            }
+          });
+        }
+      });
+    }
+    
+    return samples;
+  })();
+
+  // ========================================
+  // CLIENT VIEW - Simplified, read-only
+  // ========================================
+  if (isClient) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
+        {/* Client Header - Mobile Responsive */}
+        <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-lg sm:text-2xl font-bold text-gray-900 break-words">
+                    Order {order.order_number}
+                  </h1>
+                  {order.order_name && (
+                    <p className="text-sm sm:text-base text-gray-500 break-words">{order.order_name}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Order Total - Full width on mobile */}
+              {totalAmount > 0 && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-4 sm:px-6 py-3 rounded-xl border border-green-200">
+                  <p className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">Order Total</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-green-700 text-center sm:text-left">
+                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-20">
+          {/* Products Section */}
+          <div className="space-y-4 sm:space-y-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+              Products for Your Review
+            </h2>
+
+            {clientProducts.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sm:p-8 text-center">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
+                </div>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                  No Products Pending Review
+                </h3>
+                <p className="text-sm sm:text-base text-gray-500">
+                  All products have been reviewed or are still being processed.
+                </p>
+              </div>
+            ) : (
+              clientProducts.map((product: any) => {
+                const items = product.order_items || [];
+                const media = product.order_media || [];
+
+                return (
+                  <AdminProductCard
+                    key={product.id}
+                    product={product}
+                    items={items}
+                    media={media}
+                    orderStatus={order.workflow_status || order.status}
+                    onUpdate={refetch}
+                    autoCollapse={true}
+                  />
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ========================================
+  // ADMIN/MANUFACTURER VIEW - Full functionality
+  // ========================================
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
-      {/* Order Header with fixed order number formatting and paid badge */}
+      {/* Order Header - Shows CLIENT total for admins */}
       <OrderHeader 
         order={order} 
         totalAmount={totalAmount}
@@ -842,20 +1216,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         allProductsPaid={allProductsPaid}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3 pb-20">
         {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
         {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
             {/* Client Card with Edit Button */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow relative">
-              {/* Edit Client Button - For Admin and Super Admin */}
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
                   onClick={() => {
                     setIsEditingClient(true);
                     setSelectedClientId(order.client?.id || '');
                   }}
-                  className="absolute top-4 right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                  className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
                   title="Edit Client"
                 >
                   <Edit2 className="w-4 h-4" />
@@ -863,10 +1236,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
               
               {isEditingClient ? (
-                // Edit Mode
-                <div className="space-y-3">
+                <div className="space-y-2 sm:space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-500">Select New Client</p>
+                    <p className="text-xs sm:text-sm text-gray-500">Select New Client</p>
                     <button
                       onClick={() => {
                         setIsEditingClient(false);
@@ -880,7 +1252,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <select
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-2 sm:px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     disabled={savingClient}
                   >
                     <option value="">Select a client...</option>
@@ -897,23 +1269,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         setSelectedClientId(order.client?.id || '');
                       }}
                       disabled={savingClient}
-                      className="flex-1 px-3 py-1 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleClientChange}
                       disabled={!selectedClientId || selectedClientId === order.client?.id || savingClient}
-                      className="flex-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-2"
                     >
                       {savingClient ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
+                          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                          <span className="hidden sm:inline">Saving...</span>
                         </>
                       ) : (
                         <>
-                          <Check className="w-4 h-4" />
+                          <Check className="w-3 h-3 sm:w-4 sm:h-4" />
                           Save
                         </>
                       )}
@@ -926,19 +1298,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   )}
                 </div>
               ) : (
-                // View Mode
                 <>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building className="w-5 h-5 text-blue-600" />
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-500">Client</p>
-                      <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm text-gray-500">Client</p>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{order.client?.name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-4 h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                    <Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                     <span className="truncate">{order.client?.email}</span>
                   </div>
                 </>
@@ -946,25 +1317,71 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Building className="w-5 h-5 text-green-600" />
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-500">Manufacturer</p>
-                  <p className="font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-500">Manufacturer</p>
+                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail className="w-4 h-4 flex-shrink-0" />
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                <Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span className="truncate">{order.manufacturer?.email}</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* Manufacturer Control Panel - ONLY FOR MANUFACTURERS */}
+        {/* ORDER-LEVEL SAMPLE REQUEST SECTION - UPDATED WITH ROUTING */}
+        {(isAdmin || isSuperAdmin || isManufacturer) && (
+          <OrderSampleRequest
+            orderId={id}
+            sampleFee={orderSampleFee}
+            sampleETA={orderSampleETA}
+            sampleStatus={orderSampleStatus}
+            sampleNotes={orderSampleNotes}
+            sampleFiles={orderSampleFiles}
+            existingMedia={existingSampleMedia}
+            onUpdate={handleOrderSampleUpdate}
+            onFileUpload={handleOrderSampleFileUpload}
+            onFileRemove={removeOrderSampleFile}
+            onExistingFileDelete={deleteExistingSampleFile}
+            onViewHistory={() => {
+              setHistoryModal({
+                isOpen: true,
+                productId: 'order-sample-' + order.id,
+                productName: 'Order Sample Request'
+              });
+              
+              const historyCount = getOrderSampleHistoryCount();
+              const newViewed = { ...viewedHistory, ['order-sample-' + id]: historyCount };
+              setViewedHistory(newViewed);
+              localStorage.setItem(`viewedHistory_${id}`, JSON.stringify(newViewed));
+            }}
+            hasNewHistory={hasNewOrderSampleHistory()}
+            isManufacturer={isManufacturer}
+            isClient={isClient}
+            userRole={userRole || 'admin'}
+            readOnly={false}
+            onSave={saveOrderSampleData}
+            saving={savingOrderSample}
+            // NEW: Sample routing props
+            sampleRoutedTo={order?.sample_routed_to || 'admin'}
+            sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
+            onRouteToManufacturer={sampleRouting.routeToManufacturer}
+            onRouteToAdmin={sampleRouting.routeToAdmin}
+            onRouteToClient={sampleRouting.routeToClient}
+            canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
+            canRouteToAdmin={sampleRouting.canRouteToAdmin}
+            canRouteToClient={sampleRouting.canRouteToClient}
+            isRouting={sampleRouting.isRouting}
+          />
+        )}
+
+        {/* Manufacturer Control Panel */}
         {userRole === 'manufacturer' && visibleProducts.length > 0 && (
           <ManufacturerControlPanel
             order={order}
@@ -974,107 +1391,46 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           />
         )}
 
-        {/* Product Location Summary with Individual Product Dropdown */}
-        {productCounts.total > 0 && (
-          <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">Product Distribution</h3>
-              
-              {/* NEW: Individual Product Selection Dropdown */}
-              <div className="flex items-center gap-3">
-                <select
-                  value={selectedProductId}
-                  onChange={(e) => setSelectedProductId(e.target.value)}
-                  className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="all">Show All Products ({allProducts.length})</option>
-                  {allProducts.map((product: any) => (
-                    <option key={product.id} value={product.id}>
-                      {product.product_order_number || 'PRD-0000'} - {product.description || product.product?.title || 'Unnamed Product'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            
-            {/* Status summary badges */}
-            <div className="flex flex-wrap gap-2 mt-2">
-              {productCounts.withAdmin > 0 && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
-                  {productCounts.withAdmin} with Admin
-                </span>
-              )}
-              {productCounts.withManufacturer > 0 && (
-                <span className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">
-                  {productCounts.withManufacturer} with Manufacturer
-                </span>
-              )}
-              {productCounts.inProduction > 0 && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                  {productCounts.inProduction} in Production
-                </span>
-              )}
-              {productCounts.completed > 0 && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                  {productCounts.completed} Completed
-                </span>
-              )}
-            </div>
-            
-            {selectedProductId !== 'all' && (
-              <p className="text-xs text-blue-600 mt-2">
-                <Eye className="w-3 h-3 inline mr-1" />
-                Viewing single product
-              </p>
-            )}
-            
-            {visibleProducts.length < productCounts.total && !showAllProducts && selectedProductId === 'all' && (
-              <p className="text-xs text-gray-500 mt-2">
-                <AlertCircle className="w-3 h-3 inline mr-1" />
-                Showing {visibleProducts.length} of {productCounts.total} products 
-                {isManufacturer ? ' (products with admin are hidden)' : ' (products with manufacturer are hidden)'}
-              </p>
-            )}
-            
-            {isSuperAdmin && showAllProducts && (
-              <p className="text-xs text-blue-600 mt-2">
-                <Eye className="w-3 h-3 inline mr-1" />
-                Showing all {productCounts.total} products (Super Admin view)
-              </p>
-            )}
-          </div>
-        )}
+        {/* Product Distribution Bar */}
+        <ProductDistributionBar
+          products={allProducts}
+          selectedProductId={selectedProductId}
+          onProductSelect={setSelectedProductId}
+          showAllProducts={showAllProducts}
+          onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
+          isSuperAdmin={isSuperAdmin}
+          counts={productCounts}
+        />
 
         {/* Products Section */}
-        <div className="space-y-4 sm:space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {isManufacturer ? 'Your Products' : showAllProducts ? 'All Products' : selectedProductId !== 'all' ? 'Product Detail' : 'Products Requiring Action'}
+        <div className="space-y-3 sm:space-y-4 md:space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+            <h2 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
+              {selectedProductId !== 'all' ? 'Product Detail' : 'Order Products'}
             </h2>
-            
-            <div className="flex items-center gap-3">
-              {/* Show All Products Toggle - SUPER ADMIN ONLY */}
+
+            <div className="flex items-center gap-2 sm:gap-3">
               {isSuperAdmin && productCounts.withManufacturer > 0 && (
                 <button
                   onClick={() => setShowAllProducts(!showAllProducts)}
-                  className={`px-4 py-2 rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium ${
-                    showAllProducts 
-                      ? 'bg-amber-600 text-white hover:bg-amber-700' 
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 font-medium ${
+                    showAllProducts
+                      ? 'bg-amber-600 text-white hover:bg-amber-700'
                       : 'bg-purple-600 text-white hover:bg-purple-700'
                   }`}
                   title={showAllProducts ? 'Hide manufacturer products' : 'Show all products including those with manufacturer'}
                 >
                   {showAllProducts ? (
                     <>
-                      <EyeOff className="w-4 h-4" />
-                      <span className="hidden sm:inline">Hide Manufacturer Products</span>
-                      <span className="sm:hidden">Hide</span>
+                      <EyeOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="hidden md:inline">Hide Manufacturer Products</span>
+                      <span className="md:hidden">Hide</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="w-4 h-4" />
-                      <span className="hidden sm:inline">Show All Products</span>
-                      <span className="sm:hidden">Show All</span>
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="hidden md:inline">Show All Products</span>
+                      <span className="md:hidden">Show All</span>
                     </>
                   )}
                 </button>
@@ -1082,16 +1438,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          {/* Show message when no products are visible */}
           {visibleProducts.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
-              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">
-                {selectedProductId !== 'all' 
-                  ? `Product not found or not visible to you.`
-                  : isManufacturer 
-                    ? 'No products are currently routed to you. Products will appear here when admin sends them to you.'
-                    : 'No products currently need your attention. Products will appear here when manufacturer routes them to you.'}
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-6 sm:p-8 text-center">
+              <Package className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
+              <p className="text-sm sm:text-base text-gray-500">
+                {selectedProductId !== 'all'
+                  ? `Product not found.`
+                  : `No products found in this order.`}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
@@ -1100,28 +1453,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
             </div>
           ) : (
-            // Show only visible products based on routing
             visibleProducts.map((product: any) => {
-              // Get items and media for this product
               const items = product.order_items || [];
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
               
-              // DEBUG - Remove this after fixing
-              if (isManufacturer) {
-                console.log('Manufacturer view - visibleProducts count:', visibleProducts.length);
-                console.log('Visible products:', visibleProducts.map((p: any) => p.product_order_number));
-              }
-              
-              // AUTO-COLLAPSE WHEN MORE THAN 3 PRODUCTS
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
-              // When super admin is viewing all products, show manufacturer cards for products with manufacturer
-              const shouldShowManufacturerCard = isManufacturer || 
-                (isSuperAdmin && showAllProducts && product.routed_to === 'manufacturer');
-              
-              // Render different cards based on context
-              if (shouldShowManufacturerCard) {
+              // FIXED: Only ACTUAL manufacturers see ManufacturerProductCard
+              // Admins ALWAYS see AdminProductCard with CLIENT prices
+              if (isManufacturer) {
                 return (
                   <ManufacturerProductCard
                     key={product.id}
@@ -1140,11 +1481,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
                     autoCollapse={shouldAutoCollapse}
+                    allOrderProducts={allProducts}
                   />
                 );
               }
               
-              // Admin, Super Admin, and others see AdminProductCard
+              // Admin/Super Admin ALWAYS sees AdminProductCard which shows CLIENT prices
               return (
                 <AdminProductCard
                   key={product.id}
@@ -1173,16 +1515,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* Master Route Modal for Save All & Route */}
-      {masterRouteModal.isOpen && (
-        <MasterRouteModal
-          isOpen={masterRouteModal.isOpen}
-          isSaving={masterRouteModal.isSaving}
-          onClose={() => setMasterRouteModal({ isOpen: false, isSaving: false })}
-          onRoute={handleMasterRoute}
-          productCount={visibleProducts.length}
-        />
-      )}
+      {/* Save All Route Modal */}
+      <SaveAllRouteModal
+        isOpen={saveAllRouteModal.isOpen}
+        isSaving={saveAllRouteModal.isSaving}
+        onClose={() => setSaveAllRouteModal({ isOpen: false, isSaving: false })}
+        onRoute={handleSaveAllRoute}
+        productCount={visibleProducts.length}
+        userRole={userRole || undefined}
+      />
 
       {/* History Modal */}
       <HistoryModal
@@ -1191,191 +1532,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         productId={historyModal.productId}
         productName={historyModal.productName}
       />
-    </div>
-  );
-}
-
-// Master Route Modal Component
-function MasterRouteModal({ 
-  isOpen, 
-  isSaving,
-  onClose, 
-  onRoute,
-  productCount 
-}: { 
-  isOpen: boolean;
-  isSaving: boolean;
-  onClose: () => void;
-  onRoute: (route: string, notes?: string) => void;
-  productCount: number;
-}) {
-  const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
-  const [notes, setNotes] = useState('');
-  const userRole = getUserRole();
-
-  if (!isOpen) return null;
-
-  const handleSubmit = () => {
-    if (!selectedRoute) return;
-    onRoute(selectedRoute, notes);
-  };
-
-  const isManufacturer = userRole === 'manufacturer';
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Save All & Route {productCount} Products
-        </h2>
-        <p className="text-sm text-gray-500 mb-6">
-          This will save all pending changes and route all {productCount} products
-        </p>
-
-        {/* Route Options - Different for Manufacturer vs Admin */}
-        <div className="space-y-3 mb-6">
-          {isManufacturer ? (
-            // MANUFACTURER OPTIONS
-            <>
-              <button
-                onClick={() => setSelectedRoute('send_to_admin')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'send_to_admin'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-500 hover:bg-blue-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Send className="w-5 h-5 text-blue-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Send to Admin</h3>
-                    <p className="text-xs text-gray-500">Send all products to admin for review</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('in_production')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'in_production'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Package className="w-5 h-5 text-green-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Mark In Production</h3>
-                    <p className="text-xs text-gray-500">Mark all products as in production</p>
-                  </div>
-                </div>
-              </button>
-            </>
-          ) : (
-            // ADMIN OPTIONS
-            <>
-              <button
-                onClick={() => setSelectedRoute('approve_for_production')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'approve_for_production'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-green-500 hover:bg-green-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Package className="w-5 h-5 text-green-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Approve for Production</h3>
-                    <p className="text-xs text-gray-500">Send all to manufacturer for production</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('request_sample')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'request_sample'
-                    ? 'border-yellow-500 bg-yellow-50'
-                    : 'border-gray-200 hover:border-yellow-500 hover:bg-yellow-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Request Samples</h3>
-                    <p className="text-xs text-gray-500">Request samples for all products</p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setSelectedRoute('send_back_to_manufacturer')}
-                disabled={isSaving}
-                className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
-                  selectedRoute === 'send_back_to_manufacturer'
-                    ? 'border-orange-500 bg-orange-50'
-                    : 'border-gray-200 hover:border-orange-500 hover:bg-orange-50'
-                } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Send className="w-5 h-5 text-orange-600" />
-                  <div>
-                    <h3 className="font-semibold text-gray-900">Back to Manufacturer</h3>
-                    <p className="text-xs text-gray-500">Request revisions from manufacturer</p>
-                  </div>
-                </div>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Notes */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Notes (Optional)
-          </label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={isSaving}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            rows={3}
-            placeholder={isManufacturer ? "Add any notes for admin..." : "Add routing instructions..."}
-          />
-        </div>
-
-        {/* Actions */}
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={!selectedRoute || isSaving}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Save All & Route
-              </>
-            )}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

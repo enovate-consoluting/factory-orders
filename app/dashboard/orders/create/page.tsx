@@ -1,9 +1,24 @@
+/**
+ * Create Order Page - FIXED VERSION
+ * FIXED: Order sample files now attach to first product so they show in detail page
+ * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
+ * Last Modified: November 2025
+ */
+
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRight, Plus, Minus, Trash2, Upload, X, Package, DollarSign, FileText, Tag, Ship, Plane, Clock, StickyNote, Calendar, CreditCard, AlertCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+
+// Import all our new shared components
+import { StepIndicator } from '../shared-components/StepIndicator'
+import { OrderSummaryCard } from '../shared-components/OrderSummaryCard'
+import { OrderSampleRequest } from '../shared-components/OrderSampleRequest'
+import { QuickFillTool } from '../shared-components/QuickFillTool'
+import { ProductSelector } from '../shared-components/ProductSelector'
+import { CreateProductCard } from '../shared-components/CreateProductCard'
 
 interface Product {
   id: string
@@ -33,7 +48,6 @@ interface OrderProduct {
   productDescription: string
   standardPrice: string
   bulkPrice: string
-  // Sample Request fields
   sampleRequired: boolean
   sampleFee: string
   sampleETA: string
@@ -52,12 +66,12 @@ interface OrderProduct {
 }
 
 // Consistent dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 text-black"
+const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white"
 
 export default function CreateOrderPage() {
   const router = useRouter()
-  const productDataRef = useRef<any>({}) // Store products persistently
+  const productDataRef = useRef<any>({})
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -81,64 +95,17 @@ export default function CreateOrderPage() {
     }, 3000)
   }
   
-  // ============================================
-  // NOTIFICATION HELPER FUNCTION
-  // ============================================
-  const createManufacturerNotification = async (
-    orderId: string,
-    manufacturerId: string,
-    orderNumber: string,
-    orderStatus: string
-  ) => {
-    try {
-      // Determine notification type and message based on status
-      let notificationType = 'new_order';
-      let message = `New order ${orderNumber} has been assigned to you`;
-      
-      if (orderStatus === 'submitted_for_sample') {
-        notificationType = 'sample_requested';
-        message = `New order ${orderNumber} with sample request`;
-      } else if (orderStatus === 'submitted_to_manufacturer') {
-        notificationType = 'new_order';
-        message = `New order ${orderNumber} submitted for review`;
-      }
-
-      console.log('Creating manufacturer notification:', {
-        manufacturerId,
-        orderId,
-        notificationType,
-        message
-      });
-
-      // Create the notification
-      const { error } = await supabase
-        .from('manufacturer_notifications')
-        .insert({
-          manufacturer_id: manufacturerId,
-          order_id: orderId,
-          product_id: null, // Order-level notification
-          type: notificationType,
-          message: message,
-          is_read: false,
-          created_at: new Date().toISOString()
-        });
-
-      if (error) {
-        console.error('Error creating manufacturer notification:', error);
-      } else {
-        console.log('✅ Manufacturer notification created successfully');
-      }
-    } catch (error) {
-      console.error('Error in createManufacturerNotification:', error);
-    }
-  };
-  
   // Step 1: Basic Info
   const [orderName, setOrderName] = useState('')
   const [clients, setClients] = useState<Client[]>([])
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [selectedClient, setSelectedClient] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
+  // Autocomplete states
+  const [clientQuery, setClientQuery] = useState('')
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false)
+  const [manufacturerQuery, setManufacturerQuery] = useState('')
+  const [showManufacturerSuggestions, setShowManufacturerSuggestions] = useState(false)
   
   // Step 2: Products with quantities
   const [products, setProducts] = useState<Product[]>([])
@@ -147,7 +114,13 @@ export default function CreateOrderPage() {
   
   // Step 3: Order Details
   const [orderProducts, setOrderProducts] = useState<OrderProduct[]>([])
-  const [quickFillQuantity, setQuickFillQuantity] = useState('')
+  
+  // Order-level sample request state (no checkbox needed)
+  const [orderSampleFee, setOrderSampleFee] = useState('')
+  const [orderSampleETA, setOrderSampleETA] = useState('')
+  const [orderSampleStatus, setOrderSampleStatus] = useState('pending')
+  const [orderSampleNotes, setOrderSampleNotes] = useState('')
+  const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([])
 
   useEffect(() => {
     fetchInitialData()
@@ -156,19 +129,16 @@ export default function CreateOrderPage() {
   const fetchInitialData = async () => {
     setLoading(true)
     try {
-      // Fetch clients
       const { data: clientsData } = await supabase
         .from('clients')
         .select('*')
         .order('name')
       
-      // Fetch manufacturers
       const { data: manufacturersData } = await supabase
         .from('manufacturers')
         .select('*')
         .order('name')
       
-      // Fetch products with variants
       const { data: productsData } = await supabase
         .from('products')
         .select(`
@@ -190,12 +160,10 @@ export default function CreateOrderPage() {
       setClients(clientsData || [])
       setManufacturers(manufacturersData || [])
       
-      // AUTO-DEFAULT MANUFACTURER IF ONLY ONE
       if (manufacturersData && manufacturersData.length === 1) {
         setSelectedManufacturer(manufacturersData[0].id)
       }
       
-      // Process products to group variants by type
       if (productsData) {
         const processedProducts = productsData.map(product => {
           const variantsByType: { [key: string]: string[] } = {}
@@ -222,8 +190,6 @@ export default function CreateOrderPage() {
         })
         
         setProducts(processedProducts)
-        
-        // CRITICAL: Store products in ref for persistence
         processedProducts.forEach(p => {
           productDataRef.current[p.id] = p;
         });
@@ -247,30 +213,25 @@ export default function CreateOrderPage() {
     })
   }
 
+  const handleProductClick = (productId: string) => {
+    const currentQty = selectedProducts[productId] || 0
+    handleProductQuantityChange(productId, currentQty + 1)
+  }
+
   const initializeOrderProducts = () => {
-    console.log('Initializing order products...');
-    console.log('Selected products:', selectedProducts);
-    console.log('Available products in ref:', productDataRef.current);
-    console.log('Available products in state:', products);
-    
     const orderProds: OrderProduct[] = []
     
     Object.entries(selectedProducts).forEach(([productId, quantity]) => {
-      // TRY TO GET FROM REF FIRST, THEN FALL BACK TO STATE
       const product = productDataRef.current[productId] || products.find(p => p.id === productId)
       
       if (!product) {
-        console.error(`Product not found for ID: ${productId}`);
-        return; // Skip this product
+        console.error(`Product not found for ID: ${productId}`)
+        return
       }
       
-      console.log(`Found product: ${product.title} (${product.id})`);
-      
-      // Create multiple instances of the same product based on quantity
       for (let i = 0; i < quantity; i++) {
         const productOrderNumber = `PRD-${Math.random().toString(36).substr(2, 4).toUpperCase()}`
         
-        // Generate all variant combinations
         const variantCombos: string[] = []
         if (product.variants && product.variants.length > 0) {
           const generateCombos = (index: number, current: string[]) => {
@@ -290,7 +251,7 @@ export default function CreateOrderPage() {
         }
         
         orderProds.push({
-          product: JSON.parse(JSON.stringify(product)), // Deep copy to prevent reference loss
+          product: JSON.parse(JSON.stringify(product)),
           productOrderNumber,
           productDescription: '',
           standardPrice: '',
@@ -317,23 +278,19 @@ export default function CreateOrderPage() {
     setOrderProducts(orderProds)
   }
 
-  const handleQuickFill = () => {
-    const totalQty = parseInt(quickFillQuantity)
-    if (!isNaN(totalQty) && totalQty > 0) {
-      // For each product, divide the total by that product's variant count
-      setOrderProducts(prev => prev.map(op => {
-        const variantCount = op.items.length
-        const qtyPerVariant = Math.floor(totalQty / variantCount)
-        
-        return {
-          ...op,
-          items: op.items.map(item => ({
-            ...item,
-            quantity: qtyPerVariant
-          }))
-        }
-      }))
-    }
+  const handleQuickDistribute = (totalQty: number) => {
+    setOrderProducts(prev => prev.map(op => {
+      const variantCount = op.items.length
+      const qtyPerVariant = Math.floor(totalQty / variantCount)
+      
+      return {
+        ...op,
+        items: op.items.map(item => ({
+          ...item,
+          quantity: qtyPerVariant
+        }))
+      }
+    }))
   }
 
   const updateProductField = (productIndex: number, field: string, value: any) => {
@@ -344,33 +301,35 @@ export default function CreateOrderPage() {
     ))
   }
 
-  const updateVariantQuantity = (productIndex: number, variantIndex: number, quantity: string) => {
-    const qty = parseInt(quantity) || 0
+  const deleteProduct = (productIndex: number) => {
+    if (orderProducts.length === 1) {
+      showNotification('error', 'Cannot remove the last product. Add another product first.')
+      return
+    }
+    const product = orderProducts[productIndex]
+    setOrderProducts(prev => prev.filter((_, idx) => idx !== productIndex))
+    showNotification('info', `${product.product.title} removed from order`)
+  }
+
+  const updateVariantData = (productIndex: number, variantIndex: number, field: 'quantity' | 'notes', value: string) => {
     setOrderProducts(prev => prev.map((op, idx) => {
       if (idx === productIndex) {
         const newItems = [...op.items]
-        newItems[variantIndex] = { ...newItems[variantIndex], quantity: qty }
+        if (field === 'quantity') {
+          newItems[variantIndex] = { ...newItems[variantIndex], quantity: parseInt(value) || 0 }
+        } else {
+          newItems[variantIndex] = { ...newItems[variantIndex], notes: value }
+        }
         return { ...op, items: newItems }
       }
       return op
     }))
   }
 
-  const updateVariantNotes = (productIndex: number, variantIndex: number, notes: string) => {
-    setOrderProducts(prev => prev.map((op, idx) => {
-      if (idx === productIndex) {
-        const newItems = [...op.items]
-        newItems[variantIndex] = { ...newItems[variantIndex], notes }
-        return { ...op, items: newItems }
-      }
-      return op
-    }))
-  }
-
-  const handleFileUpload = (productIndex: number, files: FileList | null) => {
+  const handleFileUpload = (productIndex: number, files: FileList | null, type: 'media' | 'sample') => {
     if (!files) return
     
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+    const MAX_FILE_SIZE = 50 * 1024 * 1024
     const newFiles = Array.from(files).filter(file => {
       if (file.size > MAX_FILE_SIZE) {
         showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
@@ -382,16 +341,34 @@ export default function CreateOrderPage() {
     if (newFiles.length > 0) {
       setOrderProducts(prev => prev.map((op, idx) => 
         idx === productIndex 
-          ? { ...op, mediaFiles: [...op.mediaFiles, ...newFiles] }
+          ? { 
+              ...op, 
+              [type === 'media' ? 'mediaFiles' : 'sampleMediaFiles']: [
+                ...op[type === 'media' ? 'mediaFiles' : 'sampleMediaFiles'], 
+                ...newFiles
+              ]
+            }
           : op
       ))
     }
   }
 
-  const handleSampleFileUpload = (productIndex: number, files: FileList | null) => {
+  const removeFile = (productIndex: number, fileIndex: number, type: 'media' | 'sample') => {
+    setOrderProducts(prev => prev.map((op, idx) => {
+      if (idx === productIndex) {
+        const filesKey = type === 'media' ? 'mediaFiles' : 'sampleMediaFiles'
+        const newFiles = op[filesKey].filter((_, i) => i !== fileIndex)
+        return { ...op, [filesKey]: newFiles }
+      }
+      return op
+    }))
+  }
+
+  // Order-level sample file handlers
+  const handleOrderSampleFileUpload = (files: FileList | null) => {
     if (!files) return
     
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+    const MAX_FILE_SIZE = 50 * 1024 * 1024
     const newFiles = Array.from(files).filter(file => {
       if (file.size > MAX_FILE_SIZE) {
         showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
@@ -401,32 +378,76 @@ export default function CreateOrderPage() {
     })
     
     if (newFiles.length > 0) {
-      setOrderProducts(prev => prev.map((op, idx) => 
-        idx === productIndex 
-          ? { ...op, sampleMediaFiles: [...op.sampleMediaFiles, ...newFiles] }
-          : op
-      ))
+      setOrderSampleFiles(prev => [...prev, ...newFiles])
     }
   }
 
-  const removeFile = (productIndex: number, fileIndex: number) => {
-    setOrderProducts(prev => prev.map((op, idx) => {
-      if (idx === productIndex) {
-        const newFiles = op.mediaFiles.filter((_, i) => i !== fileIndex)
-        return { ...op, mediaFiles: newFiles }
-      }
-      return op
-    }))
+  const removeOrderSampleFile = (index: number) => {
+    setOrderSampleFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const removeSampleFile = (productIndex: number, fileIndex: number) => {
-    setOrderProducts(prev => prev.map((op, idx) => {
-      if (idx === productIndex) {
-        const newFiles = op.sampleMediaFiles.filter((_, i) => i !== fileIndex)
-        return { ...op, sampleMediaFiles: newFiles }
+  const updateOrderSampleField = (field: string, value: any) => {
+    switch (field) {
+      case 'sampleFee':
+        setOrderSampleFee(value)
+        break
+      case 'sampleETA':
+        setOrderSampleETA(value)
+        break
+      case 'sampleStatus':
+        setOrderSampleStatus(value)
+        break
+      case 'sampleNotes':
+        setOrderSampleNotes(value)
+        break
+    }
+  }
+
+  // Helper function to sanitize filename
+  const sanitizeFileName = (filename: string) => {
+    // Remove extension first
+    const nameWithoutExt = filename.substring(0, filename.lastIndexOf('.')) || filename
+    // Replace spaces with hyphens, remove special characters
+    return nameWithoutExt
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .substring(0, 50) // Limit length
+  }
+
+  const createManufacturerNotification = async (
+    orderId: string,
+    manufacturerId: string,
+    orderNumber: string,
+    hasSampleRequest: boolean
+  ) => {
+    try {
+      let notificationType = 'new_order'
+      let message = `New order ${orderNumber} has been assigned to you`
+      
+      if (hasSampleRequest) {
+        notificationType = 'sample_requested'
+        message = `New order ${orderNumber} with sample request`
       }
-      return op
-    }))
+
+      const { error } = await supabase
+        .from('manufacturer_notifications')
+        .insert({
+          manufacturer_id: manufacturerId,
+          order_id: orderId,
+          product_id: null,
+          type: notificationType,
+          message: message,
+          is_read: false,
+          created_at: new Date().toISOString()
+        })
+
+      if (error) {
+        console.error('Error creating manufacturer notification:', error)
+      }
+    } catch (error) {
+      console.error('Error in createManufacturerNotification:', error)
+    }
   }
 
   const handleSubmit = async (isDraft = false) => {
@@ -442,7 +463,6 @@ export default function CreateOrderPage() {
       const userData = localStorage.getItem('user')
       const user = userData ? JSON.parse(userData) : null
       
-      // Get the client name for the prefix
       const { data: clientData } = await supabase
         .from('clients')
         .select('name')
@@ -451,7 +471,6 @@ export default function CreateOrderPage() {
       
       const clientPrefix = clientData?.name?.substring(0, 3).toUpperCase() || 'ORD'
       
-      // Generate order number - Get the next sequential number
       const { data: lastOrder } = await supabase
         .from('orders')
         .select('order_number')
@@ -459,7 +478,7 @@ export default function CreateOrderPage() {
         .limit(1)
         .single()
       
-      let nextNumber = 1200 // Starting number
+      let nextNumber = 1200
       if (lastOrder?.order_number) {
         const match = lastOrder.order_number.match(/(\d{6})/)
         if (match) {
@@ -471,19 +490,13 @@ export default function CreateOrderPage() {
         ? `DRAFT-${nextNumber.toString().padStart(6, '0')}`
         : `${clientPrefix}-${nextNumber.toString().padStart(6, '0')}`
 
-      // Check if any product has sample information filled
-      let hasSampleRequest = false
-      for (const orderProduct of orderProducts) {
-        if (orderProduct.sampleNotes && orderProduct.sampleNotes.trim() !== '') {
-          hasSampleRequest = true
-          break
-        }
-      }
+      // Check if sample is requested based on whether notes or files are provided
+      const hasSampleRequest = (orderSampleNotes && orderSampleNotes.trim() !== '') || orderSampleFiles.length > 0
 
-      // UPDATED: Use simplified statuses
+      // Determine order status
       let orderStatus = 'draft'
       if (!isDraft) {
-        orderStatus = 'sent_to_manufacturer'  // Default status when order is created and sent to manufacturer
+        orderStatus = 'sent_to_manufacturer'
         console.log('Status: sent_to_manufacturer (order submitted)')
       } else {
         console.log('Status: draft (saved as draft)')
@@ -492,6 +505,7 @@ export default function CreateOrderPage() {
       console.log('Final order status:', orderStatus)
       console.log('Has sample request:', hasSampleRequest)
       
+      // Create order with order-level sample fields
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -500,7 +514,13 @@ export default function CreateOrderPage() {
           client_id: selectedClient,
           manufacturer_id: selectedManufacturer,
           status: orderStatus,
-          created_by: user?.id
+          created_by: user?.id,
+          // Order-level sample fields
+          sample_required: hasSampleRequest, // Auto-determine based on content
+          sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+          sample_eta: orderSampleETA || null,
+          sample_status: orderSampleStatus,
+          sample_notes: orderSampleNotes || null
         })
         .select()
         .single()
@@ -514,57 +534,45 @@ export default function CreateOrderPage() {
       console.log('Order ID:', orderData.id)
       console.log('Order Number:', orderNumber)
       
-      // ============================================
-      // CREATE MANUFACTURER NOTIFICATION
-      // ============================================
-      
       // Create manufacturer notification if not a draft
       if (!isDraft && orderData && selectedManufacturer) {
-        console.log('🔔 Creating notification for manufacturer...');
+        console.log('🔔 Creating notification for manufacturer...')
         await createManufacturerNotification(
           orderData.id,
           selectedManufacturer,
           orderNumber,
-          'sent_to_manufacturer'  // UPDATED: Use new status
-        );
+          hasSampleRequest
+        )
       } else {
-        console.log('ℹ️ No notification needed (draft or missing data)');
+        console.log('ℹ️ No notification needed (draft or missing data)')
       }
       
-      // ============================================
-      
-      // Extract numeric part from order number for product numbers
+      // Save products
       const orderNumeric = orderNumber.includes('-') 
         ? orderNumber.split('-')[1]
         : nextNumber.toString().padStart(6, '0')
       
-      // Now save all the products with proper product numbers
       console.log(`Saving ${orderProducts.length} products...`)
+      
+      // Track global bulk file counter across all products
+      let globalBulkFileCounter = 1
+      
+      // FIXED: Track the first product ID for order-level sample files
+      let firstProductId: string | null = null
       
       for (const orderProduct of orderProducts) {
         console.log('Saving product:', orderProduct.product.title)
         
-        // Generate product code from product title (first 3 letters)
-        const productCode = orderProduct.product.title 
-          ? orderProduct.product.title.substring(0, 3).toUpperCase() 
-          : 'PRD'
-        
-        // Generate description code (first 3 letters)
-        const descCode = orderProduct.productDescription 
-          ? orderProduct.productDescription.substring(0, 3).toUpperCase()
-          : 'GEN'
-        
-        // Create final product number: 001234-SLI-PER
+        const productCode = orderProduct.product.title?.substring(0, 3).toUpperCase() || 'PRD'
+        const descCode = orderProduct.productDescription?.substring(0, 3).toUpperCase() || 'GEN'
         const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
         
-        // FIXED: Check if product_id exists before saving
         if (!orderProduct.product.id) {
           console.error('Product ID is missing for:', orderProduct.product.title)
           showNotification('error', `Failed to save product ${orderProduct.product.title}: Missing product ID`)
           continue
         }
         
-        // FIXED: Conditional status and routing based on draft mode
         const { data: productData, error: productError } = await supabase
           .from('order_products')
           .insert({
@@ -572,9 +580,6 @@ export default function CreateOrderPage() {
             product_id: orderProduct.product.id,
             product_order_number: finalProductOrderNumber,
             description: orderProduct.productDescription || '',
-            sample_notes: orderProduct.sampleNotes || '',
-            sample_required: orderProduct.sampleRequired || false,
-            // FIXED: Conditional status and routing based on draft mode
             product_status: isDraft ? 'pending' : 'sent_to_manufacturer',
             routed_to: isDraft ? 'admin' : 'manufacturer'
           })
@@ -589,10 +594,14 @@ export default function CreateOrderPage() {
 
         console.log('Product saved with ID:', productData.id)
         console.log('Product Order Number:', finalProductOrderNumber)
-        console.log('Product Status:', isDraft ? 'pending' : 'sent_to_manufacturer')
-        console.log('Routed To:', isDraft ? 'admin' : 'manufacturer')
+        
+        // FIXED: Store the first product ID for order-level sample files
+        if (!firstProductId) {
+          firstProductId = productData.id
+          console.log('First product ID stored for sample files:', firstProductId)
+        }
 
-        // Save ALL order items (variants) - not just ones with quantity > 0
+        // Save variants
         const itemsToSave = orderProduct.items.map((item: any) => ({
           order_product_id: productData.id,
           variant_combo: item.variantCombo,
@@ -616,39 +625,33 @@ export default function CreateOrderPage() {
           }
         }
 
-        // FIXED: Upload and save media files with display_name
+        // Upload media files (bulk files for products)
         if (orderProduct.mediaFiles && orderProduct.mediaFiles.length > 0) {
-          console.log(`Uploading ${orderProduct.mediaFiles.length} media files...`)
+          console.log(`Uploading ${orderProduct.mediaFiles.length} bulk files...`)
           
-          let bulkFileCounter = 1;
           for (const file of orderProduct.mediaFiles) {
             try {
               const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
-              // Create display name using product code and sequential number
-              const displayName = `${finalProductOrderNumber}-bulk-${String(bulkFileCounter).padStart(2, '0')}.${fileExt}`
+              const cleanName = sanitizeFileName(file.name)
+              // New naming: originalname-bulk-001.ext (using global counter)
+              const displayName = `${cleanName}-bulk-${String(globalBulkFileCounter).padStart(3, '0')}.${fileExt}`
               const filePath = `${orderData.id}/${productData.id}/${displayName}`
+              
+              console.log('Uploading bulk file:', displayName)
 
-              // Upload to Supabase storage
               const { error: uploadError } = await supabase.storage
                 .from('order-media')
                 .upload(filePath, file)
 
               if (uploadError) {
                 console.error('Error uploading file:', uploadError)
-                if (uploadError.message?.includes('exceeded the maximum allowed size')) {
-                  showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
-                } else {
-                  showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
-                }
                 continue
               }
 
-              // Get public URL
               const { data: { publicUrl } } = supabase.storage
                 .from('order-media')
                 .getPublicUrl(filePath)
 
-              // Save media record with both original filename and display_name
               await supabase
                 .from('order_media')
                 .insert({
@@ -657,80 +660,81 @@ export default function CreateOrderPage() {
                   file_type: file.type.startsWith('image/') ? 'image' : 'document',
                   uploaded_by: user?.id,
                   original_filename: file.name,
-                  display_name: displayName  // ADDED: Save the display name
+                  display_name: displayName
                 })
 
-              console.log('Media file uploaded with display name:', displayName)
-              bulkFileCounter++;
+              console.log('Bulk file uploaded:', displayName)
+              globalBulkFileCounter++
             } catch (mediaError) {
               console.error('Error with media:', mediaError)
             }
           }
         }
+      }
+      
+      // FIXED: Upload order-level sample files AFTER products are created
+      // Attach to first product so they show up in detail page queries
+      if (orderSampleFiles.length > 0 && firstProductId) {
+        console.log(`Uploading ${orderSampleFiles.length} order-level sample files...`)
+        console.log('Attaching to first product ID:', firstProductId)
+        
+        for (let i = 0; i < orderSampleFiles.length; i++) {
+          const file = orderSampleFiles[i]
+          try {
+            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
+            const cleanName = sanitizeFileName(file.name)
+            // New naming: originalname-sample-001.ext
+            const displayName = `${cleanName}-sample-${String(i + 1).padStart(3, '0')}.${fileExt}`
+            // Store in order folder (not product subfolder) for clarity
+            const filePath = `${orderData.id}/${displayName}`
+            
+            console.log('Uploading order sample file:', displayName)
 
-        // FIXED: Upload and save sample media files with display_name
-        if (orderProduct.sampleMediaFiles && orderProduct.sampleMediaFiles.length > 0) {
-          console.log(`Uploading ${orderProduct.sampleMediaFiles.length} sample media files...`)
-          
-          let sampleFileCounter = 1;
-          for (const file of orderProduct.sampleMediaFiles) {
-            try {
-              const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
-              // Create display name using product code and sequential number
-              const displayName = `${finalProductOrderNumber}-sample-${String(sampleFileCounter).padStart(2, '0')}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${displayName}`
+            const { error: uploadError } = await supabase.storage
+              .from('order-media')
+              .upload(filePath, file)
 
-              // Upload to Supabase storage
-              const { error: uploadError } = await supabase.storage
-                .from('order-media')
-                .upload(filePath, file)
-
-              if (uploadError) {
-                console.error('Error uploading sample file:', uploadError)
-                if (uploadError.message?.includes('exceeded the maximum allowed size')) {
-                  showNotification('error', `File "${file.name}" is too large for storage. Please reduce file size.`)
-                } else {
-                  showNotification('error', `Failed to upload "${file.name}": ${uploadError.message}`)
-                }
-                continue
-              }
-
-              // Get public URL
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath)
-
-              // Save media record with both original filename and display_name
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: productData.id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'sample_image' : 'sample_document',
-                  uploaded_by: user?.id,
-                  original_filename: file.name,
-                  display_name: displayName  // ADDED: Save the display name
-                })
-
-              console.log('Sample media file uploaded with display name:', displayName)
-              sampleFileCounter++;
-            } catch (mediaError) {
-              console.error('Error with sample media:', mediaError)
+            if (uploadError) {
+              console.error('Error uploading order sample file:', uploadError)
+              continue
             }
+
+            const { data: { publicUrl } } = supabase.storage
+              .from('order-media')
+              .getPublicUrl(filePath)
+
+            // FIXED: Attach to first product AND set is_sample flag
+            // This ensures the file shows up in detail page queries
+            await supabase
+              .from('order_media')
+              .insert({
+                order_id: orderData.id,
+                order_product_id: firstProductId, // FIXED: Link to first product!
+                file_url: publicUrl,
+                file_type: file.type.startsWith('image/') ? 'image' : 'document',
+                is_sample: true, // Mark as order-level sample
+                uploaded_by: user?.id,
+                original_filename: file.name,
+                display_name: displayName
+              })
+
+            console.log('Order sample file uploaded and linked to product:', displayName)
+          } catch (error) {
+            console.error('Error uploading order sample file:', error)
           }
         }
+      } else if (orderSampleFiles.length > 0 && !firstProductId) {
+        console.error('Cannot upload order sample files: No products were created')
+        showNotification('error', 'Sample files could not be uploaded - no products in order')
       }
       
       console.log('All products and items saved!')
       console.log('✅ Order creation complete!')
       
-      // Show success notification
       showNotification('success', `Order ${orderNumber} ${isDraft ? 'saved as draft' : 'created'} successfully!`)
       
-      // Log that we're about to navigate
       console.log('Navigating to orders list in 1.5 seconds...')
       
-      // Navigate after a short delay to let user see the notification
       setTimeout(() => {
         console.log('Now navigating to /dashboard/orders')
         router.push('/dashboard/orders')
@@ -770,10 +774,6 @@ export default function CreateOrderPage() {
     }
   }
 
-  const getTotalProductsSelected = () => {
-    return Object.values(selectedProducts).reduce((sum, qty) => sum + qty, 0)
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -782,124 +782,77 @@ export default function CreateOrderPage() {
     )
   }
 
+  // Helper to get instances for product cards
+  const getProductInstances = (product: Product) => {
+    return orderProducts.filter(op => op.product.id === product.id)
+  }
+
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Beautiful Notification Toast */}
+    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
+      {/* Notification Toast - Mobile Responsive */}
       {notification.show && (
         <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          fixed top-3 right-3 sm:top-4 sm:right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[calc(100vw-24px)] sm:max-w-none transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {notification.type === 'success' && (
-                <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               )}
               {notification.type === 'error' && (
-                <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               )}
-              <div className="flex-1">
-                <p className="font-semibold text-white">
-                  {notification.message}
-                </p>
-              </div>
+              <p className="font-semibold text-white text-sm sm:text-base break-words">{notification.message}</p>
             </div>
           </div>
         </div>
       )}
-      
-      {/* Header */}
-      <div className="mb-6">
+
+      {/* Header - Mobile Responsive */}
+      <div className="mb-4 sm:mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
           Back to Orders
         </button>
-        
-        <h1 className="text-2xl font-bold text-gray-900">Create New Order</h1>
-        
-        {/* Progress Steps */}
-        <div className="mt-6 flex items-center justify-between">
-          <div 
-            className={`flex items-center cursor-pointer ${currentStep >= 1 ? 'text-blue-600' : 'text-gray-400'}`}
-            onClick={() => currentStep > 1 && setCurrentStep(1)}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              currentStep >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-white'
-            }`}>
-              1
-            </div>
-            <span className="ml-2 font-medium">Basic Info</span>
-          </div>
-          
-          <div className="flex-1 h-0.5 bg-gray-300 mx-4" />
-          
-          <div 
-            className={`flex items-center cursor-pointer ${currentStep >= 2 ? 'text-blue-600' : 'text-gray-400'}`}
-            onClick={() => {
-              if (currentStep > 2) {
-                setCurrentStep(2)
-              } else if (currentStep === 1 && orderName && selectedClient && selectedManufacturer) {
-                setCurrentStep(2)
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create New Order</h1>
+
+        {/* Progress Steps using new component */}
+        <div className="mt-4 sm:mt-6">
+          <StepIndicator
+            currentStep={currentStep}
+            onStepClick={(step) => {
+              if (step < currentStep) {
+                setCurrentStep(step)
               }
             }}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              currentStep >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-white'
-            }`}>
-              2
-            </div>
-            <span className="ml-2 font-medium">Select Products</span>
-          </div>
-          
-          <div className="flex-1 h-0.5 bg-gray-300 mx-4" />
-          
-          <div 
-            className={`flex items-center cursor-pointer ${currentStep >= 3 ? 'text-blue-600' : 'text-gray-400'}`}
-            onClick={() => {
-              if (currentStep === 3) return
-              if (currentStep === 2 && Object.keys(selectedProducts).length > 0) {
-                initializeOrderProducts()
-                setCurrentStep(3)
-              }
-            }}
-          >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              currentStep >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-300 text-white'
-            }`}>
-              3
-            </div>
-            <span className="ml-2 font-medium">Order Details</span>
-          </div>
+          />
         </div>
       </div>
 
-      {/* Step 1: Basic Info */}
+      {/* Step 1: Basic Info - Mobile Responsive */}
       {currentStep === 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h2>
-          
-          {/* Order Name */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Order Information</h2>
+
+          <div className="mb-4 sm:mb-6">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               Order Name *
             </label>
             <input
@@ -911,519 +864,220 @@ export default function CreateOrderPage() {
               required
             />
           </div>
-          
-          {/* Client and Manufacturer Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {/* Client Autocomplete - Mobile Responsive */}
+            <div className="relative">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Select Client *
               </label>
-              <select
-                value={selectedClient}
-                onChange={(e) => setSelectedClient(e.target.value)}
-                className={selectClassName}
+              <input
+                type="text"
+                value={clientQuery}
+                onChange={e => {
+                  setClientQuery(e.target.value);
+                  setShowClientSuggestions(true);
+                }}
+                onFocus={() => setShowClientSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 100)}
+                placeholder="Search client..."
+                className={inputClassName}
                 required
-              >
-                <option value="">Choose a client...</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+                autoComplete="off"
+              />
+              {/* Suggestions dropdown - Mobile Responsive */}
+              {showClientSuggestions && clientQuery && (
+                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
+                  {clients.filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase())).length === 0 ? (
+                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
+                  ) : (
+                    clients
+                      .filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase()))
+                      .map(c => (
+                        <li
+                          key={c.id}
+                          onMouseDown={() => {
+                            setSelectedClient(c.id);
+                            setClientQuery(c.name);
+                            setShowClientSuggestions(false);
+                          }}
+                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedClient === c.id ? 'bg-blue-100' : ''}`}
+                        >
+                          {c.name}
+                        </li>
+                      ))
+                  )}
+                </ul>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            {/* Manufacturer Autocomplete - Mobile Responsive */}
+            <div className="relative">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Select Manufacturer *
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
               </label>
-              <select
-                value={selectedManufacturer}
-                onChange={(e) => setSelectedManufacturer(e.target.value)}
-                className={selectClassName}
+              <input
+                type="text"
+                value={manufacturerQuery}
+                onChange={e => {
+                  setManufacturerQuery(e.target.value);
+                  setShowManufacturerSuggestions(true);
+                }}
+                onFocus={() => setShowManufacturerSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowManufacturerSuggestions(false), 100)}
+                placeholder="Search manufacturer..."
+                className={inputClassName}
                 required
-              >
-                {manufacturers.length > 1 && (
-                  <option value="">Choose a manufacturer...</option>
-                )}
-                {manufacturers.map((manufacturer) => (
-                  <option key={manufacturer.id} value={manufacturer.id}>
-                    {manufacturer.name}
-                  </option>
-                ))}
-              </select>
+                autoComplete="off"
+                disabled={manufacturers.length === 1}
+              />
+              {/* Suggestions dropdown - Mobile Responsive */}
+              {showManufacturerSuggestions && manufacturerQuery && manufacturers.length > 1 && (
+                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
+                  {manufacturers.filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase())).length === 0 ? (
+                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
+                  ) : (
+                    manufacturers
+                      .filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase()))
+                      .map(m => (
+                        <li
+                          key={m.id}
+                          onMouseDown={() => {
+                            setSelectedManufacturer(m.id);
+                            setManufacturerQuery(m.name);
+                            setShowManufacturerSuggestions(false);
+                          }}
+                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedManufacturer === m.id ? 'bg-blue-100' : ''}`}
+                        >
+                          {m.name}
+                        </li>
+                      ))
+                  )}
+                </ul>
+              )}
+              {/* If only one manufacturer, auto-select and show name - Mobile Responsive */}
+              {manufacturers.length === 1 && (
+                <div className="mt-2 px-2 sm:px-3 py-2 bg-gray-100 rounded text-xs sm:text-sm text-gray-700">
+                  {manufacturers[0].name}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 sm:mt-6 flex justify-end">
             <button
               onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
             >
               Next
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
             </button>
           </div>
         </div>
       )}
 
-      {/* Step 2: Select Products with Quantities */}
+      {/* Step 2: Product Selection using new component with refresh callback */}
       {currentStep === 2 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Select Products & Quantities</h2>
-            {getTotalProductsSelected() > 0 && (
-              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                Total: {getTotalProductsSelected()} product{getTotalProductsSelected() > 1 ? 's' : ''} selected
-              </div>
-            )}
-          </div>
-
-          {/* Search Bar */}
-          <div className="mb-4">
-            <input
-              type="text"
-              value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              placeholder="Search products by name..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
-            />
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {products
-              .filter(product => 
-                product.title.toLowerCase().includes(productSearch.toLowerCase()) ||
-                (product.description && product.description.toLowerCase().includes(productSearch.toLowerCase()))
-              )
-              .map((product) => (
-              <div
-                key={product.id}
-                onClick={() => {
-                  const currentQty = selectedProducts[product.id] || 0
-                  handleProductQuantityChange(product.id, currentQty + 1)
-                }}
-                className={`border rounded-lg p-4 transition-all cursor-pointer select-none ${
-                  selectedProducts[product.id] > 0
-                    ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                    : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
-                }`}
-              >
-                <div className="relative">
-                  {/* Quantity Badge */}
-                  {selectedProducts[product.id] > 0 && (
-                    <div className="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold text-sm">
-                      {selectedProducts[product.id]}
-                    </div>
-                  )}
-                  
-                  <div className="mb-3">
-                    <h3 className="font-semibold text-gray-900">{product.title}</h3>
-                    {product.description && (
-                      <p className="text-sm text-gray-600 mt-1">{product.description}</p>
-                    )}
-                    {product.variants && product.variants.length > 0 && (
-                      <div className="mt-2">
-                        {product.variants.map((variant, idx) => (
-                          <div key={idx} className="text-xs text-gray-500">
-                            <span className="font-medium">{variant.type}:</span> {variant.options.join(', ')}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Tap Instructions or Remove Button */}
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    {selectedProducts[product.id] > 0 ? (
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-blue-600 font-medium">
-                          Tap to add more
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleProductQuantityChange(product.id, 0)
-                            showNotification('info', `${product.title} removed from order`)
-                          }}
-                          className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium bg-red-50 px-2 py-1 rounded hover:bg-red-100 transition-colors"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-500">
-                        Tap to add to order
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 flex justify-between">
-            <button
-              onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Previous
-            </button>
-            <button
-              onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
-            >
-              Next
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </button>
-          </div>
+      <>
+        <ProductSelector
+          products={products}
+          selectedProducts={selectedProducts}
+          searchQuery={productSearch}
+          onSearchChange={setProductSearch}
+          onProductQuantityChange={handleProductQuantityChange}
+          onProductClick={handleProductClick}
+          showNotification={showNotification}
+          onProductsRefresh={fetchInitialData}
+        />
+        
+        <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row justify-between gap-3">
+          <button
+            onClick={prevStep}
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+            Previous
+          </button>
+          <button
+            onClick={nextStep}
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
+          >
+            Next
+            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+          </button>
         </div>
-      )}
+      </>
+    )}
 
-      {/* Step 3: Order Details */}
+      {/* Step 3: Order Details with new components */}
       {currentStep === 3 && (
         <div>
-          {/* Order Summary Info - Clean Card Design */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <div className="border-b border-gray-200 pb-3 mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{orderName}</h3>
-              <p className="text-sm text-gray-500 mt-1">Order details and configuration</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Client Info */}
-              <div className="flex items-start space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Client</p>
-                  <p className="font-semibold text-gray-900">
-                    {clients.find(c => c.id === selectedClient)?.name || 'N/A'}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {clients.find(c => c.id === selectedClient)?.email || 'N/A'}
-                  </p>
-                </div>
-              </div>
+          {/* Order Summary Card */}
+          <OrderSummaryCard
+            orderName={orderName}
+            client={clients.find(c => c.id === selectedClient)}
+            manufacturer={manufacturers.find(m => m.id === selectedManufacturer)}
+          />
 
-              {/* Manufacturer Info */}
-              <div className="flex items-start space-x-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Manufacturer</p>
-                  <p className="font-semibold text-gray-900">
-                    {manufacturers.find(m => m.id === selectedManufacturer)?.name || 'N/A'}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {manufacturers.find(m => m.id === selectedManufacturer)?.email || 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Order-level Sample Request */}
+          <OrderSampleRequest
+            sampleFee={orderSampleFee}
+            sampleETA={orderSampleETA}
+            sampleStatus={orderSampleStatus}
+            sampleNotes={orderSampleNotes}
+            sampleFiles={orderSampleFiles}
+            onUpdate={updateOrderSampleField}
+            onFileUpload={handleOrderSampleFileUpload}
+            onFileRemove={removeOrderSampleFile}
+            isManufacturer={false}
+            readOnly={false}
+          />
 
           {/* Quick Fill Tool */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-medium text-blue-900">Quick Fill Quantities</h3>
-                <p className="text-sm text-blue-700">Distribute quantity evenly across all variants</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  value={quickFillQuantity}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    if (value === '' || parseInt(value) >= 0) {
-                      setQuickFillQuantity(value)
-                    }
-                  }}
-                  placeholder="Total quantity"
-                  className="w-40 px-3 py-2 border border-blue-300 rounded-lg text-gray-900 placeholder-gray-500"
-                  min="0"
-                />
-                <button
-                  onClick={handleQuickFill}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Distribute
-                </button>
-              </div>
-            </div>
-          </div>
+          <QuickFillTool onDistribute={handleQuickDistribute} />
 
-          {/* Products */}
-          {orderProducts.map((orderProduct, productIndex) => (
-            <div key={productIndex} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-              {/* Product Header with Instance Number */}
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                    <Package className="w-5 h-5 mr-2 text-blue-600" />
-                    {orderProduct.product.title}
-                    {orderProducts.filter(op => op.product.id === orderProduct.product.id).length > 1 && (
-                      <span className="ml-2 text-sm text-gray-500">
-                        (Instance {orderProducts.filter(op => op.product.id === orderProduct.product.id).indexOf(orderProduct) + 1} of {orderProducts.filter(op => op.product.id === orderProduct.product.id).length})
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Product order number will be assigned after creation
-                  </p>
-                </div>
-                {/* Delete Product Button */}
-                <button
-                  onClick={() => {
-                    if (orderProducts.length === 1) {
-                      showNotification('error', 'Cannot remove the last product. Add another product first or go back to step 2.');
-                      return;
-                    }
-                    const updatedProducts = orderProducts.filter((_, index) => index !== productIndex);
-                    setOrderProducts(updatedProducts);
-                    showNotification('info', `${orderProduct.product.title} removed from order`);
-                  }}
-                  className="p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all group"
-                  title="Remove this product from order"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
+          {/* Products using new CreateProductCard */}
+          {orderProducts.map((orderProduct, productIndex) => {
+            const instances = getProductInstances(orderProduct.product)
+            const currentInstance = instances.indexOf(orderProduct) + 1
+            const totalInstances = instances.length
+            
+            return (
+              <CreateProductCard
+                key={productIndex}
+                orderProduct={orderProduct}
+                productIndex={productIndex}
+                totalInstances={totalInstances}
+                currentInstance={currentInstance}
+                onUpdate={updateProductField}
+                onDelete={deleteProduct}
+                onVariantUpdate={updateVariantData}
+                onFileUpload={handleFileUpload}
+                onFileRemove={removeFile}
+                showNotification={showNotification}
+                showSampleRequest={false} // Sample request is now at order level
+              />
+            )
+          })}
 
-              {/* Product Description - Single Line */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Description
-                </label>
-                <input
-                  type="text"
-                  value={orderProduct.productDescription}
-                  onChange={(e) => updateProductField(productIndex, 'productDescription', e.target.value)}
-                  placeholder="Enter brief product description..."
-                  className={inputClassName}
-                />
-              </div>
-
-              {/* Sample Request Section - Always Open at Top */}
-              <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-6">
-                <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
-                  <AlertCircle className="w-4 h-4 mr-2" />
-                  Sample Request
-                </h4>
-
-                {/* Fields that will be filled by manufacturer - display only */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                  <div className="opacity-60">
-                    <label className="block text-xs font-medium text-amber-800 mb-1">
-                      Sample Fee
-                    </label>
-                    <div className="relative">
-                      <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                      <input
-                        type="text"
-                        placeholder="Set by manufacturer"
-                        disabled
-                        className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="opacity-60">
-                    <label className="block text-xs font-medium text-amber-800 mb-1">
-                      Sample ETA
-                    </label>
-                    <div className="relative">
-                      <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
-                      <input
-                        type="text"
-                        placeholder="Set by manufacturer"
-                        disabled
-                        className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="opacity-60">
-                    <label className="block text-xs font-medium text-amber-800 mb-1">
-                      Status
-                    </label>
-                    <input
-                      type="text"
-                      value="Pending"
-                      disabled
-                      className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Sample Tech Pack Upload */}
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-amber-800 mb-1">
-                    Technical Pack / Sample Media
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <label className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 cursor-pointer flex items-center text-sm">
-                      <Upload className="w-4 h-4 mr-1" />
-                      Upload Tech Pack
-                      <input
-                        type="file"
-                        multiple
-                        onChange={(e) => handleSampleFileUpload(productIndex, e.target.files)}
-                        className="hidden"
-                      />
-                    </label>
-                    {orderProduct.sampleMediaFiles.length > 0 && (
-                      <span className="text-xs text-amber-700">
-                        {orderProduct.sampleMediaFiles.length} file(s)
-                      </span>
-                    )}
-                  </div>
-                  {orderProduct.sampleMediaFiles.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {orderProduct.sampleMediaFiles.map((file, fileIndex) => (
-                        <div key={fileIndex} className="flex items-center gap-1 bg-amber-100 px-2 py-1 rounded text-xs">
-                          <span className="text-amber-800">{file.name}</span>
-                          <button
-                            onClick={() => removeSampleFile(productIndex, fileIndex)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Sample Notes */}
-                <div>
-                  <label className="block text-xs font-medium text-amber-800 mb-1">
-                    Sample Notes / Instructions
-                  </label>
-                  <textarea
-                    value={orderProduct.sampleNotes}
-                    onChange={(e) => updateProductField(productIndex, 'sampleNotes', e.target.value)}
-                    placeholder="Add notes about the sample request, special instructions, materials, colors, etc..."
-                    rows={3}
-                    className="w-full px-3 py-2 border border-amber-300 rounded-lg text-gray-900 text-sm"
-                  />
-                </div>
-              </div>
-
-              {/* Bulk Order Section - Separated */}
-              <div className="border border-gray-300 rounded-lg p-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-                  <Package className="w-4 h-4 mr-2" />
-                  Bulk Order Details
-                </h4>
-
-                {/* Reference Media Upload */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Reference Media
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <label className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 cursor-pointer flex items-center">
-                      <Upload className="w-4 h-4 mr-2" />
-                      Upload Files
-                      <input
-                        type="file"
-                        multiple
-                        onChange={(e) => handleFileUpload(productIndex, e.target.files)}
-                        className="hidden"
-                      />
-                    </label>
-                    {orderProduct.mediaFiles.length > 0 && (
-                      <span className="text-sm text-gray-600">
-                        {orderProduct.mediaFiles.length} file(s) selected
-                      </span>
-                    )}
-                  </div>
-                  {orderProduct.mediaFiles.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {orderProduct.mediaFiles.map((file, fileIndex) => (
-                        <div key={fileIndex} className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg">
-                          <span className="text-sm text-gray-700">{file.name}</span>
-                          <button
-                            onClick={() => removeFile(productIndex, fileIndex)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Variants Table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '26%'}}>Variant</th>
-                        <th className="text-left py-2 pl-5 pr-4 text-sm font-medium text-gray-700" style={{width: '10%'}}>Quantity</th>
-                        <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '64%'}}>Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orderProduct.items.map((item, variantIndex) => (
-                        <tr key={variantIndex} className="border-b border-gray-100">
-                          <td className="py-2 px-4 text-sm text-gray-900">{item.variantCombo}</td>
-                          <td className="py-2 pl-5 pr-4">
-                            <input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => updateVariantQuantity(productIndex, variantIndex, e.target.value)}
-                              min="0"
-                              className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-center text-gray-900"
-                            />
-                          </td>
-                          <td className="py-2 px-4">
-                            <input
-                              type="text"
-                              value={item.notes}
-                              onChange={(e) => updateVariantNotes(productIndex, variantIndex, e.target.value)}
-                              placeholder="Optional notes..."
-                              className="w-full px-2 py-1 border border-gray-300 rounded-lg text-gray-900"
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Action Buttons with Loading Spinners */}
-          <div className="flex justify-between">
+          {/* Action Buttons - Mobile Responsive */}
+          <div className="flex flex-col sm:flex-row justify-between gap-3">
             <button
               onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Previous
             </button>
-            
-            <div className="flex gap-3">
+
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1436,7 +1090,7 @@ export default function CreateOrderPage() {
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

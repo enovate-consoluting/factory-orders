@@ -1,7 +1,7 @@
-// app/dashboard/orders/[id]/components/modals/RouteModal.tsx - WITH SHIPPING ADDED
+// app/dashboard/orders/[id]/components/modals/RouteModal.tsx - FIXED CLIENT ROUTING
 
 import React, { useState } from 'react';
-import { X, Send, Package, AlertCircle, CheckCircle, RotateCcw, Loader2, Factory, Truck, Ship as ShipIcon } from 'lucide-react';
+import { X, Send, Package, AlertCircle, CheckCircle, RotateCcw, Loader2, Factory, Truck, Ship as ShipIcon, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 interface RouteModalProps {
@@ -58,6 +58,47 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
     }
   };
 
+  // Helper function to create client notification
+  const createClientNotification = async (
+    orderId: string,
+    productId: string,
+    type: string,
+    message: string
+  ) => {
+    try {
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('client_id, order_number')
+        .eq('id', orderId)
+        .single();
+
+      if (orderData?.client_id) {
+        // Find user(s) associated with this client
+        const { data: clientUsers } = await supabase
+          .from('users')
+          .select('id')
+          .eq('client_id', orderData.client_id);
+
+        if (clientUsers && clientUsers.length > 0) {
+          // Create notification for each client user
+          const notifications = clientUsers.map(user => ({
+            user_id: user.id,
+            type: type,
+            message: `${message} - Order ${orderData.order_number}`,
+            is_read: false,
+            created_at: new Date().toISOString()
+          }));
+
+          await supabase
+            .from('notifications')
+            .insert(notifications);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating client notification:', error);
+    }
+  };
+
   const handleRoute = async () => {
     if (!selectedRoute) return;
 
@@ -77,6 +118,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
       let updates: any = {};
       let notificationType = '';
       let notificationMessage = '';
+      let notifyClient = false;
       
       if (isManufacturer) {
         // MANUFACTURER ROUTING OPTIONS
@@ -103,7 +145,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             break;
             
           case 'shipped':
-            // NEW: Ship to client/admin
+            // Ship to client/admin
             updates.product_status = 'shipped';
             updates.routed_to = 'admin';
             updates.routed_at = new Date().toISOString();
@@ -134,7 +176,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
         }
         
       } else {
-        // ADMIN ROUTING OPTIONS (unchanged)
+        // ADMIN ROUTING OPTIONS
         switch (selectedRoute) {
           case 'approve_for_production':
             // Send to manufacturer for production
@@ -155,10 +197,15 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             break;
             
           case 'send_for_approval':
-            // Keep with admin but mark for client approval
+            // *** FIXED: Now routes to CLIENT instead of admin ***
             updates.requires_client_approval = true;
             updates.product_status = 'pending_client_approval';
-            updates.routed_to = 'admin';
+            updates.routed_to = 'client';  // <-- CHANGED from 'admin' to 'client'
+            updates.routed_at = new Date().toISOString();
+            updates.routed_by = user.id || null;
+            notificationType = 'approval_requested';
+            notificationMessage = `Product ${product.product_order_number || ''} needs your approval`;
+            notifyClient = true;
             break;
             
           case 'send_back_to_manufacturer':
@@ -168,6 +215,11 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             updates.routed_at = new Date().toISOString();
             updates.routed_by = user.id || null;
             break;
+        }
+        
+        // Notify client if sending for approval
+        if (notifyClient && notificationType && notificationMessage && orderId) {
+          await createClientNotification(orderId, product.id, notificationType, notificationMessage);
         }
       }
 
@@ -337,7 +389,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
               </div>
             </button>
             
-            {/* NEW: Shipping option - only show when in production */}
+            {/* Shipping option - only show when in production */}
             {isInProduction && (
               <button
                 onClick={() => setSelectedRoute('shipped')}
@@ -364,7 +416,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             )}
           </div>
         ) : (
-          // ADMIN OPTIONS (unchanged)
+          // ADMIN OPTIONS - Updated with better "Send to Client" styling
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <button
               onClick={() => setSelectedRoute('approve_for_production')}
@@ -422,11 +474,11 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                     ? 'bg-purple-200'
                     : 'bg-purple-100 group-hover:bg-purple-200'
                 }`}>
-                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+                  <User className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                 </div>
                 <h3 className="font-semibold text-gray-900">Send to Client</h3>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500">Send for client approval</p>
+              <p className="text-xs sm:text-sm text-gray-500">Send for client approval (routes to client portal)</p>
             </button>
 
             <button
@@ -551,6 +603,8 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             className={`w-full sm:w-auto px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
               selectedRoute === 'shipped' 
                 ? 'bg-purple-600 hover:bg-purple-700' 
+                : selectedRoute === 'send_for_approval'
+                ? 'bg-purple-600 hover:bg-purple-700'
                 : 'bg-blue-600 hover:bg-blue-700'
             }`}
           >
@@ -561,8 +615,12 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
               </>
             ) : (
               <>
-                {selectedRoute === 'shipped' ? <Truck className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                {selectedRoute === 'shipped' ? 'Ship Product' : 'Submit Routing'}
+                {selectedRoute === 'shipped' ? <Truck className="w-4 h-4" /> : 
+                 selectedRoute === 'send_for_approval' ? <User className="w-4 h-4" /> : 
+                 <Send className="w-4 h-4" />}
+                {selectedRoute === 'shipped' ? 'Ship Product' : 
+                 selectedRoute === 'send_for_approval' ? 'Send to Client' :
+                 'Submit Routing'}
               </>
             )}
           </button>

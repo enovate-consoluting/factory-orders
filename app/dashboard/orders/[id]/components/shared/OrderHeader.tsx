@@ -3,9 +3,10 @@
 import React from 'react';
 import { Calendar, Edit, CheckCircle, DollarSign, Package } from 'lucide-react';
 import { Order } from '../../types/order.types';
-import { StatusBadge } from './StatusBadge';
+import { StatusBadge } from '../../../shared-components/StatusBadge';
 import { usePermissions, getUserRole } from '../../hooks/usePermissions';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
+import { formatCurrency } from '../../../utils/orderCalculations';
 
 interface OrderHeaderProps {
   order: Order;
@@ -129,14 +130,11 @@ export function OrderHeader({
             {!isManufacturer && (
               <div className="flex flex-col items-end gap-2">
                 <div className="bg-gray-50 px-4 py-2 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-green-600" />
-                    <div className="text-right">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Estimated Total</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        ${(Number(totalAmount) || 0).toFixed(2)}
-                      </p>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Estimated Total</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      ${formatCurrency(totalAmount || 0)}
+                    </p>
                   </div>
                 </div>
                 

@@ -836,39 +836,39 @@ export default function EditOrderPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Notification Toast */}
+    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
+      {/* Notification Toast - Mobile Responsive */}
       {notification.show && (
         <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          fixed top-3 right-3 sm:top-4 sm:right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[calc(100vw-24px)] sm:max-w-none transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {notification.type === 'success' && (
                 <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
               )}
               {notification.type === 'error' && (
                 <div className="flex-shrink-0">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 </div>
               )}
-              <div className="flex-1">
-                <p className="font-semibold text-white">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white text-sm sm:text-base break-words">
                   {notification.message}
                 </p>
               </div>
@@ -877,68 +877,68 @@ export default function EditOrderPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-6">
+      {/* Header - Mobile Responsive */}
+      <div className="mb-4 sm:mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Orders
         </button>
-        
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-gray-900">Edit Order</h1>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Edit Order</h1>
           <button
             onClick={handleAddProductClick}
-            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 flex items-center gap-2"
+            className="px-3 sm:px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 flex items-center justify-center gap-2 text-sm sm:text-base"
           >
             <ShoppingCart className="w-4 h-4" />
-            Add Product
+            <span>Add Product</span>
           </button>
         </div>
       </div>
 
-      {/* Order Summary Info */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-        <div className="border-b border-gray-200 pb-3 mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{orderName}</h3>
-          <p className="text-sm text-gray-500 mt-1">Order details and configuration</p>
+      {/* Order Summary Info - Mobile Responsive */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="border-b border-gray-200 pb-2 sm:pb-3 mb-3 sm:mb-4">
+          <h3 className="text-base sm:text-lg font-semibold text-gray-900 break-words">{orderName}</h3>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">Order details and configuration</p>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="flex items-start space-x-2 sm:space-x-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Client</p>
-              <p className="text-sm text-gray-600">{orderData?.clients?.name}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-900">Client</p>
+              <p className="text-xs sm:text-sm text-gray-600 break-words">{orderData?.clients?.name}</p>
             </div>
           </div>
-          
-          <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+
+          <div className="flex items-start space-x-2 sm:space-x-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Manufacturer</p>
-              <p className="text-sm text-gray-600">{orderData?.manufacturers?.name}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-medium text-gray-900">Manufacturer</p>
+              <p className="text-xs sm:text-sm text-gray-600 break-words">{orderData?.manufacturers?.name}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Quick Fill Section */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-4 mb-6">
-        <div className="flex items-center justify-between">
+      {/* Quick Fill Section - Mobile Responsive */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-3 sm:p-4 mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-5">
           <div className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-medium text-blue-900">Quick Fill Quantities</span>
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+            <span className="text-xs sm:text-sm font-medium text-blue-900">Quick Fill Quantities</span>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -951,12 +951,12 @@ export default function EditOrderPage() {
                 }
               }}
               placeholder="Total quantity"
-              className="w-40 px-3 py-2 border border-blue-300 rounded-lg text-gray-900 placeholder-gray-500"
+              className="flex-1 sm:w-32 md:w-40 px-2 sm:px-3 py-2 text-sm sm:text-base border border-blue-300 rounded-lg text-gray-900 placeholder-gray-500"
               min="0"
             />
             <button
               onClick={handleQuickFill}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 whitespace-nowrap"
             >
               Distribute
             </button>
@@ -964,22 +964,22 @@ export default function EditOrderPage() {
         </div>
       </div>
 
-      {/* Products */}
+      {/* Products - Mobile Responsive */}
       {orderProducts.map((orderProduct, productIndex) => (
-        <div key={productIndex} className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-          {/* Product Header */}
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Package className="w-5 h-5 mr-2 text-blue-600" />
-                {orderProduct.product.title}
+        <div key={productIndex} className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 mb-4 sm:mb-6">
+          {/* Product Header - Mobile Responsive */}
+          <div className="flex items-start justify-between mb-3 sm:mb-4 gap-2">
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center flex-wrap gap-1 sm:gap-0">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2 text-blue-600 flex-shrink-0" />
+                <span className="break-words">{orderProduct.product.title}</span>
                 {orderProducts.filter(op => op.product.id === orderProduct.product.id).length > 1 && (
-                  <span className="ml-2 text-sm text-gray-500">
+                  <span className="ml-1 sm:ml-2 text-xs sm:text-sm text-gray-500 whitespace-nowrap">
                     (Instance {orderProducts.filter(op => op.product.id === orderProduct.product.id).indexOf(orderProduct) + 1} of {orderProducts.filter(op => op.product.id === orderProduct.product.id).length})
                   </span>
                 )}
               </h3>
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-xs sm:text-sm text-gray-500 mt-1 break-words">
                 Product Order Number: {orderProduct.productOrderNumber}
               </p>
             </div>
@@ -993,16 +993,16 @@ export default function EditOrderPage() {
                 setOrderProducts(updatedProducts)
                 showNotification('info', `${orderProduct.product.title} removed from order`)
               }}
-              className="p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all group"
+              className="p-1.5 sm:p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all group flex-shrink-0"
               title="Remove this product from order"
             >
-              <Trash2 className="w-5 h-5" />
+              <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
 
-          {/* Product Description */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          {/* Product Description - Mobile Responsive */}
+          <div className="mb-3 sm:mb-4">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Product Description
             </label>
             <input
@@ -1010,30 +1010,30 @@ export default function EditOrderPage() {
               value={orderProduct.productDescription}
               onChange={(e) => updateProductField(productIndex, 'productDescription', e.target.value)}
               placeholder="Enter brief product description..."
-              className={inputClassName}
+              className="w-full px-2 sm:px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
             />
           </div>
 
-          {/* EXACT Sample Request Section from Create Order */}
-          <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-6">
-            <h4 className="text-sm font-semibold text-amber-900 flex items-center mb-3">
-              <AlertCircle className="w-4 h-4 mr-2" />
+          {/* Sample Request Section - Mobile Responsive */}
+          <div className="bg-amber-50 rounded-lg p-3 sm:p-4 border border-amber-300 mb-4 sm:mb-6">
+            <h4 className="text-xs sm:text-sm font-semibold text-amber-900 flex items-center mb-2 sm:mb-3">
+              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               Sample Request
             </h4>
 
             {/* Fields that will be filled by manufacturer - display only */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 mb-2 sm:mb-3">
               <div className="opacity-60">
                 <label className="block text-xs font-medium text-amber-800 mb-1">
                   Sample Fee
                 </label>
                 <div className="relative">
-                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
+                  <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
                   <input
                     type="text"
                     placeholder="Set by manufacturer"
                     disabled
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
+                    className="w-full pl-7 sm:pl-8 pr-2 sm:pr-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
                   />
                 </div>
               </div>
@@ -1043,12 +1043,12 @@ export default function EditOrderPage() {
                   Sample ETA
                 </label>
                 <div className="relative">
-                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-amber-600" />
+                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
                   <input
                     type="text"
                     placeholder="Set by manufacturer"
                     disabled
-                    className="w-full pl-8 pr-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
+                    className="w-full pl-7 sm:pl-8 pr-2 sm:pr-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
                   />
                 </div>
               </div>
@@ -1061,7 +1061,7 @@ export default function EditOrderPage() {
                   type="text"
                   value="Pending"
                   disabled
-                  className="w-full px-3 py-2 border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
+                  className="w-full px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-amber-200 rounded-lg bg-amber-50 text-gray-500"
                 />
               </div>
             </div>
@@ -1218,116 +1218,113 @@ export default function EditOrderPage() {
               )}
             </div>
 
-            {/* Variants Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '26%'}}>Variant</th>
-                    <th className="text-left py-2 pl-5 pr-4 text-sm font-medium text-gray-700" style={{width: '10%'}}>Quantity</th>
-                    <th className="text-left py-2 px-4 text-sm font-medium text-gray-700" style={{width: '64%'}}>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orderProduct.items.map((item, itemIndex) => (
-                    <tr key={itemIndex} className="border-b border-gray-100">
-                      <td className="py-2 px-4 text-sm text-gray-900">{item.variantCombo}</td>
-                      <td className="py-2 pl-5 pr-4">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateVariantQuantity(productIndex, itemIndex, e.target.value)}
-                          min="0"
-                          className="w-20 px-2 py-1 border border-gray-300 rounded-lg text-center text-gray-900"
-                        />
-                      </td>
-                      <td className="py-2 px-4">
-                        <input
-                          type="text"
-                          value={item.notes || ''}
-                          onChange={(e) => updateVariantNotes(productIndex, itemIndex, e.target.value)}
-                          placeholder="Optional notes..."
-                          className="w-full px-2 py-1 border border-gray-300 rounded-lg text-gray-900"
-                        />
-                      </td>
+            {/* Variants Table - Mobile Responsive */}
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-700" style={{minWidth: '100px'}}>Variant</th>
+                      <th className="text-left py-2 px-2 sm:pl-5 sm:pr-4 text-xs sm:text-sm font-medium text-gray-700" style={{minWidth: '80px'}}>Qty</th>
+                      <th className="text-left py-2 px-2 sm:px-4 text-xs sm:text-sm font-medium text-gray-700" style={{minWidth: '120px'}}>Notes</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {orderProduct.items.map((item, itemIndex) => (
+                      <tr key={itemIndex} className="border-b border-gray-100">
+                        <td className="py-2 px-2 sm:px-4 text-xs sm:text-sm text-gray-900">{item.variantCombo}</td>
+                        <td className="py-2 px-2 sm:pl-5 sm:pr-4">
+                          <input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateVariantQuantity(productIndex, itemIndex, e.target.value)}
+                            min="0"
+                            className="w-16 sm:w-20 px-1 sm:px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg text-center text-gray-900"
+                          />
+                        </td>
+                        <td className="py-2 px-2 sm:px-4">
+                          <input
+                            type="text"
+                            value={item.notes || ''}
+                            onChange={(e) => updateVariantNotes(productIndex, itemIndex, e.target.value)}
+                            placeholder="Optional notes..."
+                            className="w-full px-1 sm:px-2 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg text-gray-900"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
       ))}
 
-      {/* Action Buttons */}
-      <div className="flex justify-between mt-8">
-        <div>
-          {/* Empty div for spacing */}
-        </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => handleSaveOrder(true)}
-            disabled={saving}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {saving && (
-              <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            )}
-            {saving ? 'Saving...' : 'Save as Draft'}
-          </button>
-          <button
-            onClick={() => handleSaveOrder(false)}
-            disabled={saving}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {saving && (
-              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-            )}
-            {saving ? 'Submitting...' : 'Submit Order'}
-          </button>
-        </div>
+      {/* Action Buttons - Mobile Responsive */}
+      <div className="flex flex-col sm:flex-row sm:justify-end gap-2 sm:gap-3 mt-6 sm:mt-8">
+        <button
+          onClick={() => handleSaveOrder(true)}
+          disabled={saving}
+          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm sm:text-base border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {saving && (
+            <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          )}
+          {saving ? 'Saving...' : 'Save as Draft'}
+        </button>
+        <button
+          onClick={() => handleSaveOrder(false)}
+          disabled={saving}
+          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {saving && (
+            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          )}
+          {saving ? 'Submitting...' : 'Submit Order'}
+        </button>
       </div>
 
-      {/* Add Product Modal */}
+      {/* Add Product Modal - Mobile Responsive */}
       {showAddProduct && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-          <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[60vh] overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Select Products to Add</h2>
-                <p className="text-sm text-gray-500 mt-1">Click products to add them to the order</p>
+        <div className="fixed inset-0 flex items-center justify-center z-50 p-3 sm:p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-3xl w-full max-h-[80vh] sm:max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="flex items-start justify-between mb-3 sm:mb-4 gap-2">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-900 break-words">Select Products to Add</h2>
+                <p className="text-xs sm:text-sm text-gray-500 mt-1">Click products to add them to the order</p>
               </div>
               <button
                 onClick={() => {
                   setShowAddProduct(false)
                   setProductSearch('')
                 }}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none flex-shrink-0 -mt-1"
               >
                 ×
               </button>
             </div>
-            
+
             {/* Search Bar */}
-            <div className="mb-4">
+            <div className="mb-3 sm:mb-4">
               <input
                 type="text"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
                 placeholder="Search products by name..."
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+                className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
               />
             </div>
-            
+
             {/* Products Grid */}
-            <div className="overflow-y-auto max-h-[35vh]">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="overflow-y-auto flex-1 -mx-4 sm:mx-0 px-4 sm:px-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
                 {allProducts.length === 0 && (
                   <div className="col-span-2 text-center py-8 text-gray-500">
                     <p className="mb-2">No products available</p>
@@ -1336,7 +1333,7 @@ export default function EditOrderPage() {
                 )}
                 
                 {allProducts
-                  .filter(p => 
+                  .filter(p =>
                     p.title.toLowerCase().includes(productSearch.toLowerCase())
                   )
                   .map(product => {
@@ -1345,18 +1342,18 @@ export default function EditOrderPage() {
                       <div
                         key={product.id}
                         onClick={() => addProductToOrder(product)}
-                        className={`border rounded-lg p-3 transition-all cursor-pointer select-none ${
-                          instanceCount > 0 
-                            ? 'border-blue-300 bg-blue-50' 
+                        className={`border rounded-lg p-2.5 sm:p-3 transition-all cursor-pointer select-none ${
+                          instanceCount > 0
+                            ? 'border-blue-300 bg-blue-50'
                             : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
                         }`}
                       >
                         <div className="relative">
                           <div className="mb-2">
-                            <h3 className="font-semibold text-gray-900 text-sm">
+                            <h3 className="font-semibold text-gray-900 text-xs sm:text-sm break-words">
                               {product.title}
                               {instanceCount > 0 && (
-                                <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
+                                <span className="ml-1 sm:ml-2 text-xs text-blue-600 bg-blue-100 px-1.5 sm:px-2 py-0.5 rounded whitespace-nowrap">
                                   {instanceCount} in order
                                 </span>
                               )}
@@ -1380,24 +1377,24 @@ export default function EditOrderPage() {
                     )
                   })}
               </div>
-              
-              {allProducts.length > 0 && allProducts.filter(p => 
+
+              {allProducts.length > 0 && allProducts.filter(p =>
                 p.title.toLowerCase().includes(productSearch.toLowerCase())
               ).length === 0 && (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-gray-500 text-sm sm:text-base">
                   No products match your search
                 </div>
               )}
             </div>
-            
+
             {/* Done Button */}
-            <div className="mt-4 flex justify-end">
+            <div className="mt-3 sm:mt-4 flex justify-end">
               <button
                 onClick={() => {
                   setShowAddProduct(false)
                   setProductSearch('')
                 }}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Done Adding Products
               </button>
