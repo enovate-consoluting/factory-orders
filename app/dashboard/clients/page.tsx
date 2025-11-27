@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Edit2, Trash2, X, Users, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Users, CheckCircle, XCircle, AlertCircle, Upload, Image as ImageIcon } from 'lucide-react'
+import PhoneInput from 'react-phone-input-2'
+import 'react-phone-input-2/lib/style.css'
 
 interface Client {
   id: string
@@ -10,6 +12,8 @@ interface Client {
   email: string
   user_id: string | null
   created_at: string
+  phone_number?: string
+  logo_url?: string
 }
 
 interface Notification {
@@ -31,11 +35,15 @@ export default function ClientsPage() {
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null)
   const [createdCredentials, setCreatedCredentials] = useState({ email: '', password: '', name: '' })
   const [editingClient, setEditingClient] = useState<Client | null>(null)
-  const [formData, setFormData] = useState({ 
-    name: '', 
+  const [formData, setFormData] = useState({
+    name: '',
     email: '',
-    password: 'password123'
+    password: 'password123',
+    phone_number: ''
   })
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -82,12 +90,106 @@ export default function ClientsPage() {
     }
   }
 
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setFormError('Please select an image file (PNG, JPG, etc.)')
+        return
+      }
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        setFormError('Logo file size must be less than 2MB')
+        return
+      }
+      setLogoFile(file)
+      // Create preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setLogoPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+      setFormError(null)
+    }
+  }
+
+  const uploadLogo = async (clientId: string, clientName: string): Promise<string | null> => {
+    if (!logoFile) return null
+
+    try {
+      setUploading(true)
+      // Create unique filename
+      const fileExt = logoFile.name.split('.').pop()
+      const fileName = `${clientId}-${Date.now()}.${fileExt}`
+      const filePath = fileName
+
+      // Upload to Supabase storage
+      const { error: uploadError } = await supabase.storage
+        .from('client-logos')
+        .upload(filePath, logoFile, {
+          cacheControl: '3600',
+          upsert: true
+        })
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        throw uploadError
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('client-logos')
+        .getPublicUrl(filePath)
+
+      return publicUrl
+    } catch (error: any) {
+      console.error('Error uploading logo:', error)
+      showNotification('error', 'Upload Failed', 'Failed to upload logo. Please try again.')
+      return null
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const deleteLogo = async (logoUrl: string) => {
+    try {
+      // Extract filename from URL
+      const fileName = logoUrl.split('/').pop()
+      if (!fileName) return
+
+      const { error } = await supabase.storage
+        .from('client-logos')
+        .remove([fileName])
+
+      if (error) {
+        console.error('Error deleting logo:', error)
+      }
+    } catch (error) {
+      console.error('Error deleting logo:', error)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setCreating(true)
-    
+
     try {
+
       if (editingClient) {
+        // Upload logo if new file selected
+        let logoUrl = editingClient.logo_url
+        if (logoFile) {
+          const uploadedUrl = await uploadLogo(editingClient.id, formData.name)
+          if (uploadedUrl) {
+            // Delete old logo if exists
+            if (editingClient.logo_url) {
+              await deleteLogo(editingClient.logo_url)
+            }
+            logoUrl = uploadedUrl
+          }
+        }
+
         // If client has a user account, update via API
         if (editingClient.user_id) {
           const response = await fetch('/api/users', {
@@ -97,7 +199,9 @@ export default function ClientsPage() {
               userId: editingClient.user_id,
               updates: {
                 name: formData.name,
-                email: formData.email
+                email: formData.email,
+                phone_number: formData.phone_number,
+                logo_url: logoUrl
               },
               userType: 'client'
             })
@@ -111,7 +215,9 @@ export default function ClientsPage() {
             .from('clients')
             .update({
               name: formData.name,
-              email: formData.email
+              email: formData.email,
+              phone_number: formData.phone_number,
+              logo_url: logoUrl
             })
             .eq('id', editingClient.id)
 
@@ -121,6 +227,13 @@ export default function ClientsPage() {
         showNotification('success', 'Client Updated', `${formData.name} has been updated successfully.`)
         setShowModal(false)
       } else {
+        // Upload logo first if file selected
+        let logoUrl: string | null = null
+        if (logoFile) {
+          // Create a temporary client ID (will be replaced after creation)
+          logoUrl = null // Will be set after client is created
+        }
+
         // Create new client via API
         const response = await fetch('/api/users', {
           method: 'POST',
@@ -129,13 +242,15 @@ export default function ClientsPage() {
             email: formData.email,
             password: formData.password,
             name: formData.name,
+            phone_number: formData.phone_number,
+            logo_url: logoUrl, // send null or undefined if not uploaded yet
             role: 'client',
             userType: 'client'
           })
         })
 
         const result = await response.json()
-        
+
         if (!response.ok) {
           // Handle specific error cases with inline error only
           if (result.error?.includes('already been registered') || result.error?.includes('already exists')) {
@@ -149,9 +264,34 @@ export default function ClientsPage() {
           return
         }
 
+        // Upload logo if file selected and client created
+        if (logoFile && result.user) {
+          // Find the client ID from the response or fetch it
+          const { data: clientData } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('email', formData.email)
+            .single()
+
+          if (clientData) {
+            logoUrl = await uploadLogo(clientData.id, formData.name)
+            if (logoUrl) {
+              // Update client and user with logo URL
+              await supabase
+                .from('clients')
+                .update({ logo_url: logoUrl })
+                .eq('id', clientData.id)
+              await supabase
+                .from('users')
+                .update({ logo_url: logoUrl })
+                .eq('id', result.user.id)
+            }
+          }
+        }
+
         // Show success modal with credentials
-        setCreatedCredentials({ 
-          email: formData.email, 
+        setCreatedCredentials({
+          email: formData.email,
           password: formData.password,
           name: formData.name
         })
@@ -163,8 +303,11 @@ export default function ClientsPage() {
       setFormData({
         name: '',
         email: '',
-        password: 'password123'
+        password: 'password123',
+        phone_number: ''
       })
+      setLogoFile(null)
+      setLogoPreview(null)
       fetchClients()
     } catch (error: any) {
       console.error('Error saving client:', error)
@@ -236,7 +379,12 @@ export default function ClientsPage() {
           throw error
         }
       }
-      
+
+      // Delete logo if exists
+      if (clientToDelete.logo_url) {
+        await deleteLogo(clientToDelete.logo_url)
+      }
+
       showNotification('success', 'Client Deleted', `${clientToDelete.name} has been removed successfully.`)
       setShowDeleteModal(false)
       fetchClients()
@@ -253,18 +401,23 @@ export default function ClientsPage() {
   const openEditModal = (client: Client) => {
     setEditingClient(client)
     setFormError(null)
-    setFormData({ 
-      name: client.name, 
+    setFormData({
+      name: client.name,
       email: client.email,
-      password: 'password123'
+      password: 'password123',
+      phone_number: client.phone_number || ''
     })
+    setLogoFile(null)
+    setLogoPreview(client.logo_url || null)
     setShowModal(true)
   }
 
   const openCreateModal = () => {
     setEditingClient(null)
     setFormError(null)
-    setFormData({ name: '', email: '', password: 'password123' })
+    setLogoFile(null)
+    setLogoPreview(null)
+    setFormData({ name: '', email: '', password: 'password123', phone_number: '' })
     setShowModal(true)
   }
 
@@ -320,7 +473,7 @@ export default function ClientsPage() {
       )}
 
       <div className="mb-6">
-        <div className="flex justify-between items-center">
+        <div className="flex lg:justify-between lg:items-center lg:flex-row flex-col gap-4 items-start">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -344,8 +497,16 @@ export default function ClientsPage() {
           <div key={client.id} className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <Users className="w-5 h-5 text-green-600" />
+                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center overflow-hidden">
+                  {client.logo_url ? (
+                    <img
+                      src={client.logo_url}
+                      alt={`${client.name} logo`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Users className="w-5 h-5 text-green-600" />
+                  )}
                 </div>
                 <div>
                   <h3 className="font-semibold text-gray-900">{client.name}</h3>
@@ -453,6 +614,82 @@ export default function ClientsPage() {
                       Email cannot be changed after creation
                     </p>
                   )}
+                </div>
+
+                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <PhoneInput
+                    country={'us'}
+                    value={formData.phone_number}
+                    onChange={(phone) => setFormData({ ...formData, phone_number: phone })}
+                    inputStyle={{
+                      width: '100%',
+                      height: '42px',
+                      fontSize: '14px',
+                      paddingLeft: '48px',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      color: '#111827'
+                    }}
+                    buttonStyle={{
+                      borderRadius: '0.5rem 0 0 0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRight: 'none'
+                    }}
+                    containerStyle={{
+                      width: '100%'
+                    }}
+                    dropdownStyle={{
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    searchStyle={{
+                      width: '100%',
+                      padding: '8px',
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    enableSearch={true}
+                    searchPlaceholder="Search countries..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Company Logo (Optional)
+                  </label>
+                  <div className="flex items-center gap-4">
+                    {logoPreview && (
+                      <div className="w-16 h-16 border-2 border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                        <img
+                          src={logoPreview}
+                          alt="Logo preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <label className="cursor-pointer">
+                        <div className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                          <Upload className="w-5 h-5 text-gray-600" />
+                          <span className="text-sm text-gray-600">
+                            {logoFile ? logoFile.name : 'Choose logo image'}
+                          </span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoChange}
+                          className="hidden"
+                        />
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1">
+                        PNG, JPG up to 2MB
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 {!editingClient && (

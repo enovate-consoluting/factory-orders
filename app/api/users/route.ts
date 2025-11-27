@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   try {
-  const { email, password, name, role, userType, createdBy } = await request.json()
+  const { email, password, name, role, userType, createdBy, phone_number, logo_url } = await request.json()
 
     // Validate userType
     if (!userType || !['admin', 'manufacturer', 'client'].includes(userType)) {
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
+      // phone_number,
       email_confirm: true, // Auto-confirm email
       user_metadata: {
         name,
@@ -81,7 +82,9 @@ export async function POST(request: Request) {
       email,
       name,
       role,
-      password
+      password,
+      phone_number,
+      logo_url
     };
     if (createdBy) {
       userInsertData.created_by = createdBy;
@@ -108,7 +111,9 @@ export async function POST(request: Request) {
         .from('manufacturers')
         .insert({
           name,
-          email
+          email,
+          phone_number,
+          logo_url
           // user_id: authData.user.id
         })
 
@@ -128,7 +133,9 @@ export async function POST(request: Request) {
         .from('clients')
         .insert({
           name,
-          email
+          email,
+          phone_number,
+          logo_url
           // user_id: authData.user.id
         })
 
@@ -248,27 +255,33 @@ export async function PATCH(request: Request) {
       }, { status: 400 })
     }
 
-    // If name changed, update the related table too
-    if (updates.name || updates.email) {
+    // If name, email, phone_number, or logo_url changed, update the related table too
+    if (updates.name || updates.email || updates.phone_number !== undefined || updates.logo_url !== undefined) {
       if (userType === 'manufacturer') {
+        const updateData: any = {}
+        if (updates.name) updateData.name = updates.name
+        if (updates.email) updateData.email = updates.email
+        if (updates.phone_number !== undefined) updateData.phone_number = updates.phone_number
+        if (updates.logo_url !== undefined) updateData.logo_url = updates.logo_url
+
         const { error: manuError } = await supabaseAdmin
           .from('manufacturers')
-          .update({ 
-            name: updates.name || data.name,
-            email: updates.email || data.email 
-          })
+          .update(updateData)
           .eq('user_id', userId)
 
         if (manuError) {
           console.error('Manufacturer update error:', manuError)
         }
       } else if (userType === 'client') {
+        const updateData: any = {}
+        if (updates.name) updateData.name = updates.name
+        if (updates.email) updateData.email = updates.email
+        if (updates.phone_number !== undefined) updateData.phone_number = updates.phone_number
+        if (updates.logo_url !== undefined) updateData.logo_url = updates.logo_url
+
         const { error: clientError } = await supabaseAdmin
           .from('clients')
-          .update({ 
-            name: updates.name || data.name,
-            email: updates.email || data.email 
-          })
+          .update(updateData)
           .eq('user_id', userId)
 
         if (clientError) {

@@ -66,8 +66,8 @@ interface OrderProduct {
 }
 
 // Consistent dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 text-black"
+const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white"
 
 export default function CreateOrderPage() {
   const router = useRouter()
@@ -101,6 +101,11 @@ export default function CreateOrderPage() {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [selectedClient, setSelectedClient] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
+  // Autocomplete states
+  const [clientQuery, setClientQuery] = useState('')
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false)
+  const [manufacturerQuery, setManufacturerQuery] = useState('')
+  const [showManufacturerSuggestions, setShowManufacturerSuggestions] = useState(false)
   
   // Step 2: Products with quantities
   const [products, setProducts] = useState<Product[]>([])
@@ -783,55 +788,55 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Notification Toast */}
+    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
+      {/* Notification Toast - Mobile Responsive */}
       {notification.show && (
         <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          fixed top-3 right-3 sm:top-4 sm:right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[calc(100vw-24px)] sm:max-w-none transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {notification.type === 'success' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
               {notification.type === 'error' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
-              <p className="font-semibold text-white">{notification.message}</p>
+              <p className="font-semibold text-white text-sm sm:text-base break-words">{notification.message}</p>
             </div>
           </div>
         </div>
       )}
-      
-      {/* Header */}
-      <div className="mb-6">
+
+      {/* Header - Mobile Responsive */}
+      <div className="mb-4 sm:mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
           Back to Orders
         </button>
-        
-        <h1 className="text-2xl font-bold text-gray-900">Create New Order</h1>
-        
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create New Order</h1>
+
         {/* Progress Steps using new component */}
-        <div className="mt-6">
-          <StepIndicator 
-            currentStep={currentStep} 
+        <div className="mt-4 sm:mt-6">
+          <StepIndicator
+            currentStep={currentStep}
             onStepClick={(step) => {
               if (step < currentStep) {
                 setCurrentStep(step)
@@ -841,13 +846,13 @@ export default function CreateOrderPage() {
         </div>
       </div>
 
-      {/* Step 1: Basic Info */}
+      {/* Step 1: Basic Info - Mobile Responsive */}
       {currentStep === 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h2>
-          
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Order Information</h2>
+
+          <div className="mb-4 sm:mb-6">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               Order Name *
             </label>
             <input
@@ -859,59 +864,116 @@ export default function CreateOrderPage() {
               required
             />
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {/* Client Autocomplete - Mobile Responsive */}
+            <div className="relative">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Select Client *
               </label>
-              <select
-                value={selectedClient}
-                onChange={(e) => setSelectedClient(e.target.value)}
-                className={selectClassName}
+              <input
+                type="text"
+                value={clientQuery}
+                onChange={e => {
+                  setClientQuery(e.target.value);
+                  setShowClientSuggestions(true);
+                }}
+                onFocus={() => setShowClientSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 100)}
+                placeholder="Search client..."
+                className={inputClassName}
                 required
-              >
-                <option value="">Choose a client...</option>
-                {clients.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.name}
-                  </option>
-                ))}
-              </select>
+                autoComplete="off"
+              />
+              {/* Suggestions dropdown - Mobile Responsive */}
+              {showClientSuggestions && clientQuery && (
+                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
+                  {clients.filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase())).length === 0 ? (
+                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
+                  ) : (
+                    clients
+                      .filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase()))
+                      .map(c => (
+                        <li
+                          key={c.id}
+                          onMouseDown={() => {
+                            setSelectedClient(c.id);
+                            setClientQuery(c.name);
+                            setShowClientSuggestions(false);
+                          }}
+                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedClient === c.id ? 'bg-blue-100' : ''}`}
+                        >
+                          {c.name}
+                        </li>
+                      ))
+                  )}
+                </ul>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            {/* Manufacturer Autocomplete - Mobile Responsive */}
+            <div className="relative">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 Select Manufacturer *
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
               </label>
-              <select
-                value={selectedManufacturer}
-                onChange={(e) => setSelectedManufacturer(e.target.value)}
-                className={selectClassName}
+              <input
+                type="text"
+                value={manufacturerQuery}
+                onChange={e => {
+                  setManufacturerQuery(e.target.value);
+                  setShowManufacturerSuggestions(true);
+                }}
+                onFocus={() => setShowManufacturerSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowManufacturerSuggestions(false), 100)}
+                placeholder="Search manufacturer..."
+                className={inputClassName}
                 required
-              >
-                {manufacturers.length > 1 && (
-                  <option value="">Choose a manufacturer...</option>
-                )}
-                {manufacturers.map((manufacturer) => (
-                  <option key={manufacturer.id} value={manufacturer.id}>
-                    {manufacturer.name}
-                  </option>
-                ))}
-              </select>
+                autoComplete="off"
+                disabled={manufacturers.length === 1}
+              />
+              {/* Suggestions dropdown - Mobile Responsive */}
+              {showManufacturerSuggestions && manufacturerQuery && manufacturers.length > 1 && (
+                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
+                  {manufacturers.filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase())).length === 0 ? (
+                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
+                  ) : (
+                    manufacturers
+                      .filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase()))
+                      .map(m => (
+                        <li
+                          key={m.id}
+                          onMouseDown={() => {
+                            setSelectedManufacturer(m.id);
+                            setManufacturerQuery(m.name);
+                            setShowManufacturerSuggestions(false);
+                          }}
+                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedManufacturer === m.id ? 'bg-blue-100' : ''}`}
+                        >
+                          {m.name}
+                        </li>
+                      ))
+                  )}
+                </ul>
+              )}
+              {/* If only one manufacturer, auto-select and show name - Mobile Responsive */}
+              {manufacturers.length === 1 && (
+                <div className="mt-2 px-2 sm:px-3 py-2 bg-gray-100 rounded text-xs sm:text-sm text-gray-700">
+                  {manufacturers[0].name}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 sm:mt-6 flex justify-end">
             <button
               onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
             >
               Next
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
             </button>
           </div>
         </div>
@@ -931,20 +993,20 @@ export default function CreateOrderPage() {
           onProductsRefresh={fetchInitialData}
         />
         
-        <div className="mt-6 flex justify-between">
+        <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row justify-between gap-3">
           <button
             onClick={prevStep}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Previous
           </button>
           <button
             onClick={nextStep}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
           >
             Next
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
           </button>
         </div>
       </>
@@ -1001,21 +1063,21 @@ export default function CreateOrderPage() {
             )
           })}
 
-          {/* Action Buttons */}
-          <div className="flex justify-between">
+          {/* Action Buttons - Mobile Responsive */}
+          <div className="flex flex-col sm:flex-row justify-between gap-3">
             <button
               onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Previous
             </button>
-            
-            <div className="flex gap-3">
+
+            <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1028,7 +1090,7 @@ export default function CreateOrderPage() {
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
