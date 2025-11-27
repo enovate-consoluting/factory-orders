@@ -1,3 +1,10 @@
+/**
+ * Invoices Page - /dashboard/invoices
+ * Main invoice management page with tabs for approval, in-production, drafts, sent, paid
+ * Roles: Admin, Super Admin, Client (limited view)
+ * Last Modified: November 2025
+ */
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -8,7 +15,7 @@ import {
   FileText, Calendar, Search, CheckCircle, Clock, Send, 
   AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
   ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
-  Package, Shield, Inbox
+  Package, Shield, Inbox, Play
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 
@@ -65,9 +72,10 @@ interface ProductForApproval {
   total_quantity: number;
   total_value: number;
   routed_at: string;
+  product_status?: string;
 }
 
-type TabType = 'approval' | 'drafts' | 'sent' | 'paid' | 'all';
+type TabType = 'approval' | 'inproduction' | 'drafts' | 'sent' | 'paid' | 'all';
 
 // Helper to calculate days since a date
 const daysSinceDate = (dateString: string | Date | null): number => {
@@ -94,6 +102,7 @@ export default function InvoicesPage() {
   
   // Data
   const [ordersForApproval, setOrdersForApproval] = useState<OrderForApproval[]>([]);
+  const [ordersInProduction, setOrdersInProduction] = useState<OrderForApproval[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   
   // Delete confirmation
@@ -103,6 +112,7 @@ export default function InvoicesPage() {
   // Stats
   const [stats, setStats] = useState({
     forApproval: 0,
+    inProduction: 0,
     drafts: 0,
     sent: 0,
     paid: 0
@@ -161,6 +171,8 @@ export default function InvoicesPage() {
       
       if (activeTab === 'approval' && !isClient) {
         await fetchOrdersForApproval();
+      } else if (activeTab === 'inproduction' && !isClient) {
+        await fetchOrdersInProduction();
       } else {
         await fetchInvoices();
       }
@@ -174,13 +186,20 @@ export default function InvoicesPage() {
 
   const fetchStats = async () => {
     try {
-      // Count products for approval
+      // Count products for approval (not in production statuses)
       const { data: approvalData } = await supabase
         .from('order_products')
         .select('id')
         .eq('routed_to', 'admin')
         .or('client_product_price.gt.0,sample_fee.gt.0')
         .not('product_status', 'in', '("approved_for_production","in_production","shipped","completed")');
+      
+      // Count products in production (approved_for_production or in_production)
+      const { data: productionData } = await supabase
+        .from('order_products')
+        .select('id')
+        .or('client_product_price.gt.0,sample_fee.gt.0')
+        .in('product_status', ['approved_for_production', 'in_production']);
       
       // Count invoices by status
       const { data: invoiceData } = await supabase
@@ -189,6 +208,7 @@ export default function InvoicesPage() {
       
       setStats({
         forApproval: approvalData?.length || 0,
+        inProduction: productionData?.length || 0,
         drafts: invoiceData?.filter(i => i.status === 'draft').length || 0,
         sent: invoiceData?.filter(i => i.status === 'sent').length || 0,
         paid: invoiceData?.filter(i => i.status === 'paid').length || 0
@@ -228,7 +248,7 @@ export default function InvoicesPage() {
 
       if (error) throw error;
 
-      // Process orders - filter to only those with invoiceable products
+      // Process orders - filter to only those with invoiceable products (NOT in production)
       const processed: OrderForApproval[] = [];
       
       data?.forEach(order => {
@@ -278,7 +298,8 @@ export default function InvoicesPage() {
             selected_shipping_method: p.selected_shipping_method,
             total_quantity: totalQty,
             total_value: productTotal,
-            routed_at: p.routed_at
+            routed_at: p.routed_at,
+            product_status: p.product_status
           };
         });
 
@@ -304,6 +325,112 @@ export default function InvoicesPage() {
       setOrdersForApproval(processed);
     } catch (error) {
       console.error('Error fetching orders for approval:', error);
+    }
+  };
+
+  const fetchOrdersInProduction = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          order_name,
+          created_at,
+          client:clients(id, name),
+          order_products(
+            id,
+            product_order_number,
+            description,
+            product_status,
+            routed_to,
+            routed_at,
+            sample_fee,
+            client_product_price,
+            client_shipping_air_price,
+            client_shipping_boat_price,
+            selected_shipping_method,
+            product:products(title),
+            order_items(quantity)
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      // Process orders - filter to only those with products IN PRODUCTION
+      const processed: OrderForApproval[] = [];
+      
+      data?.forEach(order => {
+        const productionProducts = order.order_products?.filter((p: any) => 
+          (parseFloat(p.sample_fee || 0) > 0 || parseFloat(p.client_product_price || 0) > 0) &&
+          (p.product_status === 'approved_for_production' || p.product_status === 'in_production')
+        ) || [];
+
+        if (productionProducts.length === 0) return;
+
+        let totalValue = 0;
+        let earliestDate: Date | null = null;
+
+        const products: ProductForApproval[] = productionProducts.map((p: any) => {
+          const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
+          
+          let productTotal = parseFloat(p.sample_fee || 0);
+          productTotal += parseFloat(p.client_product_price || 0) * totalQty;
+          
+          if (p.selected_shipping_method === 'air') {
+            productTotal += parseFloat(p.client_shipping_air_price || 0);
+          } else if (p.selected_shipping_method === 'boat') {
+            productTotal += parseFloat(p.client_shipping_boat_price || 0);
+          }
+
+          totalValue += productTotal;
+
+          if (p.routed_at) {
+            const routedDate = new Date(p.routed_at);
+            if (!earliestDate || routedDate < earliestDate) {
+              earliestDate = routedDate;
+            }
+          }
+
+          return {
+            id: p.id,
+            product_order_number: p.product_order_number,
+            description: p.description || p.product?.title || 'Product',
+            sample_fee: parseFloat(p.sample_fee || 0),
+            client_product_price: parseFloat(p.client_product_price || 0),
+            client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
+            client_shipping_boat_price: parseFloat(p.client_shipping_boat_price || 0),
+            selected_shipping_method: p.selected_shipping_method,
+            total_quantity: totalQty,
+            total_value: productTotal,
+            routed_at: p.routed_at,
+            product_status: p.product_status
+          };
+        });
+
+        processed.push({
+          id: order.id,
+          order_number: order.order_number,
+          order_name: order.order_name || 'Untitled Order',
+          created_at: order.created_at,
+          client: Array.isArray(order.client) ? order.client[0] : order.client,
+          products,
+          total_value: totalValue,
+          earliest_ready_date: earliestDate
+        });
+      });
+
+      // Sort by earliest ready date (oldest first)
+      processed.sort((a, b) => {
+        if (!a.earliest_ready_date) return 1;
+        if (!b.earliest_ready_date) return -1;
+        return a.earliest_ready_date.getTime() - b.earliest_ready_date.getTime();
+      });
+
+      setOrdersInProduction(processed);
+    } catch (error) {
+      console.error('Error fetching orders in production:', error);
     }
   };
 
@@ -390,8 +517,40 @@ export default function InvoicesPage() {
               (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0)));
   };
 
+  // Get status badge for production products
+  const getProductStatusBadge = (status: string | undefined) => {
+    switch (status) {
+      case 'approved_for_production':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-300 rounded-full text-xs">
+            <CheckCircle className="w-3 h-3 text-purple-600" />
+            <span className="text-purple-700 font-medium">Approved</span>
+          </span>
+        );
+      case 'in_production':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 border border-blue-300 rounded-full text-xs">
+            <Play className="w-3 h-3 text-blue-600" />
+            <span className="text-blue-700 font-medium">In Production</span>
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
   // Filter based on search
   const filteredOrders = ordersForApproval.filter(order => {
+    if (!searchTerm) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      order.order_name?.toLowerCase().includes(search) ||
+      order.order_number?.toLowerCase().includes(search) ||
+      order.client?.name?.toLowerCase().includes(search)
+    );
+  });
+
+  const filteredProductionOrders = ordersInProduction.filter(order => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -454,23 +613,39 @@ export default function InvoicesPage() {
     return false;
   };
 
-  // Render Invoice Approval view - MATCHES ORDERS PAGE EXACTLY
-  const renderInvoiceApprovalView = () => {
+  // Render Order List View (shared between Approval and In Production tabs)
+  const renderOrderListView = (orders: OrderForApproval[], tabType: 'approval' | 'inproduction') => {
+    const isProductionTab = tabType === 'inproduction';
+    
     return (
       <div className="bg-white rounded-lg shadow">
-        <div className="p-3 border-b bg-amber-50">
-          <h2 className="text-base font-semibold text-gray-900">Orders Ready for Invoicing</h2>
+        <div className={`p-3 border-b ${isProductionTab ? 'bg-purple-50' : 'bg-amber-50'}`}>
+          <h2 className="text-base font-semibold text-gray-900">
+            {isProductionTab ? 'Orders In Production' : 'Orders Ready for Invoicing'}
+          </h2>
+          {isProductionTab && (
+            <p className="text-xs text-gray-600 mt-1">
+              Products approved for production or currently being manufactured
+            </p>
+          )}
         </div>
         
-        {filteredOrders.length === 0 ? (
+        {orders.length === 0 ? (
           <div className="text-center py-12">
             <CheckCircle className="mx-auto h-12 w-12 text-green-300" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">All caught up!</h3>
-            <p className="mt-1 text-sm text-gray-500">No orders waiting for invoice approval</p>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {isProductionTab ? 'No orders in production' : 'All caught up!'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {isProductionTab 
+                ? 'No products are currently in production status'
+                : 'No orders waiting for invoice approval'
+              }
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-gray-200">
-            {filteredOrders.map((order) => {
+            {orders.map((order) => {
               const isExpanded = expandedOrders.has(order.id);
               const daysWaiting = order.earliest_ready_date ? daysSinceDate(order.earliest_ready_date) : 0;
 
@@ -510,6 +685,12 @@ export default function InvoicesPage() {
                                 <span className="text-xs text-gray-500">
                                   {order.client?.name}
                                 </span>
+                                {isProductionTab && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                    <Play className="w-3 h-3" />
+                                    In Production
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
@@ -517,9 +698,9 @@ export default function InvoicesPage() {
                                   Order Created: {new Date(order.created_at).toLocaleDateString()}
                                 </span>
                                 {daysWaiting > 0 && (
-                                  <span className="flex items-center gap-1 text-amber-600 font-medium">
+                                  <span className={`flex items-center gap-1 font-medium ${isProductionTab ? 'text-purple-600' : 'text-amber-600'}`}>
                                     <Clock className="w-3 h-3" />
-                                    Invoice Ready: {daysWaiting} {daysWaiting === 1 ? 'day' : 'days'} ago
+                                    {isProductionTab ? 'In Production' : 'Invoice Ready'}: {daysWaiting} {daysWaiting === 1 ? 'day' : 'days'} ago
                                   </span>
                                 )}
                                 <span className="font-semibold text-gray-900">
@@ -577,6 +758,7 @@ export default function InvoicesPage() {
                                     <span className="text-xs text-gray-600">
                                       {product.description}
                                     </span>
+                                    {isProductionTab && getProductStatusBadge(product.product_status)}
                                   </div>
                                   <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
                                     <span>Qty: {product.total_quantity}</span>
@@ -603,7 +785,7 @@ export default function InvoicesPage() {
                                       </span>
                                     )}
                                     {daysReady > 0 && (
-                                      <span className="text-amber-600 font-medium">
+                                      <span className={`font-medium ${isProductionTab ? 'text-purple-600' : 'text-amber-600'}`}>
                                         {daysReady} days ago
                                       </span>
                                     )}
@@ -853,6 +1035,24 @@ export default function InvoicesPage() {
                 )}
               </button>
               
+              {/* NEW: In Production Tab */}
+              <button
+                onClick={() => setActiveTab('inproduction')}
+                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                  activeTab === 'inproduction'
+                    ? 'border-purple-500 text-purple-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <Play className="w-4 h-4" />
+                <span>In Production</span>
+                {stats.inProduction > 0 && (
+                  <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                    {stats.inProduction}
+                  </span>
+                )}
+              </button>
+              
               <button
                 onClick={() => setActiveTab('drafts')}
                 className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
@@ -925,7 +1125,7 @@ export default function InvoicesPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder={activeTab === 'approval' && !isClient ? "Search orders..." : "Search invoices..."}
+              placeholder={(activeTab === 'approval' || activeTab === 'inproduction') && !isClient ? "Search orders..." : "Search invoices..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
@@ -941,7 +1141,9 @@ export default function InvoicesPage() {
         </div>
       ) : (
         <>
-          {activeTab === 'approval' && !isClient ? renderInvoiceApprovalView() : renderInvoiceList()}
+          {activeTab === 'approval' && !isClient && renderOrderListView(filteredOrders, 'approval')}
+          {activeTab === 'inproduction' && !isClient && renderOrderListView(filteredProductionOrders, 'inproduction')}
+          {activeTab !== 'approval' && activeTab !== 'inproduction' && renderInvoiceList()}
         </>
       )}
     </div>

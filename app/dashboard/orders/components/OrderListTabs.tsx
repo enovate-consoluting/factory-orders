@@ -1,12 +1,13 @@
 /**
  * Order List Tabs Component
- * Main tab navigation for orders listing (My Orders, Invoice Approval, Sent To, Production)
+ * Main tab navigation for orders listing (My Orders, Invoice Approval, Sent To, Production, Shipped)
  * Location: app/dashboard/orders/components/OrderListTabs.tsx
- * Last Modified: Nov 26 2025
+ * UPDATED: Added Shipped as parent-level tab (moved out of Production sub-tabs)
+ * Last Modified: Nov 27 2025
  */
 
 import React from 'react';
-import { Inbox, FileText, SendHorizontal, Layers } from 'lucide-react';
+import { Inbox, FileText, SendHorizontal, Layers, Truck } from 'lucide-react';
 import { TabType, TabCounts } from '../types/orderList.types';
 import { Translations } from '../utils/orderListTranslations';
 
@@ -104,6 +105,24 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           {tabCounts.production_total > 0 && (
             <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-semibold">
               {tabCounts.production_total}
+            </span>
+          )}
+        </button>
+
+        {/* NEW: Shipped Tab - Parent Level */}
+        <button
+          onClick={() => onTabChange('shipped')}
+          className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+            activeTab === 'shipped'
+              ? 'border-green-500 text-green-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+          }`}
+        >
+          <Truck className="w-4 h-4" />
+          <span>{t.shipped}</span>
+          {tabCounts.shipped > 0 && (
+            <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+              {tabCounts.shipped}
             </span>
           )}
         </button>

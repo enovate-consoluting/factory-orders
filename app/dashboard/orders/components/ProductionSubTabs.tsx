@@ -2,11 +2,12 @@
  * Production Sub-Tabs Component
  * Sub-navigation for production status filtering on Orders List page
  * Location: app/dashboard/orders/components/ProductionSubTabs.tsx
- * Last Modified: Nov 26 2025
+ * UPDATED: Removed Shipped (now a parent-level tab)
+ * Last Modified: Nov 27 2025
  */
 
 import React from 'react';
-import { CheckCircle, Wrench, Truck, Award } from 'lucide-react';
+import { CheckCircle, Wrench, Award } from 'lucide-react';
 import { ProductionSubTab, TabCounts } from '../types/orderList.types';
 import { Translations } from '../utils/orderListTranslations';
 
@@ -23,6 +24,7 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   translations: t,
   onSubTabChange
 }) => {
+  // UPDATED: Removed 'shipped' - now at parent level
   const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
     {
       key: 'sample_approved',
@@ -44,13 +46,6 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
       count: tabCounts.in_production,
       icon: <Wrench className="w-4 h-4" />,
       color: 'blue'
-    },
-    {
-      key: 'shipped',
-      label: t.shipped,
-      count: tabCounts.shipped,
-      icon: <Truck className="w-4 h-4" />,
-      color: 'green'
     }
   ];
 

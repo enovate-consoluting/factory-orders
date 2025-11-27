@@ -2,7 +2,8 @@
  * Order List Types
  * TypeScript interfaces for Orders Listing page
  * Location: app/dashboard/orders/types/orderList.types.ts
- * Last Modified: Nov 26 2025
+ * UPDATED: Added 'shipped' as parent-level TabType (moved out of ProductionSubTab)
+ * Last Modified: Nov 27 2025
  */
 
 export interface OrderProduct {
@@ -54,9 +55,11 @@ export interface Order {
   order_products?: OrderProduct[];
 }
 
-export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status';
+// UPDATED: Added 'shipped' as parent-level tab
+export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status' | 'shipped';
 
-export type ProductionSubTab = 'sample_approved' | 'approved_for_production' | 'in_production' | 'shipped';
+// UPDATED: Removed 'shipped' from sub-tabs (now parent-level)
+export type ProductionSubTab = 'sample_approved' | 'approved_for_production' | 'in_production';
 
 export interface TabCounts {
   my_orders: number;
@@ -66,7 +69,7 @@ export interface TabCounts {
   approved_for_production: number;
   in_production: number;
   shipped: number;
-  production_total: number;
+  production_total: number;  // Now excludes shipped
 }
 
 export interface RoutingStatus {
