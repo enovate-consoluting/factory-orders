@@ -227,11 +227,14 @@ export default function ClientsPage() {
         showNotification('success', 'Client Updated', `${formData.name} has been updated successfully.`)
         setShowModal(false)
       } else {
-        // Upload logo first if file selected
-        let logoUrl: string | null = null
+        // Convert logo to base64 if file selected
+        let logoBase64: string | null = null
         if (logoFile) {
-          // Create a temporary client ID (will be replaced after creation)
-          logoUrl = null // Will be set after client is created
+          logoBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onloadend = () => resolve(reader.result as string)
+            reader.readAsDataURL(logoFile)
+          })
         }
 
         // Create new client via API
@@ -243,7 +246,7 @@ export default function ClientsPage() {
             password: formData.password,
             name: formData.name,
             phone_number: formData.phone_number,
-            logo_url: logoUrl, // send null or undefined if not uploaded yet
+            logo: logoBase64, // Send base64 logo to Scanacart API
             role: 'client',
             userType: 'client'
           })
@@ -264,7 +267,7 @@ export default function ClientsPage() {
           return
         }
 
-        // Upload logo if file selected and client created
+        // Upload logo to Supabase if file selected and client created
         if (logoFile && result.user) {
           // Find the client ID from the response or fetch it
           const { data: clientData } = await supabase
@@ -274,16 +277,16 @@ export default function ClientsPage() {
             .single()
 
           if (clientData) {
-            logoUrl = await uploadLogo(clientData.id, formData.name)
-            if (logoUrl) {
+            const uploadedLogoUrl = await uploadLogo(clientData.id, formData.name)
+            if (uploadedLogoUrl) {
               // Update client and user with logo URL
               await supabase
                 .from('clients')
-                .update({ logo_url: logoUrl })
+                .update({ logo_url: uploadedLogoUrl })
                 .eq('id', clientData.id)
               await supabase
                 .from('users')
-                .update({ logo_url: logoUrl })
+                .update({ logo_url: uploadedLogoUrl })
                 .eq('id', result.user.id)
             }
           }

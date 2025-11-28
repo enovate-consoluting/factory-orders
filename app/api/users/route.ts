@@ -1,6 +1,7 @@
 // app/api/users/route.ts
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createScanacartClient } from '@/lib/scanacart/api'
 
 // Check if service role key exists
 if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
   }
 
   try {
-  const { email, password, name, role, userType, createdBy, phone_number, logo_url } = await request.json()
+  const { email, password, name, role, userType, createdBy, phone_number, logo_url, logo } = await request.json()
 
     // Validate userType
     if (!userType || !['admin', 'manufacturer', 'client'].includes(userType)) {
@@ -150,6 +151,25 @@ export async function POST(request: Request) {
         }, { status: 400 })
       }
       console.log('Client record created')
+
+      // Step 4: Create client in Scanacart system
+      console.log('Creating client in Scanacart system...')
+      const scanacartResult = await createScanacartClient({
+        company_name: name,
+        email,
+        password,
+        phone: phone_number || undefined,
+        logo: logo || null
+      })
+
+      if (!scanacartResult.success) {
+        console.error('Scanacart API error:', scanacartResult.error)
+        // Note: We don't rollback the local client creation if Scanacart fails
+        // The client is still created locally, but we log the Scanacart error
+        console.warn('Client created locally but failed to sync with Scanacart:', scanacartResult.error)
+      } else {
+        console.log('Client successfully created in Scanacart system')
+      }
     }
 
     console.log('User creation completed successfully')
