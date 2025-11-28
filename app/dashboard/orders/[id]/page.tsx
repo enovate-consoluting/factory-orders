@@ -1158,6 +1158,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             visibleProducts={visibleProducts}
             onSaveAndRoute={handleSaveAllAndRoute}
             onPrintAll={handlePrintAll}
+            onUpdate={refetch}
           />
         )}
 

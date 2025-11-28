@@ -2,8 +2,9 @@
  * Order List Types
  * TypeScript interfaces for Orders Listing page
  * Location: app/dashboard/orders/types/orderList.types.ts
- * UPDATED: Added 'shipped' as parent-level TabType (moved out of ProductionSubTab)
- * Last Modified: Nov 27 2025
+ * UPDATED: Added 'ready_to_ship' as parent-level TabType
+ * UPDATED: Added estimated_ship_date to OrderProduct
+ * Last Modified: Nov 28 2025
  */
 
 export interface OrderProduct {
@@ -22,6 +23,7 @@ export interface OrderProduct {
   shipping_air_price?: number;
   shipping_boat_price?: number;
   selected_shipping_method?: string;
+  estimated_ship_date?: string;  // NEW: For ready to ship queue
   product?: {
     title: string;
   };
@@ -55,10 +57,10 @@ export interface Order {
   order_products?: OrderProduct[];
 }
 
-// UPDATED: Added 'shipped' as parent-level tab
-export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status' | 'shipped';
+// UPDATED: Added 'ready_to_ship' between production_status and shipped
+export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status' | 'ready_to_ship' | 'shipped';
 
-// UPDATED: Removed 'shipped' from sub-tabs (now parent-level)
+// Production sub-tabs (unchanged)
 export type ProductionSubTab = 'sample_approved' | 'approved_for_production' | 'in_production';
 
 export interface TabCounts {
@@ -68,8 +70,9 @@ export interface TabCounts {
   sample_approved: number;
   approved_for_production: number;
   in_production: number;
+  ready_to_ship: number;  // NEW: Count for ready to ship queue
   shipped: number;
-  production_total: number;  // Now excludes shipped
+  production_total: number;
 }
 
 export interface RoutingStatus {

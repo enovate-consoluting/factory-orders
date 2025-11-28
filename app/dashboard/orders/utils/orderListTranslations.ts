@@ -2,7 +2,8 @@
  * Order List Translations
  * Bilingual (EN/ZH) translations for Orders Listing page
  * Location: app/dashboard/orders/utils/orderListTranslations.ts
- * Last Modified: Nov 26 2025
+ * UPDATED: Added readyToShip translation (configurable override from DB)
+ * Last Modified: Nov 28 2025
  */
 
 export type Language = 'en' | 'zh';
@@ -25,6 +26,9 @@ export interface Translations {
   approvedForProd: string;
   inProduction: string;
   shipped: string;
+  
+  // NEW: Ready to ship (default - can be overridden by config)
+  readyToShip: string;
   
   // Table headers
   order: string;
@@ -111,6 +115,9 @@ export const translations: Record<Language, Translations> = {
     inProduction: 'In Production',
     shipped: 'Shipped',
     
+    // NEW: Ready to ship default
+    readyToShip: 'Ready to Ship',
+    
     // Table headers
     order: 'Order',
     client: 'Client',
@@ -193,6 +200,9 @@ export const translations: Record<Language, Translations> = {
     approvedForProd: '已批准生产',
     inProduction: '生产中',
     shipped: '已发货',
+    
+    // NEW: Ready to ship default
+    readyToShip: '准备发货',
     
     // Table headers
     order: '订单',

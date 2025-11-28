@@ -3,10 +3,8 @@
  * Displays all orders with tabbed interface for different order states
  * Roles: Admin, Super Admin, Manufacturer, Client
  * REFACTORED: Extracted translations, calculations, types, modals, tabs, and views
- * UPDATED: Added sample_routed_to filtering for order-level sample routing
- * FIXED: Ignore sample routing when sample_status is 'no_sample'
- * FIXED: Moved "Shipped" to parent-level tab (out of Production sub-tabs)
- * Last Modified: Nov 27 2025
+ * UPDATED: Ready to Ship tab reads from per-manufacturer settings with Chinese support
+ * Last Modified: Nov 28 2025
  */
 
 'use client';
@@ -46,6 +44,27 @@ const isSampleActive = (order: Order): boolean => {
          order.sample_status !== null;
 };
 
+// Helper function to check if product is within ready-to-ship threshold
+const isWithinShipThreshold = (estimatedShipDate: string | undefined, thresholdDays: number): boolean => {
+  if (!estimatedShipDate) return false;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const shipDate = new Date(estimatedShipDate);
+  shipDate.setHours(0, 0, 0, 0);
+  
+  const diffTime = shipDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  // Within threshold means: ship date is today or within X days from now
+  return diffDays >= 0 && diffDays <= thresholdDays;
+};
+
+// Default names for comparison
+const DEFAULT_SHIP_QUEUE_NAME = 'Ready to Ship';
+const DEFAULT_SHIP_QUEUE_NAME_ZH = '准备发货';
+
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -63,7 +82,7 @@ export default function OrdersPage() {
   // Get translations
   const t = translations[language];
 
-  // Tab state - 'shipped' is now a parent-level tab
+  // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('my_orders');
   const [productionSubTab, setProductionSubTab] = useState<ProductionSubTab>('sample_approved');
 
@@ -73,6 +92,11 @@ export default function OrdersPage() {
   // State for tracking orders with unread notifications
   const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
+  
+  // Ready to Ship settings (per-manufacturer from manufacturers table)
+  const [readyToShipLabel, setReadyToShipLabel] = useState<string>(DEFAULT_SHIP_QUEUE_NAME);
+  const [readyToShipLabelZh, setReadyToShipLabelZh] = useState<string>(DEFAULT_SHIP_QUEUE_NAME_ZH);
+  const [readyToShipDays, setReadyToShipDays] = useState<number>(3);
   
   // Load language preference from localStorage
   useEffect(() => {
@@ -118,13 +142,25 @@ export default function OrdersPage() {
     try {
       const { data: manufacturer } = await supabase
         .from('manufacturers')
-        .select('id')
+        .select('id, ship_queue_name, ship_queue_name_zh, ship_queue_days')
         .eq('email', user.email)
         .single();
 
       if (!manufacturer) return undefined;
 
       setManufacturerId(manufacturer.id);
+      
+      // Load manufacturer's Ready to Ship settings
+      if (manufacturer.ship_queue_name) {
+        setReadyToShipLabel(manufacturer.ship_queue_name);
+      }
+      if (manufacturer.ship_queue_name_zh) {
+        setReadyToShipLabelZh(manufacturer.ship_queue_name_zh);
+      }
+      if (manufacturer.ship_queue_days) {
+        setReadyToShipDays(manufacturer.ship_queue_days);
+      }
+      
       await loadUnreadNotifications(manufacturer.id);
       return subscribeToNotificationUpdates(manufacturer.id);
     } catch (error) {
@@ -185,7 +221,7 @@ export default function OrdersPage() {
 
   useEffect(() => {
     filterOrders();
-  }, [searchTerm, orders, activeTab, productionSubTab]);
+  }, [searchTerm, orders, activeTab, productionSubTab, readyToShipDays]);
 
   const fetchOrders = async (user: any) => {
     try {
@@ -214,7 +250,7 @@ export default function OrdersPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
-            order_items(quantity)
+            estimated_ship_date
           ),
           sample_routed_to,
           sample_required,
@@ -380,7 +416,6 @@ export default function OrdersPage() {
         break;
 
       case 'production_status':
-        // UPDATED: Removed 'shipped' from production sub-tabs
         if (productionSubTab === 'sample_approved') {
           filtered = ordersToFilter.filter(order => {
             if (order.sample_status === 'sample_approved' || order.sample_status === 'approved') {
@@ -409,7 +444,17 @@ export default function OrdersPage() {
         }
         break;
 
-      // NEW: Shipped as parent-level tab
+      // Ready to Ship tab - products in_production within threshold days
+      case 'ready_to_ship':
+        filtered = ordersToFilter.filter(order => {
+          if (!order.order_products || order.order_products.length === 0) return false;
+          return order.order_products.some(p => 
+            p.product_status === 'in_production' &&
+            isWithinShipThreshold(p.estimated_ship_date, readyToShipDays)
+          );
+        });
+        break;
+
       case 'shipped':
         filtered = ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
@@ -455,6 +500,7 @@ export default function OrdersPage() {
         sample_approved: 0,
         approved_for_production: 0,
         in_production: 0,
+        ready_to_ship: 0,
         shipped: 0,
         production_total: 0
       };
@@ -467,6 +513,7 @@ export default function OrdersPage() {
       sample_approved: 0,
       approved_for_production: 0,
       in_production: 0,
+      ready_to_ship: 0,
       shipped: 0,
       production_total: 0
     };
@@ -548,9 +595,13 @@ export default function OrdersPage() {
         
         if (product.product_status === 'in_production') {
           productCounts.in_production++;
+          
+          // Also count for ready_to_ship if within threshold
+          if (isWithinShipThreshold(product.estimated_ship_date, readyToShipDays)) {
+            productCounts.ready_to_ship++;
+          }
         }
         
-        // Shipped is now counted separately (parent tab)
         if (product.product_status === 'shipped' || 
             product.product_status === 'completed') {
           productCounts.shipped++;
@@ -558,7 +609,6 @@ export default function OrdersPage() {
       });
     });
 
-    // UPDATED: production_total now EXCLUDES shipped
     productCounts.production_total = productCounts.sample_approved +
                                      productCounts.approved_for_production + 
                                      productCounts.in_production;
@@ -650,6 +700,16 @@ export default function OrdersPage() {
     }
   };
 
+  // Get the display label for Ready to Ship tab (handles language)
+  const getReadyToShipDisplayLabel = (): string => {
+    if (language === 'zh') {
+      // Return Chinese label (custom or default)
+      return readyToShipLabelZh || DEFAULT_SHIP_QUEUE_NAME_ZH;
+    }
+    // Return English label (custom or default)
+    return readyToShipLabel || DEFAULT_SHIP_QUEUE_NAME;
+  };
+
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
       return { status: 'no_products', label: t.products, color: 'gray' };
@@ -688,6 +748,12 @@ export default function OrdersPage() {
       p.product_status === 'shipped' || p.product_status === 'completed'
     ).length;
     
+    // Count ready to ship
+    const readyToShipCount = products.filter(p => 
+      p.product_status === 'in_production' &&
+      isWithinShipThreshold(p.estimated_ship_date, readyToShipDays)
+    ).length;
+    
     if (activeTab === 'my_orders') {
       if (isAdminUser) {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'admin') ? 1 : 0;
@@ -718,8 +784,10 @@ export default function OrdersPage() {
       } else if (productionSubTab === 'in_production') {
         return { status: 'in_production', label: `${inProduction} ${t.inProduction}`, color: 'blue' };
       }
+    } else if (activeTab === 'ready_to_ship') {
+      // Ready to ship status - use display label based on language
+      return { status: 'ready_to_ship', label: `${readyToShipCount} ${getReadyToShipDisplayLabel()}`, color: 'orange' };
     } else if (activeTab === 'shipped') {
-      // NEW: Shipped parent tab
       return { status: 'shipped', label: `${shipped} ${t.shipped}`, color: 'green' };
     }
     
@@ -828,6 +896,7 @@ export default function OrdersPage() {
               setActiveTab('production_status');
               setProductionSubTab('sample_approved');
             }}
+            readyToShipLabel={getReadyToShipDisplayLabel()}
           />
         )}
 
@@ -1132,6 +1201,8 @@ export default function OrdersPage() {
               <p className="mt-1 text-sm text-gray-500">
                 {activeTab === 'production_status'
                   ? t.noProductionOrders
+                  : activeTab === 'ready_to_ship'
+                  ? `No products ${getReadyToShipDisplayLabel().toLowerCase()} yet.`
                   : activeTab === 'shipped'
                   ? t.noProductionOrders
                   : (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin')
