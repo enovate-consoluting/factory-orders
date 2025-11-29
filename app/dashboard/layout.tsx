@@ -692,23 +692,25 @@ export default function DashboardLayout({
       {/* Main Content */}
       <div className="lg:pl-72 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+        <header className="sticky top-0 z-30 bg-white border-b border-gray-100 shadow-sm">
           <div className="flex items-center justify-between px-4 lg:px-6 h-16">
             {/* Mobile Menu Button - left side */}
             <button
               onClick={() => setShowMobileMenu(true)}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Open menu"
             >
               <Menu className="w-6 h-6 text-gray-700" />
             </button>
             
-            {/* Page Title or Empty space */}
-            <div className="hidden lg:block text-lg font-medium text-gray-900">
-              {getPageTitle()}
+            {/* Page Title - centered on mobile, left on desktop */}
+            <div className="flex-1 lg:flex-none text-center lg:text-left">
+              <h1 className="text-base lg:text-lg font-medium text-gray-900 truncate px-2">
+                {getPageTitle()}
+              </h1>
             </div>
 
             {/* Notification Bell - right side */}
-            <div className="relative">
+            <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
