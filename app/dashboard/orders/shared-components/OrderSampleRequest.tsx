@@ -1,16 +1,26 @@
 /**
  * Order Sample Request Component - UPGRADED WITH ROUTING
  * Order-level sample request with independent routing workflow
- * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
- * Last Modified: Nov 2025
+ * FIX: Added 'no_sample' status - ignores routing when no sample data
+ * FIX: Auto-detects when sample becomes active (fee/ETA entered)
+ * Last Modified: Nov 27 2025
  */
 
 import React, { useState, useEffect } from 'react';
 import { 
   AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, 
-  Paperclip, History, Send, Building, User, CheckCircle, ArrowRight,
-  Factory
+  Paperclip, History, Send, Building, User,
+  Factory, Ban
 } from 'lucide-react';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
+
+// Data to pass to save function
+interface SampleSaveData {
+  fee: string;
+  eta: string;
+  status: string;
+  notes: string;
+}
 
 interface OrderSampleRequestProps {
   orderId?: string;
@@ -20,7 +30,7 @@ interface OrderSampleRequestProps {
   sampleNotes: string;
   sampleFiles?: File[];
   existingMedia?: any[];
-  // NEW: Routing props
+  // Routing props
   sampleRoutedTo?: 'admin' | 'manufacturer' | 'client';
   sampleWorkflowStatus?: string;
   // Routing callbacks
@@ -31,7 +41,7 @@ interface OrderSampleRequestProps {
   canRouteToAdmin?: boolean;
   canRouteToClient?: boolean;
   isRouting?: boolean;
-  // Existing callbacks
+  // Existing callbacks - CHANGED: onSave now receives data
   onUpdate: (field: string, value: any) => void;
   onFileUpload?: (files: FileList | null) => void;
   onFileRemove?: (index: number) => void;
@@ -42,7 +52,7 @@ interface OrderSampleRequestProps {
   isClient?: boolean;
   userRole?: string;
   readOnly?: boolean;
-  onSave?: () => void;
+  onSave?: (data: SampleSaveData) => Promise<void>;
   saving?: boolean;
 }
 
@@ -78,46 +88,108 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onSave,
   saving = false
 }) => {
-  const [tempNotes, setTempNotes] = useState('');
+  // LOCAL state for form fields - don't rely on parent
+  const [localFee, setLocalFee] = useState(sampleFee);
+  const [localETA, setLocalETA] = useState(sampleETA);
+  const [localStatus, setLocalStatus] = useState(sampleStatus || 'no_sample');
+  const [localNotes, setLocalNotes] = useState(''); // Start empty for new notes
   const [isDirty, setIsDirty] = useState(false);
-  const [originalNotes, setOriginalNotes] = useState(sampleNotes);
   
   // Route modal state
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | null>(null);
   const [routeNotes, setRouteNotes] = useState('');
 
+  // Sync local state when props change (on load/refetch)
   useEffect(() => {
-    if (sampleNotes !== originalNotes && !tempNotes) {
-      setOriginalNotes(sampleNotes);
-      setTempNotes('');
-    }
-  }, [sampleNotes, originalNotes, tempNotes]);
+    setLocalFee(sampleFee);
+    setLocalETA(sampleETA);
+    setLocalStatus(sampleStatus || 'no_sample');
+    // Don't set localNotes from props - keep it empty for new input
+    setIsDirty(false);
+  }, [sampleFee, sampleETA, sampleStatus]);
 
-  const handleFieldChange = (field: string, value: any) => {
-    onUpdate(field, value);
+  // Check if sample has any data (fee, ETA, or files)
+  const hasSampleData = (): boolean => {
+    const hasFee = localFee && parseFloat(localFee) > 0;
+    const hasETA = localETA && localETA.trim() !== '';
+    const hasFiles = existingMedia.length > 0 || sampleFiles.length > 0;
+    return hasFee || hasETA || hasFiles;
+  };
+
+  // Auto-detect status based on data
+  const getAutoStatus = (): string => {
+    if (!hasSampleData()) {
+      return 'no_sample';
+    }
+    // If there's data but status is 'no_sample', change to 'pending'
+    if (localStatus === 'no_sample') {
+      return 'pending';
+    }
+    return localStatus;
+  };
+
+  const handleFeeChange = (value: string) => {
+    setLocalFee(value);
+    onUpdate('sampleFee', value);
+    setIsDirty(true);
+    
+    // Auto-activate if entering data
+    if (value && parseFloat(value) > 0 && localStatus === 'no_sample') {
+      setLocalStatus('pending');
+      onUpdate('sampleStatus', 'pending');
+    }
+  };
+
+  const handleETAChange = (value: string) => {
+    setLocalETA(value);
+    onUpdate('sampleETA', value);
+    setIsDirty(true);
+    
+    // Auto-activate if entering data
+    if (value && localStatus === 'no_sample') {
+      setLocalStatus('pending');
+      onUpdate('sampleStatus', 'pending');
+    }
+  };
+
+  const handleStatusChange = (value: string) => {
+    setLocalStatus(value);
+    onUpdate('sampleStatus', value);
+    onUpdate('sampleWorkflowStatus', value);
     setIsDirty(true);
   };
 
   const handleNotesChange = (value: string) => {
-    setTempNotes(value);
-    onUpdate('sampleNotes', value);
+    setLocalNotes(value);
     setIsDirty(true);
   };
 
+  // SAVE: Pass local values directly, auto-detect status
   const handleSave = async () => {
     if (onSave) {
-      await onSave();
+      // Auto-detect status before saving
+      const finalStatus = getAutoStatus();
+      
+      await onSave({
+        fee: localFee,
+        eta: localETA,
+        status: finalStatus,
+        notes: localNotes
+      });
+      setLocalNotes(''); // Clear notes after save
+      setLocalStatus(finalStatus); // Update local status
       setIsDirty(false);
-      setTempNotes('');
-      setOriginalNotes(tempNotes || sampleNotes);
     }
   };
 
   const handleCancel = () => {
-    setTempNotes('');
+    // Reset to original values
+    setLocalFee(sampleFee);
+    setLocalETA(sampleETA);
+    setLocalStatus(sampleStatus || 'no_sample');
+    setLocalNotes('');
     setIsDirty(false);
-    onUpdate('sampleNotes', originalNotes);
   };
 
   const handleFileClick = (fileUrl: string) => {
@@ -134,6 +206,20 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const handleRoute = async () => {
     if (!routeDestination) return;
     
+    // SAVE DATA FIRST before routing (with auto-status)
+    if (onSave) {
+      const finalStatus = getAutoStatus();
+      await onSave({
+        fee: localFee,
+        eta: localETA,
+        status: finalStatus,
+        notes: localNotes
+      });
+      setLocalNotes(''); // Clear notes after save
+      setLocalStatus(finalStatus);
+    }
+    
+    // Then route
     let success = false;
     
     if (routeDestination === 'manufacturer' && onRouteToManufacturer) {
@@ -148,10 +234,25 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       setShowRouteModal(false);
       setRouteNotes('');
       setRouteDestination(null);
+      setIsDirty(false);
     }
   };
 
+  // Check if sample is active (has data or is not 'no_sample')
+  const isSampleActive = localStatus !== 'no_sample' || hasSampleData();
+
+  // ONLY routing status badge
   const getRoutingStatusBadge = () => {
+    // If no sample, show "No Sample" badge
+    if (localStatus === 'no_sample' && !hasSampleData()) {
+      return (
+        <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-medium flex items-center gap-1">
+          <Ban className="w-3 h-3" />
+          No Sample
+        </span>
+      );
+    }
+    
     const badges: Record<string, { bg: string; text: string; label: string; icon: any }> = {
       admin: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'With Admin', icon: User },
       manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'With Manufacturer', icon: Factory },
@@ -169,20 +270,26 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     );
   };
 
-  const getWorkflowStatusBadge = () => {
+  // Status badge (shows actual sample status)
+  const getSampleStatusBadge = () => {
     const statuses: Record<string, { bg: string; text: string; label: string }> = {
+      no_sample: { bg: 'bg-gray-100', text: 'text-gray-500', label: 'No Sample' },
       pending: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pending' },
-      sent_to_manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'Sent to Manufacturer' },
-      priced_by_manufacturer: { bg: 'bg-green-100', text: 'text-green-700', label: 'Priced' },
-      sent_to_client: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Sent to Client' },
-      client_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Client Approved' },
-      client_rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Client Rejected' },
       in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'In Production' },
+      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Ready' },
       shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
-      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' }
+      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' },
+      sample_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' }, // backwards compat
+      rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' }
     };
     
-    const status = statuses[sampleWorkflowStatus] || statuses.pending;
+    const status = statuses[localStatus] || statuses.pending;
+    
+    // Don't show duplicate badge if already showing "No Sample"
+    if (localStatus === 'no_sample' && !hasSampleData()) {
+      return null;
+    }
     
     return (
       <span className={`px-2 py-1 ${status.bg} ${status.text} rounded text-xs font-medium`}>
@@ -199,12 +306,22 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
     (sampleRoutedTo === 'client' && isClient)
   );
+  
+  // Fee and ETA: ONLY Manufacturer and Super Admin can edit
+  const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
+  
+  // Only show routing buttons if sample is active
+  const showRoutingButtons = isSampleActive;
 
   return (
-    <div className="bg-amber-50 rounded-lg p-4 border border-amber-300 mb-4">
+    <div className={`rounded-lg p-4 border mb-4 ${
+      isSampleActive ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
+    }`}>
       {/* Header with routing status */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-amber-900 flex items-center">
+        <h3 className={`text-sm font-semibold flex items-center ${
+          isSampleActive ? 'text-amber-900' : 'text-gray-500'
+        }`}>
           <AlertCircle className="w-4 h-4 mr-2" />
           Order Sample Request / Technical Pack
         </h3>
@@ -212,8 +329,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           {/* Routing Status Badge */}
           {getRoutingStatusBadge()}
           
-          {/* Workflow Status Badge */}
-          {getWorkflowStatusBadge()}
+          {/* Sample Status Badge */}
+          {getSampleStatusBadge()}
           
           {existingMedia && existingMedia.length > 0 && (
             <span className="text-xs text-amber-700">
@@ -238,71 +355,69 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
-      {/* ROUTING BUTTONS - Based on user role and current routing */}
-      <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-700">Sample Routing:</span>
-          
-          <div className="flex items-center gap-2">
-            {/* Admin can send to Manufacturer */}
-            {canRouteToManufacturer && (
-              <button
-                onClick={() => openRouteModal('manufacturer')}
-                disabled={isRouting}
-                className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
-              >
-                <Send className="w-3 h-3" />
-                Send to Manufacturer
-              </button>
-            )}
+      {/* ROUTING BUTTONS - Only show if sample is active */}
+      {showRoutingButtons && (
+        <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-700">Sample Routing:</span>
             
-            {/* Admin can send to Client */}
-            {canRouteToClient && (
-              <button
-                onClick={() => openRouteModal('client')}
-                disabled={isRouting}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
-              >
-                <Send className="w-3 h-3" />
-                Send to Client
-              </button>
-            )}
-            
-            {/* Manufacturer/Client can send back to Admin */}
-            {canRouteToAdmin && (
-              <button
-                onClick={() => openRouteModal('admin')}
-                disabled={isRouting}
-                className="px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
-              >
-                <Send className="w-3 h-3" />
-                {isManufacturer ? 'Send to Admin' : 'Return to Admin'}
-              </button>
-            )}
-            
-            {/* Show loading spinner if routing */}
-            {isRouting && (
-              <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-            )}
-            
-            {/* Show message if no routing available */}
-            {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
-              <span className="text-xs text-gray-500 italic">
-                {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
-                {sampleRoutedTo === 'admin' && isClient && 'Waiting for admin to send for approval'}
-                {sampleRoutedTo === 'manufacturer' && !isManufacturer && 'With manufacturer for pricing'}
-                {sampleRoutedTo === 'client' && !isClient && 'With client for approval'}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {canRouteToManufacturer && (
+                <button
+                  onClick={() => openRouteModal('manufacturer')}
+                  disabled={isRouting}
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                >
+                  <Send className="w-3 h-3" />
+                  Send to Manufacturer
+                </button>
+              )}
+              
+              {canRouteToClient && (
+                <button
+                  onClick={() => openRouteModal('client')}
+                  disabled={isRouting}
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                >
+                  <Send className="w-3 h-3" />
+                  Send to Client
+                </button>
+              )}
+              
+              {canRouteToAdmin && (
+                <button
+                  onClick={() => openRouteModal('admin')}
+                  disabled={isRouting}
+                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                >
+                  <Send className="w-3 h-3" />
+                  {isManufacturer ? 'Send to Admin' : 'Return to Admin'}
+                </button>
+              )}
+              
+              {isRouting && (
+                <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
+              )}
+              
+              {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
+                <span className="text-xs text-gray-500 italic">
+                  {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
+                  {sampleRoutedTo === 'admin' && isClient && 'Waiting for admin to send for approval'}
+                  {sampleRoutedTo === 'manufacturer' && !isManufacturer && 'With manufacturer for pricing'}
+                  {sampleRoutedTo === 'client' && !isClient && 'With client for approval'}
+                </span>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Sample Details Fields */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <div className={!canEdit ? "opacity-60" : ""}>
+        <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample Fee
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -310,26 +425,27 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               type="number"
               min="0"
               step="0.01"
-              value={sampleFee}
-              onChange={(e) => handleFieldChange('sampleFee', e.target.value)}
+              value={localFee}
+              onChange={(e) => handleFeeChange(e.target.value)}
               placeholder={isManufacturer ? "Enter fee" : "Set by manufacturer"}
-              disabled={!canEdit}
+              disabled={!canEditFeeETA}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
         </div>
 
-        <div className={!canEdit ? "opacity-60" : ""}>
+        <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample ETA
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
             <input
               type="date"
-              value={sampleETA}
-              onChange={(e) => handleFieldChange('sampleETA', e.target.value)}
-              disabled={!canEdit}
+              value={localETA}
+              onChange={(e) => handleETAChange(e.target.value)}
+              disabled={!canEditFeeETA}
               className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
             />
           </div>
@@ -340,39 +456,36 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             Status
           </label>
           <select
-            value={sampleStatus}
-            onChange={(e) => handleFieldChange('sampleStatus', e.target.value)}
+            value={localStatus}
+            onChange={(e) => handleStatusChange(e.target.value)}
             disabled={!canEdit}
             className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
           >
+            <option value="no_sample">No Sample</option>
             <option value="pending">Pending</option>
             <option value="in_production">In Production</option>
             <option value="ready">Ready</option>
             <option value="shipped">Shipped</option>
             <option value="delivered">Delivered</option>
-            <option value="approved">Approved</option>
+            <option value="sample_approved">Sample Approved</option>
             <option value="rejected">Rejected</option>
           </select>
         </div>
       </div>
 
-      {/* Notes Section */}
+      {/* Notes Section - CLEAN: Only for new notes */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
-          Sample Notes / Instructions
+          Add Note
+          {onViewHistory && (
+            <span className="text-gray-500 font-normal ml-2">(View previous notes in History)</span>
+          )}
         </label>
         
-        {sampleNotes && !tempNotes && (
-          <div className="mb-2 p-2 bg-amber-100 rounded text-xs text-amber-800 border border-amber-200">
-            <strong>Current notes:</strong>
-            <div className="whitespace-pre-wrap mt-1">{sampleNotes}</div>
-          </div>
-        )}
-        
         <textarea
-          value={tempNotes}
+          value={localNotes}
           onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder="Add notes about the sample request, special instructions, materials, colors, etc..."
+          placeholder="Add a note about the sample request..."
           rows={2}
           disabled={!canEdit}
           className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 font-medium placeholder-gray-500 disabled:bg-amber-50 focus:ring-1 focus:ring-amber-500"
@@ -424,10 +537,15 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               <input
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*"
+                accept={ACCEPTED_FILE_TYPES}
                 onChange={(e) => {
                   onFileUpload(e.target.files);
                   setIsDirty(true);
+                  // Auto-activate if uploading file while status is 'no_sample'
+                  if (localStatus === 'no_sample') {
+                    setLocalStatus('pending');
+                    onUpdate('sampleStatus', 'pending');
+                  }
                 }}
                 className="hidden"
               />
@@ -449,7 +567,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                     <button
                       onClick={() => {
                         onFileRemove(index);
-                        if (sampleFiles.length === 1 && !tempNotes) {
+                        if (sampleFiles.length === 1 && !localNotes) {
                           setIsDirty(false);
                         }
                       }}

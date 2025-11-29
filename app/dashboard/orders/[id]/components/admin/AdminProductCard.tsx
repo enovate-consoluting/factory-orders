@@ -18,6 +18,7 @@ import { getProductStatusIcon } from '../shared/ProductStatusIcon';
 import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatCurrency } from '../../../utils/orderCalculations';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 import { supabase } from '@/lib/supabase';
 
 interface AdminProductCardProps {
@@ -723,7 +724,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               ref={bulkFileInputRef}
               type="file"
               multiple
-              accept=".pdf,.PDF,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,application/pdf"
+              accept={ACCEPTED_FILE_TYPES}
               onChange={handleBulkFileUpload}
               className="hidden"
             />

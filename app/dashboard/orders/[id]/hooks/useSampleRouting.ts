@@ -2,7 +2,8 @@
  * useSampleRouting Hook
  * Handles independent sample request routing
  * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
- * Last Modified: Nov 2025
+ * FIX: Notes no longer accumulate - routing notes go to audit log only
+ * Last Modified: Nov 26 2025
  */
 
 import { useState } from 'react';
@@ -78,7 +79,7 @@ export function useSampleRouting(
       const user = getCurrentUser();
       const timestamp = new Date().toISOString();
 
-      // Build update data
+      // Build update data - NO NOTES APPENDING
       const updateData: any = {
         sample_routed_to: destination,
         sample_routed_at: timestamp,
@@ -86,25 +87,7 @@ export function useSampleRouting(
         sample_workflow_status: newStatus
       };
 
-      // Append notes if provided
-      if (notes && notes.trim()) {
-        const { data: currentOrder } = await supabase
-          .from('orders')
-          .select('sample_notes')
-          .eq('id', orderId)
-          .single();
-
-        const existingNotes = currentOrder?.sample_notes || '';
-        const dateStr = new Date().toLocaleDateString();
-        const roleName = userRole === 'super_admin' ? 'Admin' : 
-                        userRole.charAt(0).toUpperCase() + userRole.slice(1);
-        
-        updateData.sample_notes = existingNotes
-          ? `${existingNotes}\n\n[${dateStr} - ${roleName}] ${notes.trim()}`
-          : `[${dateStr} - ${roleName}] ${notes.trim()}`;
-      }
-
-      // Update the order
+      // Update the order (without touching sample_notes)
       const { error: updateError } = await supabase
         .from('orders')
         .update(updateData)
@@ -112,15 +95,20 @@ export function useSampleRouting(
 
       if (updateError) throw updateError;
 
-      // Log to audit
+      // Log routing action to audit (including notes if provided)
+      const roleName = userRole === 'super_admin' ? 'Admin' : 
+                      userRole.charAt(0).toUpperCase() + userRole.slice(1);
+      
       await supabase.from('audit_log').insert({
         user_id: user.id,
         user_name: user.name,
-        action_type: 'sample_routed',
+        action_type: 'order_sample_updated',
         target_type: 'order',
         target_id: orderId,
         old_value: `routed_to: ${currentRouting.routed_to}`,
-        new_value: `routed_to: ${destination}, status: ${newStatus}`,
+        new_value: notes && notes.trim() 
+          ? `Routed to ${destination} | Note from ${roleName}: "${notes.trim()}"`
+          : `Routed to ${destination}`,
         timestamp
       });
 

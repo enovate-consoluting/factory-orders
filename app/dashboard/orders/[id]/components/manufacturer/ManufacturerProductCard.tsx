@@ -7,7 +7,8 @@
  * - Fixed currency formatting to always show cents (.50 not .5)
  * - Improved button spacing throughout
  * - Uses new database fields (shipping_linked_products, shipping_link_note)
- * Last Modified: Nov 21 2025 v3
+ * - CLEANUP: Now imports formatCurrency from shared utils (removed duplicate)
+ * Last Modified: Nov 26 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -23,16 +24,9 @@ import { CollapsedProductHeader } from '../shared/CollapsedProductHeader';
 import { getProductStatusIcon } from '../shared/ProductStatusIcon';
 import { FileUploadDisplay } from '../shared/FileUploadDisplay';
 import { usePermissions } from '../../hooks/usePermissions';
+import { formatCurrency } from '../../../utils/orderCalculations';
+import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 import { supabase } from '@/lib/supabase';
-
-// FIXED: Helper function to format currency - ALWAYS show 2 decimals for cents
-const formatCurrency = (amount: number): string => {
-  const formatted = new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,  // Always show 2 decimals
-    maximumFractionDigits: 2,  // Always show 2 decimals
-  }).format(amount);
-  return formatted;
-};
 
 // Define the ref type for imperative handle
 export interface ManufacturerProductCardRef {
@@ -238,7 +232,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       return qty === 0;
     });
     
-    // Calculate manufacturer totals - USING formatCurrency
+    // Calculate manufacturer totals
     const calculateManufacturerTotal = () => {
       let total = 0;
       
@@ -296,7 +290,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       };
     };
 
-    // FIXED: EXPOSE SAVE ALL FUNCTION TO PARENT - NOW CALCULATES CLIENT PRICES AND USES NEW DB FIELDS
+    // EXPOSE SAVE ALL FUNCTION TO PARENT - NOW CALCULATES CLIENT PRICES AND USES NEW DB FIELDS
     useImperativeHandle(ref, () => ({
       saveAll: async () => {
         console.log('=== SaveAll called for product:', (product as any).product_order_number);
@@ -925,7 +919,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
                   <ProductStatusBadge status={displayStatus} />
-                  {/* MANUFACTURER TOTAL BADGE - USING formatCurrency */}
+                  {/* MANUFACTURER TOTAL BADGE */}
                   {manufacturerTotal > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
                       <Calculator className="w-4 h-4" />
@@ -990,14 +984,6 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             </div>
           </div>
 
-          {/* COMMENTED OUT Generic Notes Section - Keeping for potential future use */}
-          {/* 
-          <div className="mt-3 p-4 bg-white rounded-lg border border-gray-300">
-            <h4 className="text-sm font-medium text-gray-700 mb-3">Notes / Instructions</h4>
-            ... notes section code ...
-          </div>
-          */}
-
           {/* Bulk Order Information */}
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
@@ -1043,7 +1029,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               ref={bulkFileInputRef}
               type="file"
               multiple
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*,video/*"
+              accept={ACCEPTED_FILE_TYPES}
               onChange={handleBulkFileUpload}
               className="hidden"
             />
@@ -1059,7 +1045,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               loading={uploadingBulkMedia}
             />
 
-            {/* Product Price and Production Info - USING formatCurrency */}
+            {/* Product Price and Production Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1105,12 +1091,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* Shipping Options & Pricing - MOVED ALLOCATION FEATURE INSIDE HERE */}
+            {/* Shipping Options & Pricing - WITH ALLOCATION FEATURE INSIDE */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
               <div className="flex items-center justify-between mb-3">
                 <h5 className="text-sm font-semibold text-gray-800">Shipping Options & Pricing</h5>
                 
-                {/* MOVED HERE: Shipping Allocation Checkbox - ALWAYS VISIBLE FOR MANUFACTURERS */}
+                {/* Shipping Allocation Checkbox - ALWAYS VISIBLE FOR MANUFACTURERS */}
                 {allOrderProducts && allOrderProducts.length > 1 && (
                   <label className="flex items-center gap-2 text-xs font-medium text-gray-700 cursor-pointer">
                     <input
@@ -1261,7 +1247,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* MANUFACTURER PRICING SUMMARY - USING formatCurrency */}
+            {/* MANUFACTURER PRICING SUMMARY */}
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-300">
               <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
                 <Calculator className="w-4 h-4 mr-2" />
@@ -1311,7 +1297,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            {/* Save button for Bulk Section - IMPROVED SPACING */}
+            {/* Save button for Bulk Section */}
             {bulkSectionDirty && (
               <div className="flex justify-end gap-3 pt-3 mt-4 border-t border-gray-200">
                 <button
@@ -1354,7 +1340,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             )}
 
-            {/* IMPROVED Variant Details Table with BETTER BUTTON SPACING */}
+            {/* Variant Details Table */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h5 className="text-sm font-medium text-gray-700">

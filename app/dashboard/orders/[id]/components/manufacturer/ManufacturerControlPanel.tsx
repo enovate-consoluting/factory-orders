@@ -1,20 +1,32 @@
+/**
+ * ManufacturerControlPanel - Control panel for manufacturer order actions
+ * Shows order summary, totals, and action buttons
+ * UPDATED: Added Set Ship Dates button and modal
+ * Roles: Manufacturer
+ * Last Modified: Nov 28 2025
+ */
+
 import React, { useState, useMemo } from 'react';
-import { Package, Download, Printer, Save, Send, DollarSign, FileImage, FileText, X, Loader2 } from 'lucide-react';
+import { Package, Download, Printer, Save, Send, DollarSign, FileImage, FileText, X, Loader2, Calendar } from 'lucide-react';
+import { SetShipDatesModal } from '../modals/SetShipDatesModal';
 
 interface ManufacturerControlPanelProps {
   order: any;
   visibleProducts: any[];
   onSaveAndRoute: () => void;
   onPrintAll: () => void;
+  onUpdate?: () => void;
 }
 
 export function ManufacturerControlPanel({ 
   order, 
   visibleProducts,
   onSaveAndRoute,
-  onPrintAll
+  onPrintAll,
+  onUpdate
 }: ManufacturerControlPanelProps) {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [showShipDatesModal, setShowShipDatesModal] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
@@ -47,6 +59,9 @@ export function ManufacturerControlPanel({
   };
 
   const totals = calculateTotals();
+
+  // Count products with ship dates set
+  const productsWithShipDates = visibleProducts.filter(p => p.estimated_ship_date).length;
 
   // Collect all sample media
   const allSampleFiles = useMemo(() => {
@@ -119,6 +134,13 @@ export function ManufacturerControlPanel({
     setDownloadingAll(false);
   };
 
+  // Handle ship dates modal close with refresh
+  const handleShipDatesUpdate = () => {
+    if (onUpdate) {
+      onUpdate();
+    }
+  };
+
   return (
     <>
       {/* Main Control Panel - Always visible, not collapsible */}
@@ -186,6 +208,20 @@ export function ManufacturerControlPanel({
             </button>
           )}
 
+          {/* Set Ship Dates - NEW BUTTON */}
+          <button
+            onClick={() => setShowShipDatesModal(true)}
+            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
+          >
+            <Calendar className="w-4 h-4" />
+            Set Ship Dates
+            {productsWithShipDates > 0 && (
+              <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
+                {productsWithShipDates}/{visibleProducts.length}
+              </span>
+            )}
+          </button>
+
           {/* Save All & Route */}
           <button
             onClick={onSaveAndRoute}
@@ -196,6 +232,14 @@ export function ManufacturerControlPanel({
           </button>
         </div>
       </div>
+
+      {/* Set Ship Dates Modal */}
+      <SetShipDatesModal
+        isOpen={showShipDatesModal}
+        onClose={() => setShowShipDatesModal(false)}
+        products={visibleProducts}
+        onUpdate={handleShipDatesUpdate}
+      />
 
       {/* Download Selection Modal */}
       {showDownloadModal && (
