@@ -20,7 +20,8 @@ import {
   Menu,
   FileText,
   AlertCircle,
-  DollarSign
+  DollarSign,
+  Settings
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -532,6 +533,14 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin', 'manufacturer'],
     },
     {
+      href: '/dashboard/settings/manufacturer',
+      label: 'Settings',
+      icon: Settings,
+      roles: ['super_admin', 'manufacturer'],
+      description: 'Manufacturer settings',
+      notificationKey: null,
+    },
+    {
       href: '/dashboard/clients',
       label: 'Clients',
       icon: Users,
@@ -631,6 +640,7 @@ export default function DashboardLayout({
     if (pathname === '/dashboard/review') return 'Review Orders';
     if (pathname === '/dashboard/settings/finance') return 'Finance Settings';
     if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
+    if (pathname === '/dashboard/settings/manufacturer') return 'Manufacturer Settings';
     if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return 'Order Details';
     if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return 'Invoice Details';
     return 'Dashboard';
@@ -687,12 +697,11 @@ export default function DashboardLayout({
             {/* Mobile Menu Button - left side */}
             <button
               onClick={() => setShowMobileMenu(true)}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              aria-label="Open menu"
+              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Open menu"
             >
               <Menu className="w-6 h-6 text-gray-700" />
             </button>
-
+            
             {/* Page Title - centered on mobile, left on desktop */}
             <div className="flex-1 lg:flex-none text-center lg:text-left">
               <h1 className="text-base lg:text-lg font-medium text-gray-900 truncate px-2">
