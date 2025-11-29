@@ -1,5 +1,6 @@
 /**
  * Create Order Page - FIXED VERSION
+ * UPDATED: Client selection uses autocomplete with keyboard navigation (arrow keys + enter)
  * FIXED: Order sample files now attach to first product so they show in detail page
  * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
  * Last Modified: November 2025
@@ -10,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Search, X, Check } from 'lucide-react'
 
 // Import all our new shared components
 import { StepIndicator } from '../shared-components/StepIndicator'
@@ -66,8 +67,8 @@ interface OrderProduct {
 }
 
 // Consistent dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder-gray-400 text-black"
-const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black bg-white"
+const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
 
 export default function CreateOrderPage() {
   const router = useRouter()
@@ -75,6 +76,14 @@ export default function CreateOrderPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Client autocomplete refs and state
+  const clientInputRef = useRef<HTMLInputElement>(null)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+  const [clientSearchQuery, setClientSearchQuery] = useState('')
+  const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const [filteredClients, setFilteredClients] = useState<Client[]>([])
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
   
   // Notification state
   const [notification, setNotification] = useState<{
@@ -100,12 +109,8 @@ export default function CreateOrderPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([])
   const [selectedClient, setSelectedClient] = useState('')
+  const [selectedClientName, setSelectedClientName] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
-  // Autocomplete states
-  const [clientQuery, setClientQuery] = useState('')
-  const [showClientSuggestions, setShowClientSuggestions] = useState(false)
-  const [manufacturerQuery, setManufacturerQuery] = useState('')
-  const [showManufacturerSuggestions, setShowManufacturerSuggestions] = useState(false)
   
   // Step 2: Products with quantities
   const [products, setProducts] = useState<Product[]>([])
@@ -121,6 +126,40 @@ export default function CreateOrderPage() {
   const [orderSampleStatus, setOrderSampleStatus] = useState('pending')
   const [orderSampleNotes, setOrderSampleNotes] = useState('')
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([])
+
+  // Click outside handler for client dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        clientDropdownRef.current && 
+        !clientDropdownRef.current.contains(event.target as Node) &&
+        clientInputRef.current &&
+        !clientInputRef.current.contains(event.target as Node)
+      ) {
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Filter clients based on search query
+  useEffect(() => {
+    if (clientSearchQuery.trim() === '') {
+      setFilteredClients(clients)
+    } else {
+      const query = clientSearchQuery.toLowerCase()
+      const filtered = clients.filter(client => 
+        client.name.toLowerCase().includes(query) ||
+        client.email.toLowerCase().includes(query)
+      )
+      setFilteredClients(filtered)
+    }
+    // Reset highlighted index when results change
+    setHighlightedIndex(-1)
+  }, [clientSearchQuery, clients])
 
   useEffect(() => {
     fetchInitialData()
@@ -158,6 +197,7 @@ export default function CreateOrderPage() {
         .order('title')
 
       setClients(clientsData || [])
+      setFilteredClients(clientsData || [])
       setManufacturers(manufacturersData || [])
       
       if (manufacturersData && manufacturersData.length === 1) {
@@ -199,6 +239,86 @@ export default function CreateOrderPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Client selection handlers
+  const handleClientSelect = (client: Client) => {
+    setSelectedClient(client.id)
+    setSelectedClientName(client.name)
+    setClientSearchQuery(client.name)
+    setShowClientDropdown(false)
+    setHighlightedIndex(-1)
+  }
+
+  const handleClientInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setClientSearchQuery(value)
+    setShowClientDropdown(true)
+    
+    // If user clears the input, clear the selection
+    if (value === '') {
+      setSelectedClient('')
+      setSelectedClientName('')
+    }
+  }
+
+  const handleClientInputFocus = () => {
+    setShowClientDropdown(true)
+  }
+
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showClientDropdown) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setShowClientDropdown(true)
+        return
+      }
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setHighlightedIndex(prev => {
+          const nextIndex = prev < filteredClients.length - 1 ? prev + 1 : prev
+          // Scroll into view
+          const element = document.getElementById(`client-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setHighlightedIndex(prev => {
+          const nextIndex = prev > 0 ? prev - 1 : 0
+          // Scroll into view
+          const element = document.getElementById(`client-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (highlightedIndex >= 0 && highlightedIndex < filteredClients.length) {
+          handleClientSelect(filteredClients[highlightedIndex])
+        }
+        break
+      case 'Escape':
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+        break
+      case 'Tab':
+        setShowClientDropdown(false)
+        setHighlightedIndex(-1)
+        break
+    }
+  }
+
+  const clearClientSelection = () => {
+    setSelectedClient('')
+    setSelectedClientName('')
+    setClientSearchQuery('')
+    setShowClientDropdown(false)
+    setHighlightedIndex(-1)
+    clientInputRef.current?.focus()
   }
 
   const handleProductQuantityChange = (productId: string, quantity: number) => {
@@ -788,55 +908,55 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="p-3 sm:p-6 max-w-7xl mx-auto">
-      {/* Notification Toast - Mobile Responsive */}
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Notification Toast */}
       {notification.show && (
         <div className={`
-          fixed top-3 right-3 sm:top-4 sm:right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[calc(100vw-24px)] sm:max-w-none transform transition-all duration-500 ease-out
+          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success'
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
+            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success' 
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-2 sm:space-x-3">
+            <div className="flex items-center space-x-3">
               {notification.type === 'success' && (
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
               {notification.type === 'error' && (
-                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
-              <p className="font-semibold text-white text-sm sm:text-base break-words">{notification.message}</p>
+              <p className="font-semibold text-white">{notification.message}</p>
             </div>
           </div>
         </div>
       )}
-
-      {/* Header - Mobile Responsive */}
-      <div className="mb-4 sm:mb-6">
+      
+      {/* Header */}
+      <div className="mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
         >
-          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+          <ArrowLeft className="w-4 h-4 mr-2" />
           Back to Orders
         </button>
-
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Create New Order</h1>
-
+        
+        <h1 className="text-2xl font-bold text-gray-900">Create New Order</h1>
+        
         {/* Progress Steps using new component */}
-        <div className="mt-4 sm:mt-6">
-          <StepIndicator
-            currentStep={currentStep}
+        <div className="mt-6">
+          <StepIndicator 
+            currentStep={currentStep} 
             onStepClick={(step) => {
               if (step < currentStep) {
                 setCurrentStep(step)
@@ -846,13 +966,13 @@ export default function CreateOrderPage() {
         </div>
       </div>
 
-      {/* Step 1: Basic Info - Mobile Responsive */}
+      {/* Step 1: Basic Info */}
       {currentStep === 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Order Information</h2>
-
-          <div className="mb-4 sm:mb-6">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h2>
+          
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
               Order Name *
             </label>
             <input
@@ -864,116 +984,119 @@ export default function CreateOrderPage() {
               required
             />
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-            {/* Client Autocomplete - Mobile Responsive */}
-            <div className="relative">
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Client Autocomplete */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Client *
               </label>
-              <input
-                type="text"
-                value={clientQuery}
-                onChange={e => {
-                  setClientQuery(e.target.value);
-                  setShowClientSuggestions(true);
-                }}
-                onFocus={() => setShowClientSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowClientSuggestions(false), 100)}
-                placeholder="Search client..."
-                className={inputClassName}
-                required
-                autoComplete="off"
-              />
-              {/* Suggestions dropdown - Mobile Responsive */}
-              {showClientSuggestions && clientQuery && (
-                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
-                  {clients.filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase())).length === 0 ? (
-                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
-                  ) : (
-                    clients
-                      .filter(c => c.name.toLowerCase().includes(clientQuery.toLowerCase()))
-                      .map(c => (
-                        <li
-                          key={c.id}
-                          onMouseDown={() => {
-                            setSelectedClient(c.id);
-                            setClientQuery(c.name);
-                            setShowClientSuggestions(false);
-                          }}
-                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedClient === c.id ? 'bg-blue-100' : ''}`}
-                        >
-                          {c.name}
-                        </li>
-                      ))
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    ref={clientInputRef}
+                    type="text"
+                    value={clientSearchQuery}
+                    onChange={handleClientInputChange}
+                    onFocus={handleClientInputFocus}
+                    onKeyDown={handleClientKeyDown}
+                    placeholder="Type to search clients..."
+                    className={`${inputClassName} pl-9 pr-10`}
+                    autoComplete="off"
+                  />
+                  {selectedClient && (
+                    <button
+                      type="button"
+                      onClick={clearClientSelection}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   )}
-                </ul>
+                </div>
+                
+                {/* Dropdown - Fixed rounded corners */}
+                {showClientDropdown && (
+                  <div 
+                    ref={clientDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {filteredClients.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">
+                        No clients found
+                      </div>
+                    ) : (
+                      filteredClients.map((client, index) => (
+                        <button
+                          key={client.id}
+                          id={`client-option-${index}`}
+                          type="button"
+                          onClick={() => handleClientSelect(client)}
+                          onMouseEnter={() => setHighlightedIndex(index)}
+                          className={`w-full px-4 py-3 text-left flex items-center justify-between transition-colors
+                            ${index === 0 ? 'rounded-t-lg' : ''}
+                            ${index === filteredClients.length - 1 ? 'rounded-b-lg' : ''}
+                            ${highlightedIndex === index ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                            ${selectedClient === client.id ? 'bg-blue-50' : ''}
+                          `}
+                        >
+                          <div>
+                            <div className="font-medium text-gray-900">{client.name}</div>
+                            <div className="text-sm text-gray-500">{client.email}</div>
+                          </div>
+                          {selectedClient === client.id && (
+                            <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Selected client indicator */}
+              {selectedClient && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                  <Check className="w-4 h-4" />
+                  <span>Selected: {selectedClientName}</span>
+                </div>
               )}
             </div>
 
-            {/* Manufacturer Autocomplete - Mobile Responsive */}
-            <div className="relative">
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+            {/* Manufacturer - Keep as dropdown (auto-selects single option) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Manufacturer *
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
               </label>
-              <input
-                type="text"
-                value={manufacturerQuery}
-                onChange={e => {
-                  setManufacturerQuery(e.target.value);
-                  setShowManufacturerSuggestions(true);
-                }}
-                onFocus={() => setShowManufacturerSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowManufacturerSuggestions(false), 100)}
-                placeholder="Search manufacturer..."
-                className={inputClassName}
+              <select
+                value={selectedManufacturer}
+                onChange={(e) => setSelectedManufacturer(e.target.value)}
+                className={selectClassName}
                 required
-                autoComplete="off"
-                disabled={manufacturers.length === 1}
-              />
-              {/* Suggestions dropdown - Mobile Responsive */}
-              {showManufacturerSuggestions && manufacturerQuery && manufacturers.length > 1 && (
-                <ul className="absolute z-10 bg-white border border-gray-200 rounded-lg shadow w-full mt-1 max-h-40 sm:max-h-48 overflow-auto">
-                  {manufacturers.filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase())).length === 0 ? (
-                    <li className="px-2 sm:px-3 py-2 text-xs sm:text-sm text-gray-400">No matches</li>
-                  ) : (
-                    manufacturers
-                      .filter(m => m.name.toLowerCase().includes(manufacturerQuery.toLowerCase()))
-                      .map(m => (
-                        <li
-                          key={m.id}
-                          onMouseDown={() => {
-                            setSelectedManufacturer(m.id);
-                            setManufacturerQuery(m.name);
-                            setShowManufacturerSuggestions(false);
-                          }}
-                          className={`px-2 sm:px-3 py-2 text-xs sm:text-sm cursor-pointer hover:bg-blue-50 text-gray-900 ${selectedManufacturer === m.id ? 'bg-blue-100' : ''}`}
-                        >
-                          {m.name}
-                        </li>
-                      ))
-                  )}
-                </ul>
-              )}
-              {/* If only one manufacturer, auto-select and show name - Mobile Responsive */}
-              {manufacturers.length === 1 && (
-                <div className="mt-2 px-2 sm:px-3 py-2 bg-gray-100 rounded text-xs sm:text-sm text-gray-700">
-                  {manufacturers[0].name}
-                </div>
-              )}
+              >
+                {manufacturers.length > 1 && (
+                  <option value="">Choose a manufacturer...</option>
+                )}
+                {manufacturers.map((manufacturer) => (
+                  <option key={manufacturer.id} value={manufacturer.id}>
+                    {manufacturer.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
-          <div className="mt-4 sm:mt-6 flex justify-end">
+          <div className="mt-6 flex justify-end">
             <button
               onClick={nextStep}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
             >
               Next
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+              <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
         </div>
@@ -993,20 +1116,20 @@ export default function CreateOrderPage() {
           onProductsRefresh={fetchInitialData}
         />
         
-        <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row justify-between gap-3">
+        <div className="mt-6 flex justify-between">
           <button
             onClick={prevStep}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
+            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
           >
-            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+            <ArrowLeft className="w-4 h-4 mr-2" />
             Previous
           </button>
           <button
             onClick={nextStep}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center text-sm sm:text-base"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
           >
             Next
-            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+            <ArrowRight className="w-4 h-4 ml-2" />
           </button>
         </div>
       </>
@@ -1063,21 +1186,21 @@ export default function CreateOrderPage() {
             )
           })}
 
-          {/* Action Buttons - Mobile Responsive */}
-          <div className="flex flex-col sm:flex-row justify-between gap-3">
+          {/* Action Buttons */}
+          <div className="flex justify-between">
             <button
               onClick={prevStep}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
             >
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+              <ArrowLeft className="w-4 h-4 mr-2" />
               Previous
             </button>
-
-            <div className="flex flex-col sm:flex-row gap-3">
+            
+            <div className="flex gap-3">
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
+                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1090,7 +1213,7 @@ export default function CreateOrderPage() {
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {saving && (
                   <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

@@ -1,9 +1,8 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * FIXED: Admins now ALWAYS see AdminProductCard with CLIENT prices
- * Previously admins saw ManufacturerProductCard (with cost prices) when products were routed to manufacturer
- * UPDATED: Added independent sample routing (Nov 2025)
- * Last Modified: Nov 2025
+ * FIXED: Sample data now saves correctly via direct data passing
+ * FIXED: Notes go to audit log, not accumulated in sample_notes
+ * Last Modified: Nov 26 2025
  */
 
 'use client';
@@ -12,7 +11,7 @@ import { use, useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
-import { useSampleRouting } from './hooks/useSampleRouting'; // NEW: Sample routing hook
+import { useSampleRouting } from './hooks/useSampleRouting';
 
 // Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
@@ -22,7 +21,6 @@ import { ProductDistributionBar } from './components/shared/ProductDistributionB
 // Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
-// Note: ClientProductCard doesn't exist - using AdminProductCard for client view (shows client prices)
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
 
 // Modals
@@ -32,9 +30,10 @@ import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
 
 // Utilities
 import { getProductCounts } from '../utils/orderCalculations';
+import { printManufacturingSheets } from '../utils/printManufacturingSheet';
 
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, Printer, User, Clock, CheckCircle } from 'lucide-react';
+import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, User, Clock, CheckCircle } from 'lucide-react';
 
 // Calculate order total based on user role
 const calculateOrderTotal = (order: any, userRole: string): number => {
@@ -43,16 +42,13 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
   let total = 0;
   
   order.order_products.forEach((product: any) => {
-    // Get quantities
     const totalQty = product.order_items?.reduce((sum: number, item: any) => 
       sum + (item.quantity || 0), 0) || 0;
     
     let productPrice = 0;
     let shippingPrice = 0;
     
-    // Admin, Super Admin, and Client ALWAYS see CLIENT prices
     if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
-      // Use CLIENT prices - these already have margins built in
       productPrice = parseFloat(product.client_product_price || 0);
       
       if (product.selected_shipping_method === 'air') {
@@ -61,7 +57,6 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
         shippingPrice = parseFloat(product.client_shipping_boat_price || 0);
       }
     } else if (userRole === 'manufacturer') {
-      // Manufacturer sees their cost prices only
       productPrice = parseFloat(product.product_price || 0);
       
       if (product.selected_shipping_method === 'air') {
@@ -77,6 +72,14 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
   
   return total;
 };
+
+// Interface for sample save data (matches OrderSampleRequest)
+interface SampleSaveData {
+  fee: string;
+  eta: string;
+  status: string;
+  notes: string;
+}
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
@@ -98,7 +101,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // State for individual product selection
   const [selectedProductId, setSelectedProductId] = useState<string>('all');
   
-  // Order-level sample state
+  // Order-level sample state (for display, not for saving)
   const [orderSampleFee, setOrderSampleFee] = useState('');
   const [orderSampleETA, setOrderSampleETA] = useState('');
   const [orderSampleStatus, setOrderSampleStatus] = useState('pending');
@@ -146,10 +149,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
 
-  // ========================================
-  // NEW: SAMPLE ROUTING HOOK
-  // Independent routing for sample requests
-  // ========================================
+  // Sample Routing Hook
   const sampleRouting = useSampleRouting(
     id,
     {
@@ -199,13 +199,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [router, userRole, id]);
 
-  // Load order-level sample data
+  // Load order-level sample data for display
   useEffect(() => {
     if (order) {
       setOrderSampleFee(order.sample_fee?.toString() || '');
       setOrderSampleETA(order.sample_eta || '');
       setOrderSampleStatus(order.sample_status || 'pending');
-      setOrderSampleNotes(order.sample_notes || '');
+      // Don't load notes into field - they show in history only
+      setOrderSampleNotes('');
     }
   }, [order]);
 
@@ -214,17 +215,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     const markOrderNotificationsAsRead = async () => {
       if (userRole === 'manufacturer' && manufacturerId && id) {
         try {
-          const { data, error } = await supabase
+          await supabase
             .from('manufacturer_notifications')
             .update({ is_read: true })
             .eq('manufacturer_id', manufacturerId)
             .eq('order_id', id)
-            .eq('is_read', false)
-            .select();
-
-          if (error) {
-            console.error('Error marking notifications as read:', error);
-          }
+            .eq('is_read', false);
         } catch (err) {
           console.error('Error in markOrderNotificationsAsRead:', err);
         }
@@ -316,7 +312,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  // Handler for order-level sample update
+  // Handler for order-level sample update (for parent state sync)
   const handleOrderSampleUpdate = (field: string, value: any) => {
     switch (field) {
       case 'sampleFee':
@@ -327,6 +323,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         break;
       case 'sampleStatus':
         setOrderSampleStatus(value);
+        break;
+      case 'sampleWorkflowStatus':
+        // handled by routing hook
         break;
       case 'sampleNotes':
         setOrderSampleNotes(value);
@@ -392,26 +391,71 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // Save order sample data
-  const saveOrderSampleData = async () => {
+  // FIXED: Save order sample data - receives data directly from component
+  const saveOrderSampleData = async (data: SampleSaveData) => {
     if (!order) return;
     
     setSavingOrderSample(true);
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const roleName = userRole === 'super_admin' ? 'Admin' : 
+                      userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
       
-      // Build update data
+      // Build change list for audit log
+      const changes: string[] = [];
+      
+      // Check fee change
+      const newFee = data.fee ? parseFloat(data.fee) : null;
+      const oldFee = order.sample_fee;
+      if (newFee !== oldFee) {
+        if (oldFee && newFee) {
+          changes.push(`Fee: $${oldFee} → $${newFee}`);
+        } else if (newFee) {
+          changes.push(`Fee set to $${newFee}`);
+        } else if (oldFee) {
+          changes.push(`Fee removed (was $${oldFee})`);
+        }
+      }
+      
+      // Check ETA change
+      const oldEta = order.sample_eta || '';
+      if (data.eta !== oldEta) {
+        if (oldEta && data.eta) {
+          changes.push(`ETA: ${oldEta} → ${data.eta}`);
+        } else if (data.eta) {
+          changes.push(`ETA set to ${data.eta}`);
+        } else if (oldEta) {
+          changes.push(`ETA removed`);
+        }
+      }
+      
+      // Check status change
+      const oldStatus = order.sample_status || 'pending';
+      if (data.status !== oldStatus) {
+        changes.push(`Status: ${oldStatus} → ${data.status}`);
+      }
+      
+      // If there's a note, add it
+      if (data.notes && data.notes.trim()) {
+        changes.push(`Note from ${roleName}: "${data.notes.trim()}"`);
+      }
+      
+      // If there are files to upload
+      if (orderSampleFiles.length > 0) {
+        changes.push(`${orderSampleFiles.length} file(s) uploaded`);
+      }
+      
+      // Update database - DO NOT save notes to sample_notes (goes to audit only)
       const updateData: any = {
         sample_required: true,
-        sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
-        sample_eta: orderSampleETA || null,
-        sample_status: orderSampleStatus || 'pending',
-        sample_notes: orderSampleNotes || null
+        sample_fee: newFee,
+        sample_eta: data.eta || null,
+        sample_status: data.status || 'pending',
+        sample_workflow_status: data.status || 'pending'
       };
       
-      console.log('Saving order sample data:', updateData);
+      console.log('Saving sample data:', updateData);
       
-      // Update the order with sample data
       const { error: updateError } = await supabase
         .from('orders')
         .update(updateData)
@@ -460,13 +504,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
+      // Create audit log entry if there were any changes
+      if (changes.length > 0) {
+        await supabase.from('audit_log').insert({
+          user_id: user.id || crypto.randomUUID(),
+          user_name: user.name || user.email || 'Unknown User',
+          action_type: 'order_sample_updated',
+          target_type: 'order',
+          target_id: order.id,
+          new_value: changes.join(' | '),
+          timestamp: new Date().toISOString()
+        });
+      }
+      
       setOrderSampleFiles([]);
       await refetch();
-      setSavingOrderSample(false);
       
     } catch (error) {
       console.error('Error saving order sample data:', error);
       alert('Error saving sample data. Please try again.');
+    } finally {
       setSavingOrderSample(false);
     }
   };
@@ -569,15 +626,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.log('=== STARTING SAVE ALL & ROUTE ===');
       console.log(`Processing ${visibleProducts.length} products`);
       
-      // STEP 1: Save order-level sample data
-      if (isManufacturer && (orderSampleFee || orderSampleETA || orderSampleNotes)) {
+      // STEP 1: Save order-level sample data if manufacturer made changes
+      if (isManufacturer && (orderSampleFee || orderSampleETA)) {
         console.log('Step 1: Saving order-level sample data...');
         const updateData: any = {
           sample_required: true,
           sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
           sample_eta: orderSampleETA || null,
           sample_status: orderSampleStatus || 'pending',
-          sample_notes: orderSampleNotes || null
+          sample_workflow_status: orderSampleStatus || 'pending'
         };
         
         await supabase
@@ -594,11 +651,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           const product = visibleProducts[i];
           console.log(`\nStep 2.${i + 1}: Processing product ${product.product_order_number}`);
           
-          // Get the card ref
           const cardRef = manufacturerCardRefs.current.get(product.id);
           
           if (cardRef && typeof cardRef.saveAll === 'function') {
-            // Call the saveAll function which handles client price calculations
             console.log('Calling saveAll on manufacturer card...');
             const success = await cardRef.saveAll();
             if (!success) {
@@ -632,12 +687,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               break;
           }
           
+          // Add routing note to audit log only (not to product notes)
           if (notes) {
-            const timestamp = new Date().toLocaleDateString();
-            const existing = product.manufacturer_notes || '';
-            productUpdate.manufacturer_notes = existing 
-              ? `${existing}\n\n[${timestamp} - Manufacturer] ${notes}`
-              : `[${timestamp} - Manufacturer] ${notes}`;
+            await supabase.from('audit_log').insert({
+              user_id: user.id || crypto.randomUUID(),
+              user_name: user.name || user.email || 'Manufacturer',
+              action_type: 'product_routed_' + selectedRoute,
+              target_type: 'order_product',
+              target_id: product.id,
+              new_value: `Route note: ${notes}`,
+              timestamp: new Date().toISOString()
+            });
           }
           
           if (Object.keys(productUpdate).length > 0) {
@@ -676,12 +736,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               break;
           }
           
+          // Add routing note to audit log only
           if (notes) {
-            const timestamp = new Date().toLocaleDateString();
-            const existing = product.manufacturer_notes || '';
-            productUpdate.manufacturer_notes = existing 
-              ? `${existing}\n\n[${timestamp} - Admin] ${notes}`
-              : `[${timestamp} - Admin] ${notes}`;
+            await supabase.from('audit_log').insert({
+              user_id: user.id || crypto.randomUUID(),
+              user_name: user.name || user.email || 'Admin',
+              action_type: 'product_routed_' + selectedRoute,
+              target_type: 'order_product',
+              target_id: product.id,
+              new_value: `Route note: ${notes}`,
+              timestamp: new Date().toISOString()
+            });
           }
           
           await supabase
@@ -694,7 +759,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.log('=== SAVE ALL & ROUTE COMPLETED ===');
       setSaveAllRouteModal({ isOpen: false, isSaving: false });
       
-      // Redirect manufacturers
       if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
         setTimeout(() => {
           router.push('/dashboard/orders');
@@ -710,293 +774,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
+  // Print handler
   const handlePrintAll = () => {
     const visibleProducts = getVisibleProducts();
-    
-    const printHTML = visibleProducts.map((product: any, index: number) => {
-      const items = product.order_items || [];
-      const totalQty = items.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-      
-      const variantsRows = items.length > 0 
-        ? items.map((item: any) => 
-            `<tr>
-              <td style="width: 30%;">${item.variant_combo || 'N/A'}</td>
-              <td style="width: 15%; text-align: center;">${item.quantity || 0}</td>
-              <td style="width: 55%;">${item.notes || ''}</td>
-            </tr>`
-          ).join('')
-        : `<tr>
-            <td colspan="3" style="text-align: center; color: #999;">
-              No variants configured
-            </td>
-          </tr>`;
-
-      return `
-        <div class="product-sheet ${index < visibleProducts.length - 1 ? 'page-break' : ''}">
-          <div class="header">
-            <div class="header-title">MANUFACTURING SHEET</div>
-            <div class="product-name">${product.description || product.product?.title || 'Product'}</div>
-            <div class="header-details">
-              <span>Order: <strong>${order.order_number}</strong></span>
-              <span>Product: <strong>${product.product_order_number}</strong></span>
-              <span>Client: <strong>${order.client?.name || 'N/A'}</strong></span>
-            </div>
-          </div>
-          
-          <div class="section" style="margin-top: 40px;">
-            <div class="section-header">SAMPLE INFORMATION</div>
-            <div class="sample-row" style="margin-top: 30px; margin-bottom: 25px;">
-              <div class="field-group">
-                <label>Sample Fee: $</label>
-                <input type="text" class="field-line" />
-              </div>
-              <div class="field-group">
-                <label>Sample ETA:</label>
-                <input type="text" class="field-line" />
-              </div>
-              <div class="field-group">
-                <label>Status:</label>
-                <input type="text" class="field-line" />
-              </div>
-            </div>
-          </div>
-          
-          <div class="section" style="margin-top: 45px;">
-            <div class="section-header">PRICING & PRODUCTION</div>
-            <div class="pricing-row" style="margin-top: 30px;">
-              <div class="field-group">
-                <label>Unit Price: $</label>
-                <input type="text" class="field-line" />
-              </div>
-              <div class="field-group">
-                <label>Total Quantity:</label>
-                <span class="filled-value">${totalQty} units</span>
-              </div>
-              <div class="field-group">
-                <label>Prod. Time:</label>
-                <input type="text" class="field-line" />
-              </div>
-            </div>
-            <div class="pricing-row" style="margin-top: 25px; margin-bottom: 25px;">
-              <div class="field-group">
-                <label>Shipping Air: $</label>
-                <input type="text" class="field-line" />
-              </div>
-              <div class="field-group">
-                <label>Shipping Boat: $</label>
-                <input type="text" class="field-line" />
-              </div>
-              <div class="field-group">
-                <label>Total Cost: $</label>
-                <input type="text" class="field-line" />
-              </div>
-            </div>
-          </div>
-          
-          <div class="section" style="margin-top: 45px;">
-            <h2>VARIANTS & QUANTITIES</h2>
-            <table style="margin-top: 15px;">
-              <thead>
-                <tr>
-                  <th style="width: 30%;">Variant/Size</th>
-                  <th style="width: 15%;">Qty</th>
-                  <th style="width: 55%;">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${variantsRows}
-                <tr class="total-row">
-                  <td><strong>TOTAL</strong></td>
-                  <td style="text-align: center;"><strong>${totalQty}</strong></td>
-                  <td></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          
-          <div class="section" style="margin-top: 45px;">
-            <h2>PRODUCTION NOTES</h2>
-            <div class="notes-box"></div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Order ${order.order_number} - Manufacturing Sheets</title>
-        <style>
-          @page { 
-            size: letter portrait; 
-            margin: 0.75in;
-          }
-          
-          @media print { 
-            .page-break { 
-              page-break-after: always;
-            }
-          }
-          
-          body { 
-            font-family: Arial, sans-serif;
-            color: #000;
-            margin: 0;
-            padding: 0;
-            font-size: 12pt;
-            background: white;
-          }
-          
-          .product-sheet { 
-            padding: 0;
-            max-width: 100%;
-            min-height: 100%;
-          }
-          
-          .header { 
-            text-align: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #000;
-          }
-          
-          .header-title {
-            font-size: 13pt;
-            letter-spacing: 2px;
-            color: #333;
-            margin-bottom: 12px;
-            font-weight: 600;
-          }
-          
-          .product-name { 
-            font-size: 20pt;
-            font-weight: bold;
-            margin: 15px 0;
-            color: #000;
-          }
-          
-          .header-details {
-            display: flex;
-            justify-content: center;
-            gap: 35px;
-            font-size: 11pt;
-            color: #333;
-            margin-top: 12px;
-          }
-          
-          .section {
-            margin-bottom: 30px;
-          }
-          
-          .section-header {
-            background: #e8f4f8;
-            padding: 10px;
-            text-align: center;
-            font-size: 13pt;
-            font-weight: bold;
-            letter-spacing: 0.5px;
-            color: #2c5282;
-            border-radius: 4px;
-          }
-          
-          h2 {
-            font-size: 12pt;
-            margin: 0 0 8px 0;
-            padding-bottom: 5px;
-            border-bottom: 1px solid #333;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: bold;
-          }
-          
-          .sample-row, .pricing-row {
-            display: flex;
-            gap: 35px;
-            margin: 20px 0;
-            padding: 0 10px;
-          }
-          
-          .field-group {
-            flex: 1;
-            display: flex;
-            align-items: baseline;
-            gap: 5px;
-          }
-          
-          .field-group label {
-            font-size: 12pt;
-            font-weight: 600;
-            white-space: nowrap;
-          }
-          
-          .field-line {
-            border: none;
-            border-bottom: 1px solid #333;
-            outline: none;
-            flex: 1;
-            min-width: 60px;
-            font-size: 11pt;
-            background: transparent;
-            padding-bottom: 3px;
-          }
-          
-          .filled-value {
-            font-weight: bold;
-            padding-left: 5px;
-            font-size: 12pt;
-          }
-          
-          table { 
-            width: 100%; 
-            border-collapse: collapse;
-            margin-top: 10px;
-            font-size: 11pt;
-          }
-          
-          th { 
-            background: #f5f5f5;
-            border: 1px solid #333;
-            padding: 12px 8px;
-            text-align: left;
-            font-weight: bold;
-          }
-          
-          td { 
-            border: 1px solid #333;
-            padding: 12px 8px;
-          }
-          
-          .total-row {
-            background: #f5f5f5;
-            font-weight: bold;
-          }
-          
-          .notes-box { 
-            border: 1px solid #333;
-            min-height: 280px;
-            padding: 15px;
-            background: white;
-            margin-top: 12px;
-          }
-        </style>
-      </head>
-      <body>
-        ${printHTML}
-      </body>
-      </html>
-    `;
-    
-    const printWindow = window.open('', '', 'width=800,height=600');
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
-      };
-    }
+    printManufacturingSheets(visibleProducts, order);
   };
 
   const getHistoryCount = (productId: string): number => {
@@ -1040,7 +821,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const getVisibleProducts = () => {
     const allProducts = getAllProducts();
     
-    // CLIENT: Only see products routed to 'client'
     if (isClient) {
       return allProducts.filter((product: any) => product.routed_to === 'client');
     }
@@ -1052,13 +832,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return allProducts;
   };
 
-  // Get products routed to client (for client count display)
   const getClientProducts = () => {
     const allProducts = getAllProducts();
     return allProducts.filter((product: any) => product.routed_to === 'client');
   };
 
-  // Use the extracted utility function
   const productCounts = getProductCounts(order);
 
   const allProductsPaid = order?.order_products?.length > 0 && 
@@ -1086,13 +864,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const visibleProducts = getVisibleProducts();
   const clientProducts = getClientProducts();
 
-  // FIXED: Look for sample files in BOTH places:
-  // 1. Direct order.order_media (for files with order_product_id = null)
-  // 2. Inside order_products.order_media (for files attached to first product with is_sample = true)
+  // Find sample files
   const existingSampleMedia = (() => {
     const samples: any[] = [];
     
-    // Check direct order_media (if any)
     if (order?.order_media) {
       order.order_media.forEach((m: any) => {
         if (m.is_sample === true || m.file_type === 'order_sample') {
@@ -1101,13 +876,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       });
     }
     
-    // Check inside each product's order_media for files marked as samples
     if (order?.order_products) {
       order.order_products.forEach((product: any) => {
         if (product.order_media) {
           product.order_media.forEach((m: any) => {
             if (m.is_sample === true) {
-              // Avoid duplicates (in case same file appears in both places)
               if (!samples.find((s: any) => s.id === m.id)) {
                 samples.push(m);
               }
@@ -1121,34 +894,34 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   })();
 
   // ========================================
-  // CLIENT VIEW - Simplified, read-only
+  // CLIENT VIEW
   // ========================================
   if (isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
-        {/* Client Header - Mobile Responsive */}
         <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-            <div className="flex flex-col gap-3 sm:gap-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h1 className="text-lg sm:text-2xl font-bold text-gray-900 break-words">
-                    Order {order.order_number}
-                  </h1>
-                  {order.order_name && (
-                    <p className="text-sm sm:text-base text-gray-500 break-words">{order.order_name}</p>
-                  )}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                    <Package className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">
+                      Order {order.order_number}
+                    </h1>
+                    {order.order_name && (
+                      <p className="text-gray-500">{order.order_name}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              {/* Order Total - Full width on mobile */}
+              
               {totalAmount > 0 && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-4 sm:px-6 py-3 rounded-xl border border-green-200">
-                  <p className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">Order Total</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-green-700 text-center sm:text-left">
+                <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
+                  <p className="text-sm text-gray-500">Order Total</p>
+                  <p className="text-3xl font-bold text-green-700">
                     ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                 </div>
@@ -1157,23 +930,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-20">
-          {/* Products Section */}
-          <div className="space-y-4 sm:space-y-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
+          <div className="space-y-6">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="w-5 h-5 text-gray-400" />
               Products for Your Review
             </h2>
 
             {clientProducts.length === 0 ? (
-              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 sm:p-8 text-center">
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                  <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="w-8 h-8 text-gray-400" />
                 </div>
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   No Products Pending Review
                 </h3>
-                <p className="text-sm sm:text-base text-gray-500">
+                <p className="text-gray-500">
                   All products have been reviewed or are still being processed.
                 </p>
               </div>
@@ -1181,7 +953,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               clientProducts.map((product: any) => {
                 const items = product.order_items || [];
                 const media = product.order_media || [];
-
+                
                 return (
                   <AdminProductCard
                     key={product.id}
@@ -1202,11 +974,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }
 
   // ========================================
-  // ADMIN/MANUFACTURER VIEW - Full functionality
+  // ADMIN/MANUFACTURER VIEW
   // ========================================
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
-      {/* Order Header - Shows CLIENT total for admins */}
       <OrderHeader 
         order={order} 
         totalAmount={totalAmount}
@@ -1216,19 +987,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         allProductsPaid={allProductsPaid}
       />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3 pb-20">
-        {/* Client & Manufacturer Info Cards - HIDE FOR MANUFACTURERS */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
+        {/* Client & Manufacturer Info Cards */}
         {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-3 sm:mb-4">
-            {/* Client Card with Edit Button */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow relative">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            {/* Client Card */}
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
                   onClick={() => {
                     setIsEditingClient(true);
                     setSelectedClientId(order.client?.id || '');
                   }}
-                  className="absolute top-3 right-3 sm:top-4 sm:right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                  className="absolute top-4 right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
                   title="Edit Client"
                 >
                   <Edit2 className="w-4 h-4" />
@@ -1236,9 +1007,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
               
               {isEditingClient ? (
-                <div className="space-y-2 sm:space-y-3">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs sm:text-sm text-gray-500">Select New Client</p>
+                    <p className="text-sm text-gray-500">Select New Client</p>
                     <button
                       onClick={() => {
                         setIsEditingClient(false);
@@ -1252,7 +1023,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <select
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full px-2 sm:px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     disabled={savingClient}
                   >
                     <option value="">Select a client...</option>
@@ -1269,23 +1040,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         setSelectedClientId(order.client?.id || '');
                       }}
                       disabled={savingClient}
-                      className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      className="flex-1 px-3 py-1 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleClientChange}
                       disabled={!selectedClientId || selectedClientId === order.client?.id || savingClient}
-                      className="flex-1 px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1 sm:gap-2"
+                      className="flex-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {savingClient ? (
                         <>
-                          <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                          <span className="hidden sm:inline">Saving...</span>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Saving...
                         </>
                       ) : (
                         <>
-                          <Check className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <Check className="w-4 h-4" />
                           Save
                         </>
                       )}
@@ -1299,17 +1070,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building className="w-5 h-5 text-blue-600" />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm text-gray-500">Client</p>
-                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{order.client?.name}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-500">Client</p>
+                      <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                    <Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="w-4 h-4 flex-shrink-0" />
                     <span className="truncate">{order.client?.email}</span>
                   </div>
                 </>
@@ -1317,25 +1088,25 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow">
-              <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Building className="w-5 h-5 text-green-600" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-500">Manufacturer</p>
-                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-500">Manufacturer</p>
+                  <p className="font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                <Mail className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Mail className="w-4 h-4 flex-shrink-0" />
                 <span className="truncate">{order.manufacturer?.email}</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* ORDER-LEVEL SAMPLE REQUEST SECTION - UPDATED WITH ROUTING */}
+        {/* ORDER-LEVEL SAMPLE REQUEST SECTION */}
         {(isAdmin || isSuperAdmin || isManufacturer) && (
           <OrderSampleRequest
             orderId={id}
@@ -1368,7 +1139,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             readOnly={false}
             onSave={saveOrderSampleData}
             saving={savingOrderSample}
-            // NEW: Sample routing props
             sampleRoutedTo={order?.sample_routed_to || 'admin'}
             sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
             onRouteToManufacturer={sampleRouting.routeToManufacturer}
@@ -1388,6 +1158,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             visibleProducts={visibleProducts}
             onSaveAndRoute={handleSaveAllAndRoute}
             onPrintAll={handlePrintAll}
+            onUpdate={refetch}
           />
         )}
 
@@ -1403,34 +1174,34 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         />
 
         {/* Products Section */}
-        <div className="space-y-3 sm:space-y-4 md:space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
-            <h2 className="text-base sm:text-lg md:text-xl font-semibold text-gray-900">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
               {selectedProductId !== 'all' ? 'Product Detail' : 'Order Products'}
             </h2>
-
-            <div className="flex items-center gap-2 sm:gap-3">
+            
+            <div className="flex items-center gap-3">
               {isSuperAdmin && productCounts.withManufacturer > 0 && (
                 <button
                   onClick={() => setShowAllProducts(!showAllProducts)}
-                  className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg shadow-lg transition-all flex items-center gap-1.5 sm:gap-2 font-medium ${
-                    showAllProducts
-                      ? 'bg-amber-600 text-white hover:bg-amber-700'
+                  className={`px-4 py-2 rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium ${
+                    showAllProducts 
+                      ? 'bg-amber-600 text-white hover:bg-amber-700' 
                       : 'bg-purple-600 text-white hover:bg-purple-700'
                   }`}
                   title={showAllProducts ? 'Hide manufacturer products' : 'Show all products including those with manufacturer'}
                 >
                   {showAllProducts ? (
                     <>
-                      <EyeOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden md:inline">Hide Manufacturer Products</span>
-                      <span className="md:hidden">Hide</span>
+                      <EyeOff className="w-4 h-4" />
+                      <span className="hidden sm:inline">Hide Manufacturer Products</span>
+                      <span className="sm:hidden">Hide</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden md:inline">Show All Products</span>
-                      <span className="md:hidden">Show All</span>
+                      <Eye className="w-4 h-4" />
+                      <span className="hidden sm:inline">Show All Products</span>
+                      <span className="sm:hidden">Show All</span>
                     </>
                   )}
                 </button>
@@ -1439,10 +1210,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {visibleProducts.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-6 sm:p-8 text-center">
-              <Package className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
-              <p className="text-sm sm:text-base text-gray-500">
-                {selectedProductId !== 'all'
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
+              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">
+                {selectedProductId !== 'all' 
                   ? `Product not found.`
                   : `No products found in this order.`}
               </p>
@@ -1460,8 +1231,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
-              // FIXED: Only ACTUAL manufacturers see ManufacturerProductCard
-              // Admins ALWAYS see AdminProductCard with CLIENT prices
               if (isManufacturer) {
                 return (
                   <ManufacturerProductCard
@@ -1486,7 +1255,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 );
               }
               
-              // Admin/Super Admin ALWAYS sees AdminProductCard which shows CLIENT prices
               return (
                 <AdminProductCard
                   key={product.id}
@@ -1506,7 +1274,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
       
-      {/* Route Modal for individual products */}
+      {/* Modals */}
       <RouteModal
         isOpen={routeModal.isOpen}
         onClose={() => setRouteModal({ isOpen: false, product: null })}
@@ -1515,7 +1283,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* Save All Route Modal */}
       <SaveAllRouteModal
         isOpen={saveAllRouteModal.isOpen}
         isSaving={saveAllRouteModal.isSaving}
@@ -1525,7 +1292,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         userRole={userRole || undefined}
       />
 
-      {/* History Modal */}
       <HistoryModal
         isOpen={historyModal.isOpen}
         onClose={() => setHistoryModal({ isOpen: false, productId: '', productName: '' })}
