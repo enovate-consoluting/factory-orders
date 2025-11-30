@@ -1,9 +1,9 @@
 /**
- * Create Order Page - FIXED VERSION
- * UPDATED: Client selection uses autocomplete with keyboard navigation (arrow keys + enter)
- * FIXED: Order sample files now attach to first product so they show in detail page
- * FIXED: Order sample files now use correct file_type (document/image) not 'order_sample'
- * Last Modified: November 2025
+ * Create Order Page - /dashboard/orders/create
+ * Allows admins to create new orders with products and variants
+ * OPTIMIZED: Bulk DB inserts, parallel file uploads, sleek loading overlay
+ * Roles: Admin, Super Admin
+ * Last Modified: November 29, 2025
  */
 
 'use client'
@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRight, Search, X, Check } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2 } from 'lucide-react'
 
 // Import all our new shared components
 import { StepIndicator } from '../shared-components/StepIndicator'
@@ -70,12 +70,104 @@ interface OrderProduct {
 const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
 const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
 
+// Sleek loading overlay component
+function LoadingOverlay({ 
+  isVisible, 
+  currentStep, 
+  steps,
+  orderNumber
+}: { 
+  isVisible: boolean
+  currentStep: number
+  steps: string[]
+  orderNumber?: string
+}) {
+  if (!isVisible) return null
+
+  const isComplete = currentStep >= steps.length
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Blurred backdrop */}
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-purple-900/30 to-indigo-900/40 backdrop-blur-md" />
+      
+      {/* Content */}
+      <div className="relative">
+        {/* Glowing ring effect */}
+        <div className="absolute -inset-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-3xl opacity-20 blur-xl animate-pulse" />
+        
+        {/* Main card - compact and sleek */}
+        <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 min-w-[320px]">
+          {/* Header with spinner or checkmark */}
+          <div className="flex items-center gap-4 mb-4">
+            {isComplete ? (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
+                <CheckCircle2 className="w-7 h-7 text-white" />
+              </div>
+            ) : (
+              <div className="relative w-12 h-12">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 animate-pulse" />
+                <div className="absolute inset-1 rounded-full bg-white flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                </div>
+              </div>
+            )}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                {isComplete ? 'Complete!' : 'Processing...'}
+              </h3>
+              {orderNumber && (
+                <p className="text-sm font-mono text-blue-600">{orderNumber}</p>
+              )}
+            </div>
+          </div>
+          
+          {/* Progress steps - compact */}
+          <div className="space-y-2">
+            {steps.map((step, index) => {
+              const isDone = index < currentStep
+              const isActive = index === currentStep
+              
+              return (
+                <div 
+                  key={index}
+                  className={`flex items-center gap-3 transition-all duration-300 ${
+                    isDone ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-gray-300'
+                  }`}
+                >
+                  {isDone ? (
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  ) : isActive ? (
+                    <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full border-2 border-current flex-shrink-0" />
+                  )}
+                  <span className={`text-sm ${isDone || isActive ? 'font-medium' : ''}`}>
+                    {step}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CreateOrderPage() {
   const router = useRouter()
   const productDataRef = useRef<any>({})
   const [currentStep, setCurrentStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Smart loading overlay state
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false)
+  const [loadingStep, setLoadingStep] = useState(0)
+  const [loadingSteps, setLoadingSteps] = useState<string[]>([])
+  const [createdOrderNumber, setCreatedOrderNumber] = useState<string>('')
+  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null)
   
   // Client autocomplete refs and state
   const clientInputRef = useRef<HTMLInputElement>(null)
@@ -570,27 +662,96 @@ export default function CreateOrderPage() {
     }
   }
 
+  // OPTIMIZED: Upload single file helper (for parallel uploads)
+  const uploadFile = async (
+    file: File,
+    orderId: string,
+    productId: string | null,
+    userId: string | null,
+    fileIndex: number,
+    prefix: string,
+    isSample: boolean = false
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
+      const cleanName = sanitizeFileName(file.name)
+      const displayName = `${cleanName}-${prefix}-${String(fileIndex).padStart(3, '0')}.${fileExt}`
+      const filePath = productId 
+        ? `${orderId}/${productId}/${displayName}`
+        : `${orderId}/${displayName}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('order-media')
+        .upload(filePath, file)
+
+      if (uploadError) {
+        console.error('Error uploading file:', uploadError)
+        return { success: false, error: uploadError.message }
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('order-media')
+        .getPublicUrl(filePath)
+
+      await supabase
+        .from('order_media')
+        .insert({
+          order_id: orderId,
+          order_product_id: productId,
+          file_url: publicUrl,
+          file_type: file.type.startsWith('image/') ? 'image' : 'document',
+          is_sample: isSample,
+          uploaded_by: userId,
+          original_filename: file.name,
+          display_name: displayName
+        })
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error in uploadFile:', error)
+      return { success: false, error: String(error) }
+    }
+  }
+
+  // OPTIMIZED: Main submit handler with bulk inserts and parallel uploads
   const handleSubmit = async (isDraft = false) => {
-    console.log('=== HANDLE SUBMIT STARTED ===')
+    console.log('=== HANDLE SUBMIT STARTED (OPTIMIZED) ===')
     console.log('Draft mode:', isDraft)
-    console.log('Order name:', orderName)
-    console.log('Client:', selectedClient)
-    console.log('Manufacturer:', selectedManufacturer)
     
     setSaving(true)
+    setCreatedOrderNumber('') // Reset order number
+    
+    // Count total files for progress display
+    const totalProductFiles = orderProducts.reduce((sum, op) => sum + op.mediaFiles.length, 0)
+    const totalFiles = totalProductFiles + orderSampleFiles.length
+    
+    // Setup loading steps
+    const steps = [
+      'Creating order...',
+      `Saving ${orderProducts.length} product${orderProducts.length > 1 ? 's' : ''}...`,
+    ]
+    if (totalFiles > 0) {
+      steps.push(`Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''}...`)
+    }
+    steps.push('Finalizing...')
+    
+    setLoadingSteps(steps)
+    setLoadingStep(0)
+    
+    // Smart delay - only show overlay if operation takes > 500ms
+    loadingTimerRef.current = setTimeout(() => {
+      setShowLoadingOverlay(true)
+    }, 500)
     
     try {
       const userData = localStorage.getItem('user')
       const user = userData ? JSON.parse(userData) : null
       
-      const { data: clientData } = await supabase
-        .from('clients')
-        .select('name')
-        .eq('id', selectedClient)
-        .single()
+      // Get client name for order prefix
+      const clientName = clients.find(c => c.id === selectedClient)?.name
+      const clientPrefix = clientName?.substring(0, 3).toUpperCase() || 'ORD'
       
-      const clientPrefix = clientData?.name?.substring(0, 3).toUpperCase() || 'ORD'
-      
+      // Get last order number
       const { data: lastOrder } = await supabase
         .from('orders')
         .select('order_number')
@@ -610,257 +771,223 @@ export default function CreateOrderPage() {
         ? `DRAFT-${nextNumber.toString().padStart(6, '0')}`
         : `${clientPrefix}-${nextNumber.toString().padStart(6, '0')}`
 
-      // Check if sample is requested based on whether notes or files are provided
+      // Show order number in overlay immediately
+      setCreatedOrderNumber(orderNumber)
+
+      // Check if sample is requested
       const hasSampleRequest = (orderSampleNotes && orderSampleNotes.trim() !== '') || orderSampleFiles.length > 0
 
-      // Determine order status
-      let orderStatus = 'draft'
-      if (!isDraft) {
-        orderStatus = 'sent_to_manufacturer'
-        console.log('Status: sent_to_manufacturer (order submitted)')
-      } else {
-        console.log('Status: draft (saved as draft)')
+      // Determine order status - EXPLICIT for debugging
+      // When NOT a draft, we set to 'sent_to_manufacturer'
+      const orderStatus = isDraft ? 'draft' : 'sent_to_manufacturer'
+      
+      console.log('========================================')
+      console.log('ORDER STATUS BEING SET:', orderStatus)
+      console.log('isDraft:', isDraft)
+      console.log('========================================')
+      
+      // Step 1: Create order with EXPLICIT status
+      const orderInsertData = {
+        order_number: orderNumber,
+        order_name: orderName || 'New Order',
+        client_id: selectedClient,
+        manufacturer_id: selectedManufacturer,
+        status: orderStatus, // This should be 'sent_to_manufacturer' when not draft
+        workflow_status: orderStatus, // Also set workflow_status to match
+        created_by: user?.id,
+        sample_required: hasSampleRequest,
+        sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
+        sample_eta: orderSampleETA || null,
+        sample_status: orderSampleStatus,
+        sample_notes: orderSampleNotes || null
       }
       
-      console.log('Final order status:', orderStatus)
-      console.log('Has sample request:', hasSampleRequest)
+      console.log('Order insert data:', JSON.stringify(orderInsertData, null, 2))
       
-      // Create order with order-level sample fields
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .insert({
-          order_number: orderNumber,
-          order_name: orderName || 'New Order',
-          client_id: selectedClient,
-          manufacturer_id: selectedManufacturer,
-          status: orderStatus,
-          created_by: user?.id,
-          // Order-level sample fields
-          sample_required: hasSampleRequest, // Auto-determine based on content
-          sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
-          sample_eta: orderSampleETA || null,
-          sample_status: orderSampleStatus,
-          sample_notes: orderSampleNotes || null
-        })
+        .insert(orderInsertData)
         .select()
         .single()
 
       if (orderError) {
-        console.error('Database error creating order:', orderError)
         throw new Error(orderError.message || 'Failed to create order')
       }
 
       console.log('Order created successfully!')
       console.log('Order ID:', orderData.id)
-      console.log('Order Number:', orderNumber)
+      console.log('Order status in DB:', orderData.status)
+      console.log('Order workflow_status in DB:', orderData.workflow_status)
+      
+      setLoadingStep(1) // Move to "Saving products..."
       
       // Create manufacturer notification if not a draft
       if (!isDraft && orderData && selectedManufacturer) {
-        console.log('🔔 Creating notification for manufacturer...')
         await createManufacturerNotification(
           orderData.id,
           selectedManufacturer,
           orderNumber,
           hasSampleRequest
         )
-      } else {
-        console.log('ℹ️ No notification needed (draft or missing data)')
       }
       
-      // Save products
+      // Step 2: BULK INSERT all products at once
       const orderNumeric = orderNumber.includes('-') 
         ? orderNumber.split('-')[1]
         : nextNumber.toString().padStart(6, '0')
       
-      console.log(`Saving ${orderProducts.length} products...`)
+      // Product status should also be 'sent_to_manufacturer' when not draft
+      const productStatus = isDraft ? 'pending' : 'sent_to_manufacturer'
+      const routedTo = isDraft ? 'admin' : 'manufacturer'
       
-      // Track global bulk file counter across all products
-      let globalBulkFileCounter = 1
+      console.log('Product status being set:', productStatus)
+      console.log('Routed to:', routedTo)
       
-      // FIXED: Track the first product ID for order-level sample files
-      let firstProductId: string | null = null
-      
-      for (const orderProduct of orderProducts) {
-        console.log('Saving product:', orderProduct.product.title)
-        
+      const productsToInsert = orderProducts.map(orderProduct => {
         const productCode = orderProduct.product.title?.substring(0, 3).toUpperCase() || 'PRD'
         const descCode = orderProduct.productDescription?.substring(0, 3).toUpperCase() || 'GEN'
         const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
         
-        if (!orderProduct.product.id) {
-          console.error('Product ID is missing for:', orderProduct.product.title)
-          showNotification('error', `Failed to save product ${orderProduct.product.title}: Missing product ID`)
-          continue
+        return {
+          order_id: orderData.id,
+          product_id: orderProduct.product.id,
+          product_order_number: finalProductOrderNumber,
+          description: orderProduct.productDescription || '',
+          product_status: productStatus,
+          routed_to: routedTo
         }
+      })
+      
+      console.log(`Bulk inserting ${productsToInsert.length} products...`)
+      
+      const { data: insertedProducts, error: productsError } = await supabase
+        .from('order_products')
+        .insert(productsToInsert)
+        .select()
+
+      if (productsError) {
+        throw new Error(`Failed to save products: ${productsError.message}`)
+      }
+
+      console.log('Products inserted:', insertedProducts?.length)
+      
+      // Step 3: BULK INSERT all order items at once
+      const allItemsToInsert: any[] = []
+      
+      orderProducts.forEach((orderProduct, index) => {
+        const productData = insertedProducts?.[index]
+        if (!productData) return
         
-        const { data: productData, error: productError } = await supabase
-          .from('order_products')
-          .insert({
-            order_id: orderData.id,
-            product_id: orderProduct.product.id,
-            product_order_number: finalProductOrderNumber,
-            description: orderProduct.productDescription || '',
-            product_status: isDraft ? 'pending' : 'sent_to_manufacturer',
-            routed_to: isDraft ? 'admin' : 'manufacturer'
+        orderProduct.items.forEach(item => {
+          allItemsToInsert.push({
+            order_product_id: productData.id,
+            variant_combo: item.variantCombo,
+            quantity: item.quantity || 0,
+            notes: item.notes || '',
+            admin_status: 'pending',
+            manufacturer_status: 'pending'
           })
-          .select()
-          .single()
-
-        if (productError) {
-          console.error('Error saving product:', productError)
-          showNotification('error', `Failed to save product ${orderProduct.product.title}: ${productError.message}`)
-          continue
-        }
-
-        console.log('Product saved with ID:', productData.id)
-        console.log('Product Order Number:', finalProductOrderNumber)
+        })
+      })
+      
+      if (allItemsToInsert.length > 0) {
+        console.log(`Bulk inserting ${allItemsToInsert.length} items...`)
         
-        // FIXED: Store the first product ID for order-level sample files
-        if (!firstProductId) {
-          firstProductId = productData.id
-          console.log('First product ID stored for sample files:', firstProductId)
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(allItemsToInsert)
+
+        if (itemsError) {
+          console.error('Error bulk inserting items:', itemsError)
         }
-
-        // Save variants
-        const itemsToSave = orderProduct.items.map((item: any) => ({
-          order_product_id: productData.id,
-          variant_combo: item.variantCombo,
-          quantity: item.quantity || 0,
-          notes: item.notes || '',
-          admin_status: 'pending',
-          manufacturer_status: 'pending'
-        }))
-
-        console.log(`Saving ${itemsToSave.length} variant items...`)
-
-        if (itemsToSave.length > 0) {
-          const { error: itemsError } = await supabase
-            .from('order_items')
-            .insert(itemsToSave)
-
-          if (itemsError) {
-            console.error('Error saving items:', itemsError)
-          } else {
-            console.log('Items saved successfully')
-          }
-        }
-
-        // Upload media files (bulk files for products)
-        if (orderProduct.mediaFiles && orderProduct.mediaFiles.length > 0) {
-          console.log(`Uploading ${orderProduct.mediaFiles.length} bulk files...`)
+      }
+      
+      // Step 4: PARALLEL file uploads
+      if (totalFiles > 0) {
+        setLoadingStep(2) // Move to "Uploading files..."
+        console.log(`Starting parallel upload of ${totalFiles} files...`)
+        
+        const uploadPromises: Promise<{ success: boolean; error?: string }>[] = []
+        let globalFileIndex = 1
+        
+        // Product media files
+        orderProducts.forEach((orderProduct, productIndex) => {
+          const productData = insertedProducts?.[productIndex]
+          if (!productData) return
           
-          for (const file of orderProduct.mediaFiles) {
-            try {
-              const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
-              const cleanName = sanitizeFileName(file.name)
-              // New naming: originalname-bulk-001.ext (using global counter)
-              const displayName = `${cleanName}-bulk-${String(globalBulkFileCounter).padStart(3, '0')}.${fileExt}`
-              const filePath = `${orderData.id}/${productData.id}/${displayName}`
-              
-              console.log('Uploading bulk file:', displayName)
-
-              const { error: uploadError } = await supabase.storage
-                .from('order-media')
-                .upload(filePath, file)
-
-              if (uploadError) {
-                console.error('Error uploading file:', uploadError)
-                continue
-              }
-
-              const { data: { publicUrl } } = supabase.storage
-                .from('order-media')
-                .getPublicUrl(filePath)
-
-              await supabase
-                .from('order_media')
-                .insert({
-                  order_product_id: productData.id,
-                  file_url: publicUrl,
-                  file_type: file.type.startsWith('image/') ? 'image' : 'document',
-                  uploaded_by: user?.id,
-                  original_filename: file.name,
-                  display_name: displayName
-                })
-
-              console.log('Bulk file uploaded:', displayName)
-              globalBulkFileCounter++
-            } catch (mediaError) {
-              console.error('Error with media:', mediaError)
-            }
-          }
-        }
-      }
-      
-      // FIXED: Upload order-level sample files AFTER products are created
-      // Attach to first product so they show up in detail page queries
-      if (orderSampleFiles.length > 0 && firstProductId) {
-        console.log(`Uploading ${orderSampleFiles.length} order-level sample files...`)
-        console.log('Attaching to first product ID:', firstProductId)
+          orderProduct.mediaFiles.forEach((file) => {
+            uploadPromises.push(
+              uploadFile(
+                file,
+                orderData.id,
+                productData.id,
+                user?.id,
+                globalFileIndex++,
+                'bulk',
+                false
+              )
+            )
+          })
+        })
         
-        for (let i = 0; i < orderSampleFiles.length; i++) {
-          const file = orderSampleFiles[i]
-          try {
-            const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file'
-            const cleanName = sanitizeFileName(file.name)
-            // New naming: originalname-sample-001.ext
-            const displayName = `${cleanName}-sample-${String(i + 1).padStart(3, '0')}.${fileExt}`
-            // Store in order folder (not product subfolder) for clarity
-            const filePath = `${orderData.id}/${displayName}`
-            
-            console.log('Uploading order sample file:', displayName)
-
-            const { error: uploadError } = await supabase.storage
-              .from('order-media')
-              .upload(filePath, file)
-
-            if (uploadError) {
-              console.error('Error uploading order sample file:', uploadError)
-              continue
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-              .from('order-media')
-              .getPublicUrl(filePath)
-
-            // FIXED: Attach to first product AND set is_sample flag
-            // This ensures the file shows up in detail page queries
-            await supabase
-              .from('order_media')
-              .insert({
-                order_id: orderData.id,
-                order_product_id: firstProductId, // FIXED: Link to first product!
-                file_url: publicUrl,
-                file_type: file.type.startsWith('image/') ? 'image' : 'document',
-                is_sample: true, // Mark as order-level sample
-                uploaded_by: user?.id,
-                original_filename: file.name,
-                display_name: displayName
-              })
-
-            console.log('Order sample file uploaded and linked to product:', displayName)
-          } catch (error) {
-            console.error('Error uploading order sample file:', error)
-          }
+        // Order-level sample files (attach to first product)
+        const firstProductId = insertedProducts?.[0]?.id || null
+        if (orderSampleFiles.length > 0 && firstProductId) {
+          orderSampleFiles.forEach((file, index) => {
+            uploadPromises.push(
+              uploadFile(
+                file,
+                orderData.id,
+                firstProductId,
+                user?.id,
+                index + 1,
+                'sample',
+                true
+              )
+            )
+          })
         }
-      } else if (orderSampleFiles.length > 0 && !firstProductId) {
-        console.error('Cannot upload order sample files: No products were created')
-        showNotification('error', 'Sample files could not be uploaded - no products in order')
+        
+        // Wait for all uploads to complete in parallel
+        const uploadResults = await Promise.all(uploadPromises)
+        const failedUploads = uploadResults.filter(r => !r.success)
+        
+        if (failedUploads.length > 0) {
+          console.warn(`${failedUploads.length} file(s) failed to upload`)
+        }
+        
+        console.log(`File uploads complete: ${uploadResults.length - failedUploads.length}/${uploadResults.length} succeeded`)
       }
       
-      console.log('All products and items saved!')
+      // Step 5: Finalize
+      setLoadingStep(steps.length - 1) // Move to "Finalizing..."
+      
       console.log('✅ Order creation complete!')
       
+      // Clear the loading timer
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current)
+      }
+      
+      // Brief pause to show completion
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      setShowLoadingOverlay(false)
       showNotification('success', `Order ${orderNumber} ${isDraft ? 'saved as draft' : 'created'} successfully!`)
       
-      console.log('Navigating to orders list in 1.5 seconds...')
-      
       setTimeout(() => {
-        console.log('Now navigating to /dashboard/orders')
         router.push('/dashboard/orders')
-      }, 1500)
+      }, 1000)
+      
     } catch (error) {
       console.error('Error creating order:', error)
+      
+      // Clear the loading timer
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current)
+      }
+      setShowLoadingOverlay(false)
+      
       const errorMessage = error instanceof Error ? error.message : 'Error creating order'
       showNotification('error', errorMessage)
       setSaving(false)
@@ -909,6 +1036,14 @@ export default function CreateOrderPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Smart Loading Overlay */}
+      <LoadingOverlay 
+        isVisible={showLoadingOverlay}
+        currentStep={loadingStep}
+        steps={loadingSteps}
+        orderNumber={createdOrderNumber}
+      />
+
       {/* Notification Toast */}
       {notification.show && (
         <div className={`
@@ -1203,10 +1338,7 @@ export default function CreateOrderPage() {
                 className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {saving && (
-                  <svg className="animate-spin h-4 w-4 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 )}
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
@@ -1216,10 +1348,7 @@ export default function CreateOrderPage() {
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 {saving && (
-                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 )}
                 {saving ? 'Submitting...' : 'Submit Order'}
               </button>

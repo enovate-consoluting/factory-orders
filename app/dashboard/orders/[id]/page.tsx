@@ -1,8 +1,10 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
- * FIXED: Sample data now saves correctly via direct data passing
- * FIXED: Notes go to audit log, not accumulated in sample_notes
- * Last Modified: Nov 26 2025
+ * UPDATED: Control Panel and Product Distribution moved ABOVE Sample Request
+ * UPDATED: Passes sample data to useBulkRouting for save & route
+ * UPDATED: Admin redirects to orders list after routing
+ * FIXED: Sample section saves and routes with products
+ * Last Modified: November 30, 2025
  */
 
 'use client';
@@ -12,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
 import { useSampleRouting } from './hooks/useSampleRouting';
+import { useBulkRouting } from './hooks/useBulkRouting';
 
 // Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
@@ -21,6 +24,9 @@ import { ProductDistributionBar } from './components/shared/ProductDistributionB
 // Product Cards
 import { AdminProductCard } from './components/admin/AdminProductCard';
 import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
+
+// Control Panels
+import { AdminControlPanel } from './components/admin/AdminControlPanel';
 import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
 
 // Modals
@@ -101,7 +107,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   // State for individual product selection
   const [selectedProductId, setSelectedProductId] = useState<string>('all');
   
-  // Order-level sample state (for display, not for saving)
+  // Order-level sample state
   const [orderSampleFee, setOrderSampleFee] = useState('');
   const [orderSampleETA, setOrderSampleETA] = useState('');
   const [orderSampleStatus, setOrderSampleStatus] = useState('pending');
@@ -139,6 +145,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   // Track manufacturer card refs
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
+  
+  // Track admin card refs
+  const adminCardRefs = useRef<Map<string, any>>(new Map());
 
   // Calculate total based on role
   const totalAmount = calculateOrderTotal(order, userRole || '');
@@ -148,6 +157,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
+
+  // Helper functions
+  const getAllProducts = () => {
+    if (!order?.order_products) return [];
+    return order.order_products;
+  };
+
+  const getVisibleProducts = () => {
+    const allProducts = getAllProducts();
+    
+    if (isClient) {
+      return allProducts.filter((product: any) => product.routed_to === 'client');
+    }
+    
+    if (selectedProductId !== 'all') {
+      return allProducts.filter((product: any) => product.id === selectedProductId);
+    }
+    
+    if (isManufacturer) {
+      return allProducts.filter((product: any) => product.routed_to === 'manufacturer');
+    }
+    
+    if (showAllProducts) {
+      return allProducts;
+    }
+    
+    return allProducts.filter((product: any) => product.routed_to === 'admin');
+  };
+  
+  // Get products with admin (for AdminControlPanel)
+  const getAdminProducts = () => {
+    const allProducts = getAllProducts();
+    return allProducts.filter((product: any) => product.routed_to === 'admin');
+  };
 
   // Sample Routing Hook
   const sampleRouting = useSampleRouting(
@@ -161,6 +204,30 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     userRole || 'admin',
     refetch
   );
+
+  // Bulk Routing Hook - UPDATED: Pass sample files, notes, AND adminCardRefs
+  const bulkRouting = useBulkRouting({
+    orderId: id,
+    order,
+    products: getVisibleProducts(),
+    userRole: userRole || 'admin',
+    manufacturerCardRefs: manufacturerCardRefs,
+    adminCardRefs: adminCardRefs,
+    sampleRouting: {
+      routeToAdmin: sampleRouting.routeToAdmin,
+      routeToManufacturer: sampleRouting.routeToManufacturer,
+      routeToClient: sampleRouting.routeToClient
+    },
+    orderSampleData: {
+      fee: orderSampleFee,
+      eta: orderSampleETA,
+      status: orderSampleStatus
+    },
+    pendingSampleFiles: orderSampleFiles,
+    sampleNotes: orderSampleNotes,
+    onSuccess: refetch,
+    onRedirect: () => router.push('/dashboard/orders')
+  });
 
   useEffect(() => {
     const fetchSubManufacturers = async () => {
@@ -205,7 +272,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       setOrderSampleFee(order.sample_fee?.toString() || '');
       setOrderSampleETA(order.sample_eta || '');
       setOrderSampleStatus(order.sample_status || 'pending');
-      // Don't load notes into field - they show in history only
       setOrderSampleNotes('');
     }
   }, [order]);
@@ -312,7 +378,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  // Handler for order-level sample update (for parent state sync)
+  // Handler for order-level sample update
   const handleOrderSampleUpdate = (field: string, value: any) => {
     switch (field) {
       case 'sampleFee':
@@ -325,7 +391,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         setOrderSampleStatus(value);
         break;
       case 'sampleWorkflowStatus':
-        // handled by routing hook
         break;
       case 'sampleNotes':
         setOrderSampleNotes(value);
@@ -391,7 +456,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
   
-  // FIXED: Save order sample data - receives data directly from component
+  // Save order sample data (for Save Sample Section button)
   const saveOrderSampleData = async (data: SampleSaveData) => {
     if (!order) return;
     
@@ -401,10 +466,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       const roleName = userRole === 'super_admin' ? 'Admin' : 
                       userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
       
-      // Build change list for audit log
       const changes: string[] = [];
       
-      // Check fee change
       const newFee = data.fee ? parseFloat(data.fee) : null;
       const oldFee = order.sample_fee;
       if (newFee !== oldFee) {
@@ -417,7 +480,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
-      // Check ETA change
       const oldEta = order.sample_eta || '';
       if (data.eta !== oldEta) {
         if (oldEta && data.eta) {
@@ -429,23 +491,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
-      // Check status change
       const oldStatus = order.sample_status || 'pending';
       if (data.status !== oldStatus) {
         changes.push(`Status: ${oldStatus} → ${data.status}`);
       }
       
-      // If there's a note, add it
       if (data.notes && data.notes.trim()) {
         changes.push(`Note from ${roleName}: "${data.notes.trim()}"`);
       }
       
-      // If there are files to upload
       if (orderSampleFiles.length > 0) {
         changes.push(`${orderSampleFiles.length} file(s) uploaded`);
       }
       
-      // Update database - DO NOT save notes to sample_notes (goes to audit only)
       const updateData: any = {
         sample_required: true,
         sample_fee: newFee,
@@ -454,25 +512,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         sample_workflow_status: data.status || 'pending'
       };
       
-      console.log('Saving sample data:', updateData);
+      // SAVE NOTES TO sample_notes column (append to existing)
+      if (data.notes && data.notes.trim()) {
+        const timestamp = new Date().toLocaleDateString();
+        const newNote = `[${timestamp} - ${roleName}] ${data.notes.trim()}`;
+        const existingNotes = order.sample_notes || '';
+        updateData.sample_notes = existingNotes 
+          ? `${existingNotes}\n\n${newNote}`
+          : newNote;
+      }
       
       const { error: updateError } = await supabase
         .from('orders')
         .update(updateData)
         .eq('id', order.id);
       
-      if (updateError) {
-        console.error('Error updating order sample:', updateError);
-        throw updateError;
-      }
+      if (updateError) throw updateError;
       
-      // Upload sample files if any
       if (orderSampleFiles.length > 0) {
-        for (let i = 0; i < orderSampleFiles.length; i++) {
-          const file = orderSampleFiles[i];
+        for (const file of orderSampleFiles) {
           const timestamp = Date.now();
           const randomStr = Math.random().toString(36).substring(2, 8);
-          
           const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
           const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
           const uniqueFileName = `${fileNameWithoutExt}_sample_${timestamp}_${randomStr}.${fileExt}`;
@@ -504,7 +564,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
-      // Create audit log entry if there were any changes
       if (changes.length > 0) {
         await supabase.from('audit_log').insert({
           user_id: user.id || crypto.randomUUID(),
@@ -518,6 +577,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
       
       setOrderSampleFiles([]);
+      setOrderSampleNotes('');
       await refetch();
       
     } catch (error) {
@@ -615,163 +675,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     });
   };
 
-  // SAVE ALL & ROUTE handler
+  // Save All & Route handler
   const handleSaveAllRoute = async (selectedRoute: string, notes?: string) => {
     setSaveAllRouteModal(prev => ({ ...prev, isSaving: true }));
     
-    try {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const visibleProducts = getVisibleProducts();
-      
-      console.log('=== STARTING SAVE ALL & ROUTE ===');
-      console.log(`Processing ${visibleProducts.length} products`);
-      
-      // STEP 1: Save order-level sample data if manufacturer made changes
-      if (isManufacturer && (orderSampleFee || orderSampleETA)) {
-        console.log('Step 1: Saving order-level sample data...');
-        const updateData: any = {
-          sample_required: true,
-          sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
-          sample_eta: orderSampleETA || null,
-          sample_status: orderSampleStatus || 'pending',
-          sample_workflow_status: orderSampleStatus || 'pending'
-        };
-        
-        await supabase
-          .from('orders')
-          .update(updateData)
-          .eq('id', order.id);
-        
-        console.log('Order sample saved');
-      }
-      
-      // STEP 2: Process all products
-      if (isManufacturer) {
-        for (let i = 0; i < visibleProducts.length; i++) {
-          const product = visibleProducts[i];
-          console.log(`\nStep 2.${i + 1}: Processing product ${product.product_order_number}`);
-          
-          const cardRef = manufacturerCardRefs.current.get(product.id);
-          
-          if (cardRef && typeof cardRef.saveAll === 'function') {
-            console.log('Calling saveAll on manufacturer card...');
-            const success = await cardRef.saveAll();
-            if (!success) {
-              console.error('Failed to save product data');
-            }
-          }
-          
-          // Apply routing after save
-          let productUpdate: any = {};
-          
-          switch (selectedRoute) {
-            case 'send_to_admin':
-              productUpdate.product_status = 'pending_admin';
-              productUpdate.routed_to = 'admin';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              break;
-            case 'in_production':
-              productUpdate.product_status = 'in_production';
-              productUpdate.routed_to = 'manufacturer';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              productUpdate.is_locked = true;
-              break;
-            case 'shipped':
-              productUpdate.product_status = 'shipped';
-              productUpdate.routed_to = 'admin';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              productUpdate.shipped_date = new Date().toISOString();
-              break;
-          }
-          
-          // Add routing note to audit log only (not to product notes)
-          if (notes) {
-            await supabase.from('audit_log').insert({
-              user_id: user.id || crypto.randomUUID(),
-              user_name: user.name || user.email || 'Manufacturer',
-              action_type: 'product_routed_' + selectedRoute,
-              target_type: 'order_product',
-              target_id: product.id,
-              new_value: `Route note: ${notes}`,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          if (Object.keys(productUpdate).length > 0) {
-            await supabase
-              .from('order_products')
-              .update(productUpdate)
-              .eq('id', product.id);
-          }
-        }
-      } else {
-        // Admin routing
-        for (const product of visibleProducts) {
-          let productUpdate: any = {};
-          
-          switch (selectedRoute) {
-            case 'approve_for_production':
-              productUpdate.product_status = 'approved_for_production';
-              productUpdate.routed_to = 'manufacturer';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              productUpdate.is_locked = false;
-              break;
-            case 'request_sample':
-              productUpdate.sample_required = true;
-              productUpdate.product_status = 'sample_requested';
-              productUpdate.routed_to = 'manufacturer';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              break;
-            case 'send_for_approval':
-              productUpdate.requires_client_approval = true;
-              productUpdate.product_status = 'pending_client_approval';
-              productUpdate.routed_to = 'client';
-              productUpdate.routed_at = new Date().toISOString();
-              productUpdate.routed_by = user.id || null;
-              break;
-          }
-          
-          // Add routing note to audit log only
-          if (notes) {
-            await supabase.from('audit_log').insert({
-              user_id: user.id || crypto.randomUUID(),
-              user_name: user.name || user.email || 'Admin',
-              action_type: 'product_routed_' + selectedRoute,
-              target_type: 'order_product',
-              target_id: product.id,
-              new_value: `Route note: ${notes}`,
-              timestamp: new Date().toISOString()
-            });
-          }
-          
-          await supabase
-            .from('order_products')
-            .update(productUpdate)
-            .eq('id', product.id);
-        }
-      }
-      
-      console.log('=== SAVE ALL & ROUTE COMPLETED ===');
-      setSaveAllRouteModal({ isOpen: false, isSaving: false });
-      
-      if (isManufacturer && (selectedRoute === 'send_to_admin' || selectedRoute === 'shipped')) {
-        setTimeout(() => {
-          router.push('/dashboard/orders');
-        }, 500);
-      } else {
-        await refetch();
-      }
-      
-    } catch (error) {
-      console.error('ERROR IN SAVE ALL & ROUTE:', error);
-      alert('Error occurred while saving. Please try again.');
-      setSaveAllRouteModal(prev => ({ ...prev, isSaving: false }));
+    console.log('=== STARTING SAVE ALL & ROUTE ===');
+    console.log('Route option:', selectedRoute);
+    console.log('Products to process:', getVisibleProducts().length);
+    console.log('Sample data:', { fee: orderSampleFee, eta: orderSampleETA, files: orderSampleFiles.length });
+    
+    const success = await bulkRouting.saveAllAndRoute(selectedRoute, notes);
+    
+    if (success) {
+      // Clear sample files after successful save
+      setOrderSampleFiles([]);
+      setOrderSampleNotes('');
+    } else if (bulkRouting.state.error) {
+      alert(`Error: ${bulkRouting.state.error}`);
     }
+    
+    setSaveAllRouteModal({ isOpen: false, isSaving: false });
   };
   
   // Print handler
@@ -813,25 +736,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return currentCount > viewedCount;
   };
 
-  const getAllProducts = () => {
-    if (!order?.order_products) return [];
-    return order.order_products;
-  };
-
-  const getVisibleProducts = () => {
-    const allProducts = getAllProducts();
-    
-    if (isClient) {
-      return allProducts.filter((product: any) => product.routed_to === 'client');
-    }
-    
-    if (selectedProductId !== 'all') {
-      return allProducts.filter((product: any) => product.id === selectedProductId);
-    }
-    
-    return allProducts;
-  };
-
   const getClientProducts = () => {
     const allProducts = getAllProducts();
     return allProducts.filter((product: any) => product.routed_to === 'client');
@@ -863,6 +767,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
   const clientProducts = getClientProducts();
+  const adminProducts = getAdminProducts();
 
   // Find sample files
   const existingSampleMedia = (() => {
@@ -893,9 +798,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return samples;
   })();
 
-  // ========================================
   // CLIENT VIEW
-  // ========================================
   if (isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
@@ -973,9 +876,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  // ========================================
   // ADMIN/MANUFACTURER VIEW
-  // ========================================
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
       <OrderHeader 
@@ -1106,7 +1007,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         )}
 
-        {/* ORDER-LEVEL SAMPLE REQUEST SECTION */}
+        {/* CONTROL PANEL - Admin (moved ABOVE sample request) */}
+        {(isAdmin || isSuperAdmin) && !isManufacturer && adminProducts.length > 0 && (
+          <AdminControlPanel
+            order={order}
+            visibleProducts={adminProducts}
+            onSaveAndRoute={handleSaveAllAndRoute}
+            onPrintAll={handlePrintAll}
+            totalAmount={totalAmount}
+          />
+        )}
+
+        {/* CONTROL PANEL - Manufacturer (moved ABOVE sample request) */}
+        {userRole === 'manufacturer' && visibleProducts.length > 0 && (
+          <ManufacturerControlPanel
+            order={order}
+            visibleProducts={visibleProducts}
+            onSaveAndRoute={handleSaveAllAndRoute}
+            onPrintAll={handlePrintAll}
+            onUpdate={refetch}
+          />
+        )}
+
+        {/* PRODUCT DISTRIBUTION BAR (moved ABOVE sample request) */}
+        <ProductDistributionBar
+          products={allProducts}
+          selectedProductId={selectedProductId}
+          onProductSelect={setSelectedProductId}
+          showAllProducts={showAllProducts}
+          onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
+          isSuperAdmin={isSuperAdmin}
+          counts={productCounts}
+        />
+
+        {/* ORDER-LEVEL SAMPLE REQUEST SECTION (now BELOW control panel and distribution) */}
         {(isAdmin || isSuperAdmin || isManufacturer) && (
           <OrderSampleRequest
             orderId={id}
@@ -1116,6 +1050,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             sampleNotes={orderSampleNotes}
             sampleFiles={orderSampleFiles}
             existingMedia={existingSampleMedia}
+            existingSampleNotes={order?.sample_notes || ''}
             onUpdate={handleOrderSampleUpdate}
             onFileUpload={handleOrderSampleFileUpload}
             onFileRemove={removeOrderSampleFile}
@@ -1150,28 +1085,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             isRouting={sampleRouting.isRouting}
           />
         )}
-
-        {/* Manufacturer Control Panel */}
-        {userRole === 'manufacturer' && visibleProducts.length > 0 && (
-          <ManufacturerControlPanel
-            order={order}
-            visibleProducts={visibleProducts}
-            onSaveAndRoute={handleSaveAllAndRoute}
-            onPrintAll={handlePrintAll}
-            onUpdate={refetch}
-          />
-        )}
-
-        {/* Product Distribution Bar */}
-        <ProductDistributionBar
-          products={allProducts}
-          selectedProductId={selectedProductId}
-          onProductSelect={setSelectedProductId}
-          showAllProducts={showAllProducts}
-          onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
-          isSuperAdmin={isSuperAdmin}
-          counts={productCounts}
-        />
 
         {/* Products Section */}
         <div className="space-y-4 sm:space-y-6">
@@ -1215,7 +1128,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <p className="text-gray-500">
                 {selectedProductId !== 'all' 
                   ? `Product not found.`
-                  : `No products found in this order.`}
+                  : isManufacturer
+                  ? `No products assigned to you yet.`
+                  : `No products with admin. Check "Show All Products" to see products with manufacturer.`}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
@@ -1258,6 +1173,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               return (
                 <AdminProductCard
                   key={product.id}
+                  ref={(ref: any) => {
+                    if (ref) {
+                      adminCardRefs.current.set(product.id, ref);
+                    }
+                  }}
                   product={product}
                   items={items}
                   media={media}
@@ -1290,6 +1210,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         onRoute={handleSaveAllRoute}
         productCount={visibleProducts.length}
         userRole={userRole || undefined}
+        routeOptions={bulkRouting.getRouteOptions()}
+        currentStep={bulkRouting.state.currentStep}
+        steps={bulkRouting.state.steps}
       />
 
       <HistoryModal

@@ -1,16 +1,16 @@
 /**
- * Order Sample Request Component - UPGRADED WITH ROUTING
+ * Order Sample Request Component - FIXED VERSION
  * Order-level sample request with independent routing workflow
- * FIX: Added 'no_sample' status - ignores routing when no sample data
- * FIX: Auto-detects when sample becomes active (fee/ETA entered)
- * Last Modified: Nov 27 2025
+ * FIX: Now displays existing sample_notes from database
+ * FIX: Shows saved notes above the "Add Note" input
+ * Last Modified: November 30, 2025
  */
 
 import React, { useState, useEffect } from 'react';
 import { 
   AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, 
   Paperclip, History, Send, Building, User,
-  Factory, Ban
+  Factory, Ban, MessageSquare
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 
@@ -30,6 +30,8 @@ interface OrderSampleRequestProps {
   sampleNotes: string;
   sampleFiles?: File[];
   existingMedia?: any[];
+  // NEW: Existing notes from database to display
+  existingSampleNotes?: string;
   // Routing props
   sampleRoutedTo?: 'admin' | 'manufacturer' | 'client';
   sampleWorkflowStatus?: string;
@@ -41,7 +43,7 @@ interface OrderSampleRequestProps {
   canRouteToAdmin?: boolean;
   canRouteToClient?: boolean;
   isRouting?: boolean;
-  // Existing callbacks - CHANGED: onSave now receives data
+  // Existing callbacks
   onUpdate: (field: string, value: any) => void;
   onFileUpload?: (files: FileList | null) => void;
   onFileRemove?: (index: number) => void;
@@ -64,6 +66,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   sampleNotes,
   sampleFiles = [],
   existingMedia = [],
+  existingSampleNotes = '',
   // Routing props
   sampleRoutedTo = 'admin',
   sampleWorkflowStatus = 'pending',
@@ -88,11 +91,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onSave,
   saving = false
 }) => {
-  // LOCAL state for form fields - don't rely on parent
+  // LOCAL state for form fields
   const [localFee, setLocalFee] = useState(sampleFee);
   const [localETA, setLocalETA] = useState(sampleETA);
   const [localStatus, setLocalStatus] = useState(sampleStatus || 'no_sample');
-  const [localNotes, setLocalNotes] = useState(''); // Start empty for new notes
+  const [localNotes, setLocalNotes] = useState(''); // Always start empty for NEW notes
   const [isDirty, setIsDirty] = useState(false);
   
   // Route modal state
@@ -105,11 +108,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     setLocalFee(sampleFee);
     setLocalETA(sampleETA);
     setLocalStatus(sampleStatus || 'no_sample');
-    // Don't set localNotes from props - keep it empty for new input
+    // Don't set localNotes - keep it empty for new input
     setIsDirty(false);
   }, [sampleFee, sampleETA, sampleStatus]);
 
-  // Check if sample has any data (fee, ETA, or files)
+  // Check if sample has any data
   const hasSampleData = (): boolean => {
     const hasFee = localFee && parseFloat(localFee) > 0;
     const hasETA = localETA && localETA.trim() !== '';
@@ -122,7 +125,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     if (!hasSampleData()) {
       return 'no_sample';
     }
-    // If there's data but status is 'no_sample', change to 'pending'
     if (localStatus === 'no_sample') {
       return 'pending';
     }
@@ -134,7 +136,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     onUpdate('sampleFee', value);
     setIsDirty(true);
     
-    // Auto-activate if entering data
     if (value && parseFloat(value) > 0 && localStatus === 'no_sample') {
       setLocalStatus('pending');
       onUpdate('sampleStatus', 'pending');
@@ -146,7 +147,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     onUpdate('sampleETA', value);
     setIsDirty(true);
     
-    // Auto-activate if entering data
     if (value && localStatus === 'no_sample') {
       setLocalStatus('pending');
       onUpdate('sampleStatus', 'pending');
@@ -162,13 +162,13 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
   const handleNotesChange = (value: string) => {
     setLocalNotes(value);
+    onUpdate('sampleNotes', value);
     setIsDirty(true);
   };
 
-  // SAVE: Pass local values directly, auto-detect status
+  // SAVE: Pass local values directly
   const handleSave = async () => {
     if (onSave) {
-      // Auto-detect status before saving
       const finalStatus = getAutoStatus();
       
       await onSave({
@@ -178,13 +178,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         notes: localNotes
       });
       setLocalNotes(''); // Clear notes after save
-      setLocalStatus(finalStatus); // Update local status
+      setLocalStatus(finalStatus);
       setIsDirty(false);
     }
   };
 
   const handleCancel = () => {
-    // Reset to original values
     setLocalFee(sampleFee);
     setLocalETA(sampleETA);
     setLocalStatus(sampleStatus || 'no_sample');
@@ -206,7 +205,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const handleRoute = async () => {
     if (!routeDestination) return;
     
-    // SAVE DATA FIRST before routing (with auto-status)
+    // SAVE DATA FIRST before routing
     if (onSave) {
       const finalStatus = getAutoStatus();
       await onSave({
@@ -215,7 +214,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         status: finalStatus,
         notes: localNotes
       });
-      setLocalNotes(''); // Clear notes after save
+      setLocalNotes('');
       setLocalStatus(finalStatus);
     }
     
@@ -238,12 +237,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     }
   };
 
-  // Check if sample is active (has data or is not 'no_sample')
+  // Check if sample is active
   const isSampleActive = localStatus !== 'no_sample' || hasSampleData();
 
-  // ONLY routing status badge
+  // Routing status badge
   const getRoutingStatusBadge = () => {
-    // If no sample, show "No Sample" badge
     if (localStatus === 'no_sample' && !hasSampleData()) {
       return (
         <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-medium flex items-center gap-1">
@@ -270,7 +268,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     );
   };
 
-  // Status badge (shows actual sample status)
+  // Sample status badge
   const getSampleStatusBadge = () => {
     const statuses: Record<string, { bg: string; text: string; label: string }> = {
       no_sample: { bg: 'bg-gray-100', text: 'text-gray-500', label: 'No Sample' },
@@ -280,13 +278,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
       delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' },
       sample_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
-      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' }, // backwards compat
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
       rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' }
     };
     
     const status = statuses[localStatus] || statuses.pending;
     
-    // Don't show duplicate badge if already showing "No Sample"
     if (localStatus === 'no_sample' && !hasSampleData()) {
       return null;
     }
@@ -310,7 +307,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   // Fee and ETA: ONLY Manufacturer and Super Admin can edit
   const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
   
-  // Only show routing buttons if sample is active
   const showRoutingButtons = isSampleActive;
 
   return (
@@ -326,10 +322,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           Order Sample Request / Technical Pack
         </h3>
         <div className="flex items-center gap-2">
-          {/* Routing Status Badge */}
           {getRoutingStatusBadge()}
-          
-          {/* Sample Status Badge */}
           {getSampleStatusBadge()}
           
           {existingMedia && existingMedia.length > 0 && (
@@ -338,7 +331,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             </span>
           )}
           
-          {/* History button */}
           {onViewHistory && (
             <button
               onClick={onViewHistory}
@@ -355,7 +347,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
-      {/* ROUTING BUTTONS - Only show if sample is active */}
+      {/* ROUTING BUTTONS */}
       {showRoutingButtons && (
         <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
           <div className="flex items-center justify-between">
@@ -473,11 +465,24 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       </div>
 
-      {/* Notes Section - CLEAN: Only for new notes */}
+      {/* EXISTING NOTES DISPLAY - NEW SECTION */}
+      {existingSampleNotes && existingSampleNotes.trim() && (
+        <div className="mb-3 p-3 bg-white rounded-lg border border-amber-200">
+          <div className="flex items-center gap-2 mb-2">
+            <MessageSquare className="w-4 h-4 text-amber-600" />
+            <h5 className="text-sm font-medium text-amber-800">Previous Notes</h5>
+          </div>
+          <div className="text-sm text-gray-700 whitespace-pre-wrap bg-amber-50 p-2 rounded border border-amber-100">
+            {existingSampleNotes}
+          </div>
+        </div>
+      )}
+
+      {/* ADD NEW NOTE Section */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
           Add Note
-          {onViewHistory && (
+          {onViewHistory && !existingSampleNotes && (
             <span className="text-gray-500 font-normal ml-2">(View previous notes in History)</span>
           )}
         </label>
@@ -541,7 +546,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                 onChange={(e) => {
                   onFileUpload(e.target.files);
                   setIsDirty(true);
-                  // Auto-activate if uploading file while status is 'no_sample'
                   if (localStatus === 'no_sample') {
                     setLocalStatus('pending');
                     onUpdate('sampleStatus', 'pending');

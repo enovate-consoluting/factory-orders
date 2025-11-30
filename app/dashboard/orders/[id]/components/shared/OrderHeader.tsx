@@ -1,4 +1,10 @@
-// app/dashboard/orders/[id]/components/shared/OrderHeader.tsx
+/**
+ * OrderHeader Component - /dashboard/orders/[id]/components/shared/OrderHeader.tsx
+ * Displays order title, status dropdown, total, and actions
+ * FIXED: Added sent_to_manufacturer to dropdown options
+ * Roles: Admin, Super Admin, Manufacturer (limited view)
+ * Last Modified: November 29, 2025
+ */
 
 import React from 'react';
 import { Calendar, Edit, CheckCircle, DollarSign, Package } from 'lucide-react';
@@ -75,19 +81,20 @@ export function OrderHeader({
                   className="px-3 py-1 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="draft">Draft</option>
+                  <option value="sent_to_manufacturer">Sent to Manufacturer</option>
+                  <option value="submitted_to_manufacturer">Submitted to Manufacturer</option>
                   <option value="submitted">Submitted</option>
                   <option value="approved">Approved</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="completed">Completed</option>
-                  <option value="rejected">Rejected</option>
                   <option value="pending">Pending</option>
-                  <option value="submitted_to_manufacturer">Submitted to Manufacturer</option>
                   <option value="submitted_for_sample">Submitted for Sample</option>
-                  <option value="submitted_to_client">Submitted to Client</option>
                   <option value="priced_by_manufacturer">Priced by Manufacturer</option>
+                  <option value="submitted_to_client">Submitted to Client</option>
                   <option value="client_approved">Client Approved</option>
                   <option value="ready_for_production">Ready for Production</option>
+                  <option value="in_progress">In Progress</option>
                   <option value="in_production">In Production</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
                 </select>
               ) : (
                 // Regular admins and manufacturers just see the status badge

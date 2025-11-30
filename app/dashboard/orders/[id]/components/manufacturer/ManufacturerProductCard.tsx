@@ -8,7 +8,8 @@
  * - Improved button spacing throughout
  * - Uses new database fields (shipping_linked_products, shipping_link_note)
  * - CLEANUP: Now imports formatCurrency from shared utils (removed duplicate)
- * Last Modified: Nov 26 2025
+ * - FIX: client_notes now saved in saveAll function (was missing!)
+ * Last Modified: Nov 30 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -360,7 +361,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             manufacturer_notes: finalManufacturerNotes || null,
             internal_notes: finalInternalNotes || null,
             
-            // NEW: Shipping allocation fields
+            // FIX: Add client_notes (bulk notes) - was missing from saveAll!
+            client_notes: tempBulkNotes && tempBulkNotes.trim() 
+              ? tempBulkNotes.trim() 
+              : (product as any).client_notes || null,
+            
+            // Shipping allocation fields
             shipping_linked_products: applyShippingToOthers && selectedProductsForShipping.length > 0 
               ? JSON.stringify(selectedProductsForShipping)
               : null,

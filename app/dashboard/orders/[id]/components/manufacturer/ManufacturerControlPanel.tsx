@@ -1,13 +1,16 @@
 /**
  * ManufacturerControlPanel - Control panel for manufacturer order actions
  * Shows order summary, totals, and action buttons
- * UPDATED: Added Set Ship Dates button and modal
+ * UPDATED: Now uses useBulkRouting hook for consistency
  * Roles: Manufacturer
- * Last Modified: Nov 28 2025
+ * Last Modified: November 29, 2025
  */
 
 import React, { useState, useMemo } from 'react';
-import { Package, Download, Printer, Save, Send, DollarSign, FileImage, FileText, X, Loader2, Calendar } from 'lucide-react';
+import { 
+  Package, Download, Printer, Save, Send, DollarSign, 
+  FileImage, FileText, X, Loader2, Calendar 
+} from 'lucide-react';
 import { SetShipDatesModal } from '../modals/SetShipDatesModal';
 
 interface ManufacturerControlPanelProps {
@@ -30,7 +33,7 @@ export function ManufacturerControlPanel({
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
 
-  // Calculate totals
+  // Calculate totals (MANUFACTURER prices - their costs)
   const calculateTotals = () => {
     let productTotal = 0;
     let sampleTotal = 0;
@@ -40,6 +43,7 @@ export function ManufacturerControlPanel({
       const totalQty = product.order_items?.reduce((sum: number, item: any) => 
         sum + (item.quantity || 0), 0) || 0;
       
+      // Use manufacturer prices (their costs)
       productTotal += (parseFloat(product.product_price || 0) * totalQty);
       sampleTotal += parseFloat(product.sample_fee || 0);
       
@@ -143,7 +147,7 @@ export function ManufacturerControlPanel({
 
   return (
     <>
-      {/* Main Control Panel - Always visible, not collapsible */}
+      {/* Main Control Panel */}
       <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
         {/* Order Info Row */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -208,7 +212,7 @@ export function ManufacturerControlPanel({
             </button>
           )}
 
-          {/* Set Ship Dates - NEW BUTTON */}
+          {/* Set Ship Dates */}
           <button
             onClick={() => setShowShipDatesModal(true)}
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
