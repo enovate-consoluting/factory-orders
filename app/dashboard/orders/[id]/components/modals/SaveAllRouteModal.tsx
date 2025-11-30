@@ -2,13 +2,13 @@
  * Save All & Route Modal Component
  * Bulk routing modal for all visible products
  * Used by manufacturers AND admins to route all products at once
- * RESTORED: Clean button-style selection from production
- * Last Modified: November 29, 2025
+ * UPDATED: Removed sample request option (now handled independently)
+ * Last Modified: November 30, 2025
  */
 
 import React, { useState } from 'react';
 import { 
-  Send, Package, AlertCircle, Loader2, X, Truck, 
+  Send, Package, Loader2, X, Truck, 
   Factory, User, CheckCircle, Building, PlayCircle
 } from 'lucide-react';
 
@@ -54,10 +54,9 @@ export function SaveAllRouteModal({
   };
 
   const isManufacturer = userRole === 'manufacturer';
-  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
   // Get color classes for button based on route type
-  const getButtonColors = (routeValue: string, isSelected: boolean) => {
+  const getButtonColors = (routeValue: string) => {
     const colors: Record<string, { selected: string; hover: string; icon: string }> = {
       send_to_admin: { 
         selected: 'border-blue-500 bg-blue-50', 
@@ -84,20 +83,15 @@ export function SaveAllRouteModal({
         hover: 'hover:border-green-500 hover:bg-green-50',
         icon: 'text-green-600'
       },
-      request_sample: { 
-        selected: 'border-yellow-500 bg-yellow-50', 
-        hover: 'hover:border-yellow-500 hover:bg-yellow-50',
-        icon: 'text-yellow-600'
-      },
       send_back_to_manufacturer: { 
         selected: 'border-orange-500 bg-orange-50', 
         hover: 'hover:border-orange-500 hover:bg-orange-50',
         icon: 'text-orange-600'
       },
       send_for_approval: { 
-        selected: 'border-blue-500 bg-blue-50', 
-        hover: 'hover:border-blue-500 hover:bg-blue-50',
-        icon: 'text-blue-600'
+        selected: 'border-purple-500 bg-purple-50', 
+        hover: 'hover:border-purple-500 hover:bg-purple-50',
+        icon: 'text-purple-600'
       }
     };
     
@@ -118,7 +112,6 @@ export function SaveAllRouteModal({
       in_production: PlayCircle,
       shipped: Truck,
       approve_for_production: CheckCircle,
-      request_sample: AlertCircle,
       send_back_to_manufacturer: Send,
       send_for_approval: Building
     };
@@ -132,10 +125,10 @@ export function SaveAllRouteModal({
     { value: 'shipped', label: 'Mark as Shipped', description: 'All products have been shipped' }
   ];
 
+  // Admin options - NO request_sample (samples handled independently now)
   const defaultAdminOptions: RouteOption[] = [
     { value: 'send_to_manufacturer', label: 'Send to Manufacturer', description: 'Send all products to manufacturer for pricing/production' },
     { value: 'approve_for_production', label: 'Approve for Production', description: 'Send all to manufacturer for production' },
-    { value: 'request_sample', label: 'Request Samples', description: 'Request samples for all products' },
     { value: 'send_for_approval', label: 'Send to Client', description: 'Send all products to client for approval' }
   ];
 
@@ -202,7 +195,7 @@ export function SaveAllRouteModal({
             <div className="space-y-3 mb-6">
               {options.map((option) => {
                 const Icon = getRouteIcon(option.value);
-                const colors = getButtonColors(option.value, selectedRoute === option.value);
+                const colors = getButtonColors(option.value);
                 
                 return (
                   <button
@@ -250,7 +243,16 @@ export function SaveAllRouteModal({
               <div className="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-start gap-2">
                 <Factory className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-indigo-800">
-                  <strong>Note:</strong> Products and sample request will be sent to manufacturer for pricing.
+                  <strong>Note:</strong> Products will be sent to manufacturer for pricing.
+                </div>
+              </div>
+            )}
+
+            {selectedRoute === 'send_for_approval' && (
+              <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-start gap-2">
+                <Building className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-purple-800">
+                  <strong>Note:</strong> Products will be sent to client portal for approval.
                 </div>
               </div>
             )}

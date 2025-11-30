@@ -1,4 +1,9 @@
-// app/dashboard/orders/[id]/components/modals/RouteModal.tsx - FIXED CLIENT ROUTING
+/**
+ * Route Modal Component - Individual Product Routing
+ * Used by manufacturers AND admins to route individual products
+ * UPDATED: Removed sample request option (now handled independently)
+ * Last Modified: November 30, 2025
+ */
 
 import React, { useState } from 'react';
 import { X, Send, Package, AlertCircle, CheckCircle, RotateCcw, Loader2, Factory, Truck, Ship as ShipIcon, User } from 'lucide-react';
@@ -176,7 +181,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
         }
         
       } else {
-        // ADMIN ROUTING OPTIONS
+        // ADMIN ROUTING OPTIONS - UPDATED: Removed request_sample
         switch (selectedRoute) {
           case 'approve_for_production':
             // Send to manufacturer for production
@@ -187,20 +192,11 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             updates.is_locked = false;
             break;
             
-          case 'request_sample':
-            // Request sample from manufacturer
-            updates.sample_required = true;
-            updates.product_status = 'sample_requested';
-            updates.routed_to = 'manufacturer';
-            updates.routed_at = new Date().toISOString();
-            updates.routed_by = user.id || null;
-            break;
-            
           case 'send_for_approval':
-            // *** FIXED: Now routes to CLIENT instead of admin ***
+            // Route to CLIENT for approval
             updates.requires_client_approval = true;
             updates.product_status = 'pending_client_approval';
-            updates.routed_to = 'client';  // <-- CHANGED from 'admin' to 'client'
+            updates.routed_to = 'client';
             updates.routed_at = new Date().toISOString();
             updates.routed_by = user.id || null;
             notificationType = 'approval_requested';
@@ -341,7 +337,7 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
 
         {/* Routing Options */}
         {isManufacturer ? (
-          // MANUFACTURER OPTIONS - NOW 3 OPTIONS
+          // MANUFACTURER OPTIONS - 3 OPTIONS
           <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <button
               onClick={() => setSelectedRoute('send_to_admin')}
@@ -416,8 +412,8 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             )}
           </div>
         ) : (
-          // ADMIN OPTIONS - Updated with better "Send to Client" styling
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          // ADMIN OPTIONS - UPDATED: Removed "Request Sample" option (now 3 options instead of 4)
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <button
               onClick={() => setSelectedRoute('approve_for_production')}
               className={`p-3 sm:p-4 border-2 rounded-lg transition-all text-left group ${
@@ -437,27 +433,6 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 <h3 className="font-semibold text-gray-900">Approve for Production</h3>
               </div>
               <p className="text-xs sm:text-sm text-gray-500">Send to manufacturer for production</p>
-            </button>
-
-            <button
-              onClick={() => setSelectedRoute('request_sample')}
-              className={`p-3 sm:p-4 border-2 rounded-lg transition-all text-left group ${
-                selectedRoute === 'request_sample'
-                  ? 'border-yellow-500 bg-yellow-50'
-                  : 'border-gray-200 hover:border-yellow-500 hover:bg-yellow-50'
-              }`}
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center transition-colors ${
-                  selectedRoute === 'request_sample'
-                    ? 'bg-yellow-200'
-                    : 'bg-yellow-100 group-hover:bg-yellow-200'
-                }`}>
-                  <Package className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
-                </div>
-                <h3 className="font-semibold text-gray-900">Request Sample</h3>
-              </div>
-              <p className="text-xs sm:text-sm text-gray-500">Request sample before production</p>
             </button>
 
             <button

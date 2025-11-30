@@ -127,11 +127,6 @@ export function useBulkRouting({
           description: 'Approve all products and send to manufacturer for production' 
         },
         { 
-          value: 'request_sample', 
-          label: 'Request Samples', 
-          description: 'Request samples for all products' 
-        },
-        { 
           value: 'send_for_approval', 
           label: 'Send to Client', 
           description: 'Send all products to client for approval' 
