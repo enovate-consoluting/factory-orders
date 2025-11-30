@@ -84,6 +84,14 @@ export default function CreateOrderPage() {
   const [showClientDropdown, setShowClientDropdown] = useState(false)
   const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+
+  // Manufacturer autocomplete refs and state
+  const manufacturerInputRef = useRef<HTMLInputElement>(null)
+  const manufacturerDropdownRef = useRef<HTMLDivElement>(null)
+  const [manufacturerSearchQuery, setManufacturerSearchQuery] = useState('')
+  const [showManufacturerDropdown, setShowManufacturerDropdown] = useState(false)
+  const [filteredManufacturers, setFilteredManufacturers] = useState<Manufacturer[]>([])
+  const [manufacturerHighlightedIndex, setManufacturerHighlightedIndex] = useState(-1)
   
   // Notification state
   const [notification, setNotification] = useState<{
@@ -111,6 +119,7 @@ export default function CreateOrderPage() {
   const [selectedClient, setSelectedClient] = useState('')
   const [selectedClientName, setSelectedClientName] = useState('')
   const [selectedManufacturer, setSelectedManufacturer] = useState('')
+  const [selectedManufacturerName, setSelectedManufacturerName] = useState('')
   
   // Step 2: Products with quantities
   const [products, setProducts] = useState<Product[]>([])
@@ -127,17 +136,29 @@ export default function CreateOrderPage() {
   const [orderSampleNotes, setOrderSampleNotes] = useState('')
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([])
 
-  // Click outside handler for client dropdown
+  // Click outside handler for client and manufacturer dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // Handle client dropdown
       if (
-        clientDropdownRef.current && 
+        clientDropdownRef.current &&
         !clientDropdownRef.current.contains(event.target as Node) &&
         clientInputRef.current &&
         !clientInputRef.current.contains(event.target as Node)
       ) {
         setShowClientDropdown(false)
         setHighlightedIndex(-1)
+      }
+
+      // Handle manufacturer dropdown
+      if (
+        manufacturerDropdownRef.current &&
+        !manufacturerDropdownRef.current.contains(event.target as Node) &&
+        manufacturerInputRef.current &&
+        !manufacturerInputRef.current.contains(event.target as Node)
+      ) {
+        setShowManufacturerDropdown(false)
+        setManufacturerHighlightedIndex(-1)
       }
     }
 
@@ -151,7 +172,7 @@ export default function CreateOrderPage() {
       setFilteredClients(clients)
     } else {
       const query = clientSearchQuery.toLowerCase()
-      const filtered = clients.filter(client => 
+      const filtered = clients.filter(client =>
         client.name.toLowerCase().includes(query) ||
         client.email.toLowerCase().includes(query)
       )
@@ -160,6 +181,22 @@ export default function CreateOrderPage() {
     // Reset highlighted index when results change
     setHighlightedIndex(-1)
   }, [clientSearchQuery, clients])
+
+  // Filter manufacturers based on search query
+  useEffect(() => {
+    if (manufacturerSearchQuery.trim() === '') {
+      setFilteredManufacturers(manufacturers)
+    } else {
+      const query = manufacturerSearchQuery.toLowerCase()
+      const filtered = manufacturers.filter(manufacturer =>
+        manufacturer.name.toLowerCase().includes(query) ||
+        manufacturer.email.toLowerCase().includes(query)
+      )
+      setFilteredManufacturers(filtered)
+    }
+    // Reset highlighted index when results change
+    setManufacturerHighlightedIndex(-1)
+  }, [manufacturerSearchQuery, manufacturers])
 
   useEffect(() => {
     fetchInitialData()
@@ -199,9 +236,12 @@ export default function CreateOrderPage() {
       setClients(clientsData || [])
       setFilteredClients(clientsData || [])
       setManufacturers(manufacturersData || [])
-      
+      setFilteredManufacturers(manufacturersData || [])
+
       if (manufacturersData && manufacturersData.length === 1) {
         setSelectedManufacturer(manufacturersData[0].id)
+        setSelectedManufacturerName(manufacturersData[0].name)
+        setManufacturerSearchQuery(manufacturersData[0].name)
       }
       
       if (productsData) {
@@ -319,6 +359,86 @@ export default function CreateOrderPage() {
     setShowClientDropdown(false)
     setHighlightedIndex(-1)
     clientInputRef.current?.focus()
+  }
+
+  // Manufacturer selection handlers
+  const handleManufacturerSelect = (manufacturer: Manufacturer) => {
+    setSelectedManufacturer(manufacturer.id)
+    setSelectedManufacturerName(manufacturer.name)
+    setManufacturerSearchQuery(manufacturer.name)
+    setShowManufacturerDropdown(false)
+    setManufacturerHighlightedIndex(-1)
+  }
+
+  const handleManufacturerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setManufacturerSearchQuery(value)
+    setShowManufacturerDropdown(true)
+
+    // If user clears the input, clear the selection
+    if (value === '') {
+      setSelectedManufacturer('')
+      setSelectedManufacturerName('')
+    }
+  }
+
+  const handleManufacturerInputFocus = () => {
+    setShowManufacturerDropdown(true)
+  }
+
+  const handleManufacturerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showManufacturerDropdown) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        setShowManufacturerDropdown(true)
+        return
+      }
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault()
+        setManufacturerHighlightedIndex(prev => {
+          const nextIndex = prev < filteredManufacturers.length - 1 ? prev + 1 : prev
+          // Scroll into view
+          const element = document.getElementById(`manufacturer-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setManufacturerHighlightedIndex(prev => {
+          const nextIndex = prev > 0 ? prev - 1 : 0
+          // Scroll into view
+          const element = document.getElementById(`manufacturer-option-${nextIndex}`)
+          element?.scrollIntoView({ block: 'nearest' })
+          return nextIndex
+        })
+        break
+      case 'Enter':
+        e.preventDefault()
+        if (manufacturerHighlightedIndex >= 0 && manufacturerHighlightedIndex < filteredManufacturers.length) {
+          handleManufacturerSelect(filteredManufacturers[manufacturerHighlightedIndex])
+        }
+        break
+      case 'Escape':
+        setShowManufacturerDropdown(false)
+        setManufacturerHighlightedIndex(-1)
+        break
+      case 'Tab':
+        setShowManufacturerDropdown(false)
+        setManufacturerHighlightedIndex(-1)
+        break
+    }
+  }
+
+  const clearManufacturerSelection = () => {
+    setSelectedManufacturer('')
+    setSelectedManufacturerName('')
+    setManufacturerSearchQuery('')
+    setShowManufacturerDropdown(false)
+    setManufacturerHighlightedIndex(-1)
+    manufacturerInputRef.current?.focus()
   }
 
   const handleProductQuantityChange = (productId: string, quantity: number) => {
@@ -1064,7 +1184,7 @@ export default function CreateOrderPage() {
               )}
             </div>
 
-            {/* Manufacturer - Keep as dropdown (auto-selects single option) */}
+            {/* Manufacturer Autocomplete */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Manufacturer *
@@ -1072,21 +1192,77 @@ export default function CreateOrderPage() {
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
               </label>
-              <select
-                value={selectedManufacturer}
-                onChange={(e) => setSelectedManufacturer(e.target.value)}
-                className={selectClassName}
-                required
-              >
-                {manufacturers.length > 1 && (
-                  <option value="">Choose a manufacturer...</option>
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    ref={manufacturerInputRef}
+                    type="text"
+                    value={manufacturerSearchQuery}
+                    onChange={handleManufacturerInputChange}
+                    onFocus={handleManufacturerInputFocus}
+                    onKeyDown={handleManufacturerKeyDown}
+                    placeholder="Type to search manufacturers..."
+                    className={`${inputClassName} pl-9 pr-10`}
+                    autoComplete="off"
+                  />
+                  {selectedManufacturer && (
+                    <button
+                      type="button"
+                      onClick={clearManufacturerSelection}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown */}
+                {showManufacturerDropdown && (
+                  <div
+                    ref={manufacturerDropdownRef}
+                    className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+                  >
+                    {filteredManufacturers.length === 0 ? (
+                      <div className="px-4 py-3 text-sm text-gray-500">
+                        No manufacturers found
+                      </div>
+                    ) : (
+                      filteredManufacturers.map((manufacturer, index) => (
+                        <button
+                          key={manufacturer.id}
+                          id={`manufacturer-option-${index}`}
+                          type="button"
+                          onClick={() => handleManufacturerSelect(manufacturer)}
+                          onMouseEnter={() => setManufacturerHighlightedIndex(index)}
+                          className={`w-full px-4 py-3 text-left flex items-center justify-between transition-colors
+                            ${index === 0 ? 'rounded-t-lg' : ''}
+                            ${index === filteredManufacturers.length - 1 ? 'rounded-b-lg' : ''}
+                            ${manufacturerHighlightedIndex === index ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                            ${selectedManufacturer === manufacturer.id ? 'bg-blue-50' : ''}
+                          `}
+                        >
+                          <div>
+                            <div className="font-medium text-gray-900">{manufacturer.name}</div>
+                            <div className="text-sm text-gray-500">{manufacturer.email}</div>
+                          </div>
+                          {selectedManufacturer === manufacturer.id && (
+                            <Check className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 )}
-                {manufacturers.map((manufacturer) => (
-                  <option key={manufacturer.id} value={manufacturer.id}>
-                    {manufacturer.name}
-                  </option>
-                ))}
-              </select>
+              </div>
+
+              {/* Selected manufacturer indicator */}
+              {selectedManufacturer && (
+                <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                  <Check className="w-4 h-4" />
+                  <span>Selected: {selectedManufacturerName}</span>
+                </div>
+              )}
             </div>
           </div>
 
