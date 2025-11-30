@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Edit2, Trash2, X, Building2, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import PhoneInput from 'react-phone-input-2'
+import 'react-phone-input-2/lib/style.css'
 
 interface Manufacturer {
   id: string
@@ -10,6 +12,7 @@ interface Manufacturer {
   email: string
   user_id: string | null
   created_at: string
+  phone_number?: string
 }
 
 interface Notification {
@@ -31,10 +34,11 @@ export default function ManufacturersPage() {
   const [manufacturerToDelete, setManufacturerToDelete] = useState<Manufacturer | null>(null)
   const [createdCredentials, setCreatedCredentials] = useState({ email: '', password: '', name: '' })
   const [editingManufacturer, setEditingManufacturer] = useState<Manufacturer | null>(null)
-  const [formData, setFormData] = useState({ 
-    name: '', 
+  const [formData, setFormData] = useState({
+    name: '',
     email: '',
-    password: 'password123'
+    password: 'password123',
+    phone_number: ''
   })
   const [user, setUser] = useState<any>(null)
   const [creating, setCreating] = useState(false)
@@ -97,7 +101,8 @@ export default function ManufacturersPage() {
               userId: editingManufacturer.user_id,
               updates: {
                 name: formData.name,
-                email: formData.email
+                email: formData.email,
+                phone_number: formData.phone_number
               },
               userType: 'manufacturer'
             })
@@ -111,7 +116,8 @@ export default function ManufacturersPage() {
             .from('manufacturers')
             .update({
               name: formData.name,
-              email: formData.email
+              email: formData.email,
+              phone_number: formData.phone_number
             })
             .eq('id', editingManufacturer.id)
 
@@ -129,6 +135,7 @@ export default function ManufacturersPage() {
             email: formData.email,
             password: formData.password,
             name: formData.name,
+            phone_number: formData.phone_number,
             role: 'manufacturer',
             userType: 'manufacturer'
           })
@@ -163,7 +170,8 @@ export default function ManufacturersPage() {
       setFormData({
         name: '',
         email: '',
-        password: 'password123'
+        password: 'password123',
+        phone_number: ''
       })
       fetchManufacturers()
     } catch (error: any) {
@@ -253,10 +261,11 @@ export default function ManufacturersPage() {
   const openEditModal = (manufacturer: Manufacturer) => {
     setEditingManufacturer(manufacturer)
     setFormError(null)
-    setFormData({ 
-      name: manufacturer.name, 
+    setFormData({
+      name: manufacturer.name,
       email: manufacturer.email,
-      password: 'password123'
+      password: 'password123',
+      phone_number: manufacturer.phone_number || ''
     })
     setShowModal(true)
   }
@@ -264,7 +273,7 @@ export default function ManufacturersPage() {
   const openCreateModal = () => {
     setEditingManufacturer(null)
     setFormError(null)
-    setFormData({ name: '', email: '', password: 'password123' })
+    setFormData({ name: '', email: '', password: 'password123', phone_number: '' })
     setShowModal(true)
   }
 
@@ -320,7 +329,7 @@ export default function ManufacturersPage() {
       )}
 
       <div className="mb-6">
-        <div className="flex justify-between items-center">
+        <div className="flex lg:justify-between lg:items-center lg:flex-row flex-col gap-4 items-start">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Manufacturers</h1>
             <p className="text-sm text-gray-600 mt-1">
@@ -462,6 +471,46 @@ export default function ManufacturersPage() {
                       Email cannot be changed after creation
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <PhoneInput
+                    country={'us'}
+                    value={formData.phone_number}
+                    onChange={(phone) => setFormData({ ...formData, phone_number: phone })}
+                    inputStyle={{
+                      width: '100%',
+                      height: '42px',
+                      fontSize: '14px',
+                      paddingLeft: '48px',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      color: '#111827'
+                    }}
+                    buttonStyle={{
+                      borderRadius: '0.5rem 0 0 0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRight: 'none'
+                    }}
+                    containerStyle={{
+                      width: '100%'
+                    }}
+                    dropdownStyle={{
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    searchStyle={{
+                      width: '100%',
+                      padding: '8px',
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    enableSearch={true}
+                    searchPlaceholder="Search countries..."
+                  />
                 </div>
 
                 {!editingManufacturer && (

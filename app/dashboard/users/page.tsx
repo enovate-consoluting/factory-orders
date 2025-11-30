@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Plus, Edit2, Trash2, X, Shield, User as UserIcon, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
+import PhoneInput from 'react-phone-input-2'
+import 'react-phone-input-2/lib/style.css'
 
 interface User {
   id: string
@@ -10,6 +12,7 @@ interface User {
   name: string
   role: string
   created_at: string
+  phone_number?: string
 }
 
 interface Notification {
@@ -36,7 +39,8 @@ export default function UsersPage() {
     email: '',
     name: '',
     role: '',
-    password: 'password123'
+    password: 'password123',
+    phone_number: ''
   })
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [creating, setCreating] = useState(false)
@@ -128,7 +132,8 @@ export default function UsersPage() {
             userId: editingUser.id,
             updates: {
               name: formData.name,
-              role: formData.role
+              role: formData.role,
+              phone_number: formData.phone_number
             },
             userType: 'admin'
           })
@@ -146,6 +151,7 @@ export default function UsersPage() {
               password: formData.password,
               name: formData.name,
               role: formData.role,
+              phone_number: formData.phone_number,
               userType: 'admin'
             };
             // If manufacturer, set createdBy to manufacturer id (not user id)
@@ -188,7 +194,8 @@ export default function UsersPage() {
         email: '',
         name: '',
         role: 'admin',
-        password: 'password123'
+        password: 'password123',
+        phone_number: ''
       })
       fetchUsers()
     } catch (error: any) {
@@ -241,7 +248,8 @@ export default function UsersPage() {
       email: user.email,
       name: user.name,
       role: user.role,
-      password: 'password123'
+      password: 'password123',
+      phone_number: user.phone_number || ''
     })
     setShowModal(true)
   }
@@ -253,7 +261,8 @@ export default function UsersPage() {
       email: '',
       name: '',
       role: currentUser?.role === 'manufacturer' ? 'manufacturer_team_member' : 'admin',
-      password: 'password123'
+      password: 'password123',
+      phone_number: ''
     })
     setShowModal(true)
   }
@@ -293,11 +302,11 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="p-6">
-      {/* Notification Toast - z-[60] to appear above modals */}
+    <div className="p-3 sm:p-6">
+      {/* Notification Toast - Mobile Responsive - z-[60] to appear above modals */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-[60] animate-slide-in`}>
-          <div className={`rounded-lg shadow-lg p-4 max-w-md flex items-start space-x-3 ${
+        <div className={`fixed top-3 right-3 sm:top-4 sm:right-4 z-[60] animate-slide-in max-w-[calc(100vw-24px)] sm:max-w-md`}>
+          <div className={`rounded-lg shadow-lg p-3 sm:p-4 flex items-start space-x-2 sm:space-x-3 ${
             notification.type === 'success' ? 'bg-green-50 border border-green-200' :
             notification.type === 'error' ? 'bg-red-50 border border-red-200' :
             'bg-blue-50 border border-blue-200'
@@ -307,15 +316,15 @@ export default function UsersPage() {
               {notification.type === 'error' && <XCircle className="h-5 w-5 text-red-600" />}
               {notification.type === 'info' && <AlertCircle className="h-5 w-5 text-blue-600" />}
             </div>
-            <div className="flex-1">
-              <p className={`font-medium ${
+            <div className="flex-1 min-w-0">
+              <p className={`text-sm sm:text-base font-medium break-words ${
                 notification.type === 'success' ? 'text-green-900' :
                 notification.type === 'error' ? 'text-red-900' :
                 'text-blue-900'
               }`}>
                 {notification.title}
               </p>
-              <p className={`text-sm mt-1 ${
+              <p className={`text-xs sm:text-sm mt-1 break-words ${
                 notification.type === 'success' ? 'text-green-700' :
                 notification.type === 'error' ? 'text-red-700' :
                 'text-blue-700'
@@ -333,18 +342,19 @@ export default function UsersPage() {
         </div>
       )}
 
-      <div className="mb-6">
-        <div className="flex justify-between items-center">
+      {/* Header - Mobile Responsive */}
+      <div className="mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">System Users</h1>
-            <p className="text-sm text-gray-600 mt-1">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">System Users</h1>
+            <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Manage admin and staff user accounts
             </p>
           </div>
           {(currentUser?.role === 'super_admin' || currentUser?.role === 'manufacturer') && (
             <button
               onClick={openCreateModal}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              className="w-full sm:w-auto px-3 sm:px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
             >
               <Plus className="w-4 h-4" />
               Add User
@@ -353,7 +363,8 @@ export default function UsersPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Desktop Table View */}
+      <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -423,42 +434,104 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Role Information */}
-      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h3 className="text-sm font-semibold text-blue-900 mb-2">User Role Information</h3>
+      {/* Mobile Card View */}
+      <div className="block md:hidden space-y-3">
+        {users.length === 0 ? (
+          <div className="bg-white rounded-lg border border-gray-200 text-center py-12 px-4">
+            <UserIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-base font-medium text-gray-900 mb-2">No users yet</h3>
+            <p className="text-sm text-gray-500">Get started by adding your first user</p>
+          </div>
+        ) : (
+          users.map((user) => (
+            <div key={user.id} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center flex-shrink-0">
+                    <UserIcon className="w-5 h-5 text-gray-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-gray-900 break-words">{user.name}</div>
+                    {user.id === currentUser?.id && (
+                      <span className="text-xs text-gray-500">(You)</span>
+                    )}
+                  </div>
+                </div>
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRoleColor(user.role)} whitespace-nowrap ml-2`}>
+                  <Shield className="w-3 h-3 mr-1" />
+                  {formatRole(user.role)}
+                </span>
+              </div>
+
+              <div className="space-y-2 mb-3">
+                <div className="text-xs sm:text-sm text-gray-600 break-all">
+                  <span className="font-medium text-gray-700">Email:</span> {user.email}
+                </div>
+                <div className="text-xs sm:text-sm text-gray-600">
+                  <span className="font-medium text-gray-700">Created:</span> {new Date(user.created_at).toLocaleDateString()}
+                </div>
+              </div>
+
+              {(currentUser?.role === 'super_admin' || currentUser?.role === 'manufacturer') && (
+                <div className="flex gap-2 pt-3 border-t border-gray-200">
+                  <button
+                    onClick={() => openEditModal(user)}
+                    className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium flex items-center justify-center gap-1"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => confirmDelete(user)}
+                    className="flex-1 px-3 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-1"
+                    disabled={user.id === currentUser?.id}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Role Information - Mobile Responsive */}
+      <div className="mt-4 sm:mt-6 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <h3 className="text-xs sm:text-sm font-semibold text-blue-900 mb-2">User Role Information</h3>
         {currentUser?.role === 'manufacturer' ? (
           // Information for Manufacturers
           <>
-            <ul className="space-y-1 text-sm text-blue-800">
+            <ul className="space-y-1 text-xs sm:text-sm text-blue-800">
               <li>• <strong>Manufacturer Team Member:</strong> Can view and manage orders assigned to your manufacturing facility, handle product pricing, and communicate with admin</li>
               <li>• <strong>Sub-Manufacturer:</strong> Can view and process specific orders assigned to them by the manufacturer, with limited access to order details</li>
             </ul>
-            <p className="text-xs text-blue-700 mt-3">
+            <p className="text-xs text-blue-700 mt-2 sm:mt-3">
               <strong>Note:</strong> Team members and sub-manufacturers will have access to orders and products relevant to your manufacturing operations.
             </p>
           </>
         ) : (
           // Information for Super Admin and others
           <>
-            <ul className="space-y-1 text-sm text-blue-800">
+            <ul className="space-y-1 text-xs sm:text-sm text-blue-800">
               <li>• <strong>Super Admin:</strong> Full system access, can manage all users and settings</li>
               <li>• <strong>Admin:</strong> Can manage orders, products, variants, and view reports</li>
               <li>• <strong>Order Creator:</strong> Can create and manage their own orders</li>
               <li>• <strong>Order Approver:</strong> Can approve and edit any order in the system</li>
             </ul>
-            <p className="text-xs text-blue-700 mt-3">
+            <p className="text-xs text-blue-700 mt-2 sm:mt-3">
               <strong>Note:</strong> Clients and Manufacturers are managed in their respective sections with their own login access.
             </p>
           </>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal - Mobile Responsive */}
       {showModal && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">
+        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-3 sm:mb-4">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
                 {editingUser ? 'Edit User' : 'Add New User'}
               </h2>
               <button
@@ -476,9 +549,9 @@ export default function UsersPage() {
             <form onSubmit={handleSubmit}>
               {/* Error Message Display */}
               {formError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
-                  <XCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-700">{formError}</p>
+                <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
+                  <XCircle className="h-4 h-4 sm:h-5 sm:w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{formError}</p>
                 </div>
               )}
               
@@ -509,6 +582,45 @@ export default function UsersPage() {
                   {editingUser && (
                     <p className="text-xs text-gray-500 mt-1">Email cannot be changed after creation</p>
                   )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <PhoneInput
+                    country={'us'}
+                    value={formData.phone_number}
+                    onChange={(phone) => setFormData({ ...formData, phone_number: phone })}
+                    inputStyle={{
+                      width: '100%',
+                      height: '42px',
+                      fontSize: '14px',
+                      paddingLeft: '48px',
+                      borderRadius: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      color: '#111827'
+                    }}
+                    buttonStyle={{
+                      borderRadius: '0.5rem 0 0 0.5rem',
+                      border: '1px solid #d1d5db',
+                      borderRight: 'none'
+                    }}
+                    containerStyle={{
+                      width: '100%'
+                    }}
+                    dropdownStyle={{
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    searchStyle={{
+                      width: '100%',
+                      padding: '8px',
+                      color: '#111827',
+                      backgroundColor: '#ffffff'
+                    }}
+                    enableSearch={true}
+                    searchPlaceholder="Search countries..."
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>

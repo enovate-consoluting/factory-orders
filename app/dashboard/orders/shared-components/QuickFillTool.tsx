@@ -24,7 +24,7 @@ export const QuickFillTool: React.FC<QuickFillToolProps> = ({ onDistribute }) =>
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-      <div className="flex items-center justify-between">
+      <div className="flex lg:items-center  flex-col lg:flex-row lg:justify-between gap-4">
         <div>
           <h3 className="font-medium text-blue-900">Quick Fill Quantities</h3>
           <p className="text-sm text-blue-700">Distribute quantity evenly across all variants</p>
