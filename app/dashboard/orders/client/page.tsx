@@ -129,17 +129,22 @@ export default function ClientOrdersPage() {
 
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
-        .select('id, name')
-        .eq('email', email)
-        .single();
+        .select('id, name, email')
+        .eq('email', email);
 
-      if (clientError || !clientData) {
+      if (clientError) {
         console.error('Error finding client:', clientError);
         setLoading(false);
         return;
       }
 
-      setClientName(clientData.name);
+      if (!clientData || clientData.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      const client = clientData[0];
+      setClientName(client.name);
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -155,7 +160,7 @@ export default function ClientOrdersPage() {
           sample_fee,
           sample_eta,
           sample_notes,
-          order_media(id, file_url, file_type, original_filename, is_sample),
+          order_media!order_media_order_id_fkey(id, file_url, file_type, original_filename, is_sample),
           order_products(
             id,
             product_order_number,
@@ -170,14 +175,15 @@ export default function ClientOrdersPage() {
             sample_fee,
             sample_required,
             order_items(id, variant_combo, quantity, notes),
-            order_media(id, file_url, file_type, original_filename)
+            order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
           )
         `)
-        .eq('client_id', clientData.id)
+        .eq('client_id', client.id)
         .order('created_at', { ascending: false });
 
       if (ordersError) {
         console.error('Error fetching orders:', ordersError);
+        console.error('Error details:', JSON.stringify(ordersError, null, 2));
         setLoading(false);
         return;
       }
@@ -534,54 +540,54 @@ export default function ClientOrdersPage() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">My Orders</h1>
-          <p className="text-gray-500 mt-1">Review and approve your orders</p>
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Orders</h1>
+          <p className="text-gray-500 mt-1 text-sm sm:text-base">Review and approve your orders</p>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
         {/* Stats Cards - 4 columns with clean styling */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
           {/* All Orders */}
           <button
             onClick={() => setActiveTab('orders')}
-            className={`group relative p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
               activeTab === 'orders'
                 ? 'bg-blue-50 border-blue-400 shadow-md'
                 : 'bg-white border-blue-200 hover:bg-blue-50 hover:border-blue-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-100 mb-3">
-                <Layers className="w-6 h-6 text-blue-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-blue-100 mb-2 sm:mb-3">
+                <Layers className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{orders.length}</p>
-              <p className="text-sm font-semibold mt-1 text-gray-600">All Orders</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{orders.length}</p>
+              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600">All Orders</p>
               {/* Spacer to match height of cards with "Action required" */}
-              <p className="text-xs mt-1 invisible">Action required</p>
+              <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
             </div>
           </button>
 
           {/* Samples Awaiting Approval */}
           <button
             onClick={() => setActiveTab('samples')}
-            className={`group relative p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
               activeTab === 'samples'
                 ? 'bg-amber-50 border-amber-400 shadow-md'
                 : 'bg-white border-amber-200 hover:bg-amber-50 hover:border-amber-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-amber-100 mb-3">
-                <FileText className="w-6 h-6 text-amber-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-amber-100 mb-2 sm:mb-3">
+                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{samplesAwaitingApproval}</p>
-              <p className="text-sm font-semibold mt-1 text-gray-600">Samples Awaiting Approval</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{samplesAwaitingApproval}</p>
+              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600 leading-tight">Samples Awaiting Approval</p>
               {samplesAwaitingApproval > 0 && activeTab !== 'samples' ? (
                 <p className="text-xs text-amber-600 mt-1 font-bold">Action required</p>
               ) : (
-                <p className="text-xs mt-1 invisible">Action required</p>
+                <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
               )}
             </div>
           </button>
@@ -589,22 +595,22 @@ export default function ClientOrdersPage() {
           {/* Products Awaiting Approval */}
           <button
             onClick={() => setActiveTab('products')}
-            className={`group relative p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
               activeTab === 'products'
                 ? 'bg-indigo-50 border-indigo-400 shadow-md'
                 : 'bg-white border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-indigo-100 mb-3">
-                <Package className="w-6 h-6 text-indigo-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-indigo-100 mb-2 sm:mb-3">
+                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{productsAwaitingApproval}</p>
-              <p className="text-sm font-semibold mt-1 text-gray-600">Products Awaiting Approval</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{productsAwaitingApproval}</p>
+              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600 leading-tight">Products Awaiting Approval</p>
               {productsAwaitingApproval > 0 && activeTab !== 'products' ? (
                 <p className="text-xs text-indigo-600 mt-1 font-bold">Action required</p>
               ) : (
-                <p className="text-xs mt-1 invisible">Action required</p>
+                <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
               )}
             </div>
           </button>
@@ -612,29 +618,29 @@ export default function ClientOrdersPage() {
           {/* Approved */}
           <button
             onClick={() => setActiveTab('approved')}
-            className={`group relative p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
               activeTab === 'approved'
                 ? 'bg-green-50 border-green-400 shadow-md'
                 : 'bg-white border-green-200 hover:bg-green-50 hover:border-green-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-green-100 mb-3">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-green-100 mb-2 sm:mb-3">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
-              <p className="text-3xl font-bold text-gray-900">{approvedCount}</p>
-              <p className="text-sm font-semibold mt-1 text-gray-600">Approved</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{approvedCount}</p>
+              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600">Approved</p>
               {/* Spacer to match height of cards with "Action required" */}
-              <p className="text-xs mt-1 invisible">Action required</p>
+              <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
             </div>
           </button>
         </div>
 
         {/* Content Area */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Tab Header */}
-          <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-            <h2 className="font-semibold text-gray-900">
+          <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+            <h2 className="font-semibold text-gray-900 text-sm sm:text-base">
               {activeTab === 'orders' && 'All Orders'}
               {activeTab === 'samples' && 'Samples Awaiting Approval'}
               {activeTab === 'products' && 'Products Awaiting Approval'}
@@ -643,21 +649,21 @@ export default function ClientOrdersPage() {
           </div>
 
           {filteredOrders.length === 0 ? (
-            <div className="py-16 text-center">
-              <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="py-12 sm:py-16 text-center px-3 sm:px-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
                 {activeTab === 'approved' ? (
-                  <CheckCircle className="w-7 h-7 text-gray-400" />
+                  <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
                 ) : (
-                  <Package className="w-7 h-7 text-gray-400" />
+                  <Package className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
                 )}
               </div>
-              <p className="text-gray-700 font-medium">
+              <p className="text-gray-700 font-medium text-sm sm:text-base">
                 {activeTab === 'orders' && 'No orders yet'}
                 {activeTab === 'samples' && 'No samples awaiting approval'}
                 {activeTab === 'products' && 'No products awaiting approval'}
                 {activeTab === 'approved' && 'No approved items yet'}
               </p>
-              <p className="text-gray-400 text-sm mt-1">
+              <p className="text-gray-400 text-xs sm:text-sm mt-1">
                 {(activeTab === 'samples' || activeTab === 'products') && "You're all caught up!"}
               </p>
             </div>
@@ -681,73 +687,91 @@ export default function ClientOrdersPage() {
                   <div key={order.id}>
                     {/* Order Row */}
                     <div 
-                      className={`px-6 py-4 cursor-pointer transition-colors ${
+                      className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 cursor-pointer transition-colors relative ${
                         needsAction ? 'hover:bg-amber-50' : 'hover:bg-gray-50'
                       }`}
                       onClick={() => toggleOrderExpansion(order.id)}
                     >
-                      <div className="flex items-center gap-4">
-                        {/* Expand Arrow */}
-                        <div className="flex-shrink-0 w-6">
-                          {isExpanded ? (
-                            <ChevronDown className="w-5 h-5 text-gray-400" />
-                          ) : (
-                            <ChevronRight className="w-5 h-5 text-gray-400" />
-                          )}
-                        </div>
+                      {/* Notes Button - Top Right on Mobile */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openNotesModal(order);
+                        }}
+                        className="sm:hidden absolute top-3 right-4 p-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors flex items-center z-10"
+                        title="View Notes"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
 
-                        {/* Order Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <h3 className="font-semibold text-gray-900">
-                              {order.order_name || 'Untitled Order'}
-                            </h3>
-                            <span className="text-sm text-gray-400">
-                              #{order.order_number}
-                            </span>
-                            {getStatusBadge(order.status)}
-                          </div>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3.5 h-3.5" />
-                              Created {formatDate(order.created_at)}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Box className="w-3.5 h-3.5" />
-                              {productCount} product{productCount !== 1 ? 's' : ''}
-                            </span>
-                            {hasSampleForClient && (
-                              <span className="flex items-center gap-1">
-                                <FileText className="w-3.5 h-3.5" />
-                                1 sample
-                              </span>
+                      <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-col sm:flex-row">
+                        {/* Order Info - Full Width Container on Mobile */}
+                        <div className="flex items-center gap-3 w-full sm:flex-1 pr-12 sm:pr-0">
+                          {/* Expand Arrow */}
+                          <div className="flex-shrink-0 w-5 sm:w-6">
+                            {isExpanded ? (
+                              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                            ) : (
+                              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                             )}
                           </div>
+
+                          {/* Order Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                              <h3 className="font-semibold text-gray-900 text-sm sm:text-base">
+                                {order.order_name || 'Untitled Order'}
+                              </h3>
+                              
+                              <span className="text-xs sm:text-sm text-gray-400">
+                                #{order.order_number}
+                              </span>
+                              {getStatusBadge(order.status)}
+                            </div>
+                            <div className="flex items-center gap-3 sm:gap-4 mt-1 text-xs sm:text-sm text-gray-500 flex-wrap">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                <span className="hidden sm:inline">Created </span>{formatDate(order.created_at)}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Box className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                {productCount} product{productCount !== 1 ? 's' : ''}
+                              </span>
+                              {hasSampleForClient && (
+                                <span className="flex items-center gap-1">
+                                  <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                                  1 sample
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Right Side - Notes & Status */}
-                        <div className="flex items-center gap-3 flex-shrink-0">
-                          {/* Notes Button */}
+                        {/* Right Side - Notes & Status (Desktop only for Notes) */}
+                        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 w-full sm:w-auto justify-end sm:justify-start pl-8 sm:pl-0">
+                          {/* Notes Button - Desktop */}
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openNotesModal(order);
                             }}
-                            className="px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1.5"
+                            className="hidden sm:flex px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors items-center gap-1.5"
                           >
                             <MessageSquare className="w-3.5 h-3.5" />
                             Notes
                           </button>
                           
                           {needsAction && (
-                            <span className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full flex items-center gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5" />
-                              Action Required
+                            <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full flex items-center gap-1 sm:gap-1.5">
+                              <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                              <span className="hidden sm:inline">Action Required</span>
+                              <span className="sm:hidden">Action</span>
                             </span>
                           )}
                           {!needsAction && sampleApproved && activeTab === 'approved' && (
-                            <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
-                              Sample Approved
+                            <span className="px-2 sm:px-2.5 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                              <span className="hidden sm:inline">Sample Approved</span>
+                              <span className="sm:hidden">Approved</span>
                             </span>
                           )}
                         </div>
@@ -756,33 +780,33 @@ export default function ClientOrdersPage() {
 
                     {/* Expanded Content */}
                     {isExpanded && (
-                      <div className="px-6 pb-5 bg-gray-50/50">
-                        <div className="ml-10 space-y-3">
+                      <div className="px-3 sm:px-4 md:px-6 pb-4 sm:pb-5 bg-gray-50/50">
+                        <div className="ml-8 sm:ml-10 space-y-3">
                           
                           {/* Sample Section */}
                           {hasSampleForClient && (activeTab === 'orders' || activeTab === 'samples' || activeTab === 'approved') && (
-                            <div className={`rounded-xl border p-4 ${
+                            <div className={`rounded-xl border p-3 sm:p-4 ${
                               sampleApproved
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-white border-amber-200'
                             }`}>
-                              <div className="flex items-center justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+                                <div className="flex-1 w-full sm:w-auto">
+                                  <div className="flex items-center gap-2 sm:gap-3">
+                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                                       sampleApproved ? 'bg-green-500' : 'bg-amber-500'
                                     }`}>
-                                      <FileText className="w-5 h-5 text-white" />
+                                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                                     </div>
-                                    <div>
-                                      <h4 className="font-semibold text-gray-900">Sample Request</h4>
-                                      <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-gray-600">
+                                    <div className="min-w-0 flex-1">
+                                      <h4 className="font-semibold text-gray-900 text-sm sm:text-base">Sample Request</h4>
+                                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-600">
                                         {order.sample_fee && (
                                           <span>Fee: <span className="font-semibold">${formatCurrency(order.sample_fee)}</span></span>
                                         )}
                                         {order.sample_eta && (
                                           <span className="flex items-center gap-1">
-                                            <Truck className="w-3.5 h-3.5" />
+                                            <Truck className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                             ETA: {formatDate(order.sample_eta)}
                                           </span>
                                         )}
@@ -794,7 +818,7 @@ export default function ClientOrdersPage() {
                                             }}
                                             className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
                                           >
-                                            <ImageIcon className="w-3.5 h-3.5" />
+                                            <ImageIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                             Media ({sampleMedia.length})
                                           </button>
                                         )}
@@ -804,8 +828,8 @@ export default function ClientOrdersPage() {
                                 </div>
 
                                 {sampleApproved ? (
-                                  <span className="px-4 py-2 bg-green-100 text-green-700 text-sm font-semibold rounded-lg flex items-center gap-2">
-                                    <CheckCircle className="w-4 h-4" />
+                                  <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-center">
+                                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     Sample Approved
                                   </span>
                                 ) : (
@@ -815,12 +839,12 @@ export default function ClientOrdersPage() {
                                       handleApproveSample(order.id);
                                     }}
                                     disabled={approvingId === order.id}
-                                    className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                    className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-sm w-full sm:w-auto justify-center"
                                   >
                                     {approvingId === order.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                                     ) : (
-                                      <Check className="w-4 h-4" />
+                                      <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                     )}
                                     Approve Sample
                                   </button>
@@ -851,34 +875,44 @@ export default function ClientOrdersPage() {
                                     }`}
                                   >
                                     {/* Product Header - Compact */}
-                                    <div className="px-4 py-3">
-                                      <div className="flex items-center justify-between gap-4">
-                                        <div className="flex items-center gap-3 min-w-0" style={{ flex: '0 0 auto', maxWidth: '40%' }}>
-                                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                    <div className="px-3 sm:px-4 py-2 sm:py-3">
+                                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                                        {/* Product Info */}
+                                        <div className="flex items-start gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
+                                          <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                                             isApproved ? 'bg-green-500' : needsApproval ? 'bg-blue-500' : 'bg-gray-400'
                                           }`}>
-                                            <Package className="w-4 h-4 text-white" />
+                                            <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                                           </div>
-                                          <div className="min-w-0">
-                                            <h4 className="font-semibold text-gray-900 truncate">
-                                              {product.description || 'Product'}
-                                            </h4>
-                                            <p className="text-xs text-gray-500">{product.product_order_number}</p>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <h4 className="font-semibold text-gray-900 text-sm sm:text-base">
+                                                {product.description || 'Product'}
+                                              </h4>
+                                              {/* Status Badge - Show on mobile near title */}
+                                              {!isApproved && !needsApproval && (
+                                                <span className="sm:hidden">
+                                                  {getStatusBadge(product.product_status)}
+                                                </span>
+                                              )}
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-0.5">{product.product_order_number}</p>
                                           </div>
                                         </div>
                                         
-                                        {/* Pricing + Button */}
-                                        <div className="flex items-center gap-4 flex-shrink-0">
-                                          <div className="flex items-center gap-4 text-sm">
-                                            <div className="text-right">
+                                        {/* Pricing Section - Stacked on mobile */}
+                                        <div className="w-full sm:w-auto flex flex-col gap-2 sm:gap-0 sm:flex-row sm:items-center sm:gap-4">
+                                          {/* Pricing Info */}
+                                          <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm">
+                                            <div>
                                               <span className="text-gray-500">Qty:</span>
                                               <span className="font-semibold text-gray-900 ml-1">{totalQty}</span>
                                             </div>
-                                            <div className="text-right">
+                                            <div>
                                               <span className="text-gray-500">Per Item:</span>
                                               <span className="font-semibold text-gray-900 ml-1">${formatCurrency(unitPrice)}</span>
                                             </div>
-                                            <div className="text-right">
+                                            <div>
                                               <span className="text-gray-500">Total:</span>
                                               <span className="font-bold text-gray-900 ml-1">${formatCurrency(total)}</span>
                                             </div>
@@ -886,8 +920,8 @@ export default function ClientOrdersPage() {
 
                                           {/* Approve Button or Status */}
                                           {isApproved ? (
-                                            <span className="px-3 py-1.5 bg-green-100 text-green-700 text-sm font-semibold rounded-lg flex items-center gap-1.5">
-                                              <CheckCircle className="w-4 h-4" />
+                                            <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 justify-center">
+                                              <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                               Approved
                                             </span>
                                           ) : needsApproval ? (
@@ -897,17 +931,17 @@ export default function ClientOrdersPage() {
                                                 handleApproveProduct(product.id);
                                               }}
                                               disabled={approvingProductId === product.id}
-                                              className="px-4 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                                              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-sm justify-center"
                                             >
                                               {approvingProductId === product.id ? (
-                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                                               ) : (
-                                                <Check className="w-4 h-4" />
+                                                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                               )}
                                               Approve
                                             </button>
                                           ) : (
-                                            <span className="text-sm">
+                                            <span className="hidden sm:inline text-xs sm:text-sm">
                                               {getStatusBadge(product.product_status)}
                                             </span>
                                           )}
@@ -915,28 +949,28 @@ export default function ClientOrdersPage() {
                                       </div>
 
                                       {/* Second Row - Media & Variants Toggle */}
-                                      <div className="flex items-center gap-4 mt-2 ml-12">
+                                      <div className="flex items-center gap-3 sm:gap-4 mt-2 ml-0 sm:ml-12 flex-wrap">
                                         {productMedia.length > 0 && (
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               openMediaModal(productMedia, product.description || 'Product Media');
                                             }}
-                                            className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                            className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium"
                                           >
-                                            <ImageIcon className="w-4 h-4" />
+                                            <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                             View Media ({productMedia.length})
                                           </button>
                                         )}
                                         {product.order_items && product.order_items.length > 0 && (
                                           <button
                                             onClick={(e) => toggleProductExpansion(product.id, e)}
-                                            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 font-medium"
+                                            className="flex items-center gap-1 text-xs sm:text-sm text-gray-500 hover:text-gray-700 font-medium"
                                           >
                                             {isProductExpanded ? (
-                                              <ChevronDown className="w-4 h-4" />
+                                              <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                             ) : (
-                                              <ChevronRight className="w-4 h-4" />
+                                              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                             )}
                                             {isProductExpanded ? 'Hide' : 'Show'} Variants ({product.order_items.length})
                                           </button>
@@ -946,25 +980,45 @@ export default function ClientOrdersPage() {
 
                                     {/* Expanded Variants */}
                                     {isProductExpanded && product.order_items && (
-                                      <div className={`border-t px-4 py-3 ${isApproved ? 'border-green-200 bg-white' : 'border-gray-100 bg-gray-50'}`}>
-                                        <table className="w-full text-sm">
-                                          <thead>
-                                            <tr className="text-left text-gray-500 text-xs uppercase">
-                                              <th className="pb-2 font-semibold" style={{ width: '25%' }}>Variant</th>
-                                              <th className="pb-2 font-semibold" style={{ width: '8%' }}>Qty</th>
-                                              <th className="pb-2 font-semibold pl-4" style={{ width: '67%' }}>Notes</th>
-                                            </tr>
-                                          </thead>
-                                          <tbody className="text-gray-700">
-                                            {product.order_items.map((item, idx) => (
-                                              <tr key={item.id} className={idx > 0 ? 'border-t border-gray-100' : ''}>
-                                                <td className="py-2 font-medium">{item.variant_combo}</td>
-                                                <td className="py-2 font-semibold">{item.quantity}</td>
-                                                <td className="py-2 pl-4 text-gray-500">{item.notes || '—'}</td>
+                                      <div className={`border-t px-3 sm:px-4 py-2 sm:py-3 ${isApproved ? 'border-green-200 bg-white' : 'border-gray-100 bg-gray-50'}`}>
+                                        {/* Mobile: Stacked layout */}
+                                        <div className="sm:hidden space-y-3">
+                                          {product.order_items.map((item, idx) => (
+                                            <div key={item.id} className={`pb-3 ${idx < product.order_items.length - 1 ? 'border-b border-gray-200' : ''}`}>
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="font-medium text-gray-900 text-sm">{item.variant_combo}</span>
+                                                <span className="font-semibold text-gray-900 text-sm">Qty: {item.quantity}</span>
+                                              </div>
+                                              {item.notes && (
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                  <span className="font-medium">Notes:</span> {item.notes}
+                                                </p>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                        
+                                        {/* Desktop: Table layout */}
+                                        <div className="hidden sm:block overflow-x-auto">
+                                          <table className="w-full text-sm">
+                                            <thead>
+                                              <tr className="text-left text-gray-500 text-xs uppercase">
+                                                <th className="pb-2 font-semibold" style={{ width: '25%' }}>Variant</th>
+                                                <th className="pb-2 font-semibold" style={{ width: '8%' }}>Qty</th>
+                                                <th className="pb-2 font-semibold pl-4" style={{ width: '67%' }}>Notes</th>
                                               </tr>
-                                            ))}
-                                          </tbody>
-                                        </table>
+                                            </thead>
+                                            <tbody className="text-gray-700">
+                                              {product.order_items.map((item, idx) => (
+                                                <tr key={item.id} className={idx > 0 ? 'border-t border-gray-100' : ''}>
+                                                  <td className="py-2 font-medium">{item.variant_combo}</td>
+                                                  <td className="py-2 font-semibold">{item.quantity}</td>
+                                                  <td className="py-2 pl-4 text-gray-500">{item.notes || '—'}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -975,7 +1029,7 @@ export default function ClientOrdersPage() {
 
                           {/* No content message - only show if truly nothing */}
                           {!hasSampleForClient && productsToShow.length === 0 && (
-                            <div className="text-center py-6 text-gray-500 text-sm">
+                            <div className="text-center py-4 sm:py-6 text-gray-500 text-xs sm:text-sm">
                               No items to display for this order
                             </div>
                           )}
@@ -990,7 +1044,7 @@ export default function ClientOrdersPage() {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-sm text-gray-400">
+        <div className="mt-6 sm:mt-8 text-center text-xs sm:text-sm text-gray-400 px-3">
           Need help? Contact your account manager or email{' '}
           <a href="mailto:sales@bybirdhaus.com" className="text-blue-600 hover:text-blue-700 font-medium">
             sales@bybirdhaus.com
@@ -1000,33 +1054,33 @@ export default function ClientOrdersPage() {
 
       {/* Media Modal */}
       {mediaModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <ImageIcon className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <ImageIcon className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{mediaModal.title}</h3>
-                  <p className="text-sm text-gray-500">{mediaModal.media.length} file{mediaModal.media.length !== 1 ? 's' : ''}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">{mediaModal.title}</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">{mediaModal.media.length} file{mediaModal.media.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
               <button
                 onClick={() => setMediaModal({ isOpen: false, media: [], title: '' })}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
               </button>
             </div>
             
             {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-100px)]">
+            <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(90vh-80px)] sm:max-h-[calc(90vh-100px)]">
               {mediaModal.media.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No media files</p>
+                <p className="text-gray-500 text-center py-8 text-sm sm:text-base">No media files</p>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                   {mediaModal.media.map((file, idx) => {
                     const isImage = file.file_url?.match(/\.(jpg|jpeg|png|gif|webp)$/i);
                     
@@ -1036,7 +1090,7 @@ export default function ClientOrdersPage() {
                         href={file.file_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="group block border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all"
+                        className="group block border border-gray-200 rounded-lg sm:rounded-xl overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all"
                       >
                         {isImage ? (
                           <div className="aspect-square bg-gray-100">
@@ -1048,14 +1102,14 @@ export default function ClientOrdersPage() {
                           </div>
                         ) : (
                           <div className="aspect-square bg-gray-50 flex flex-col items-center justify-center">
-                            <FileText className="w-12 h-12 text-gray-300 mb-2" />
+                            <FileText className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mb-2" />
                             <span className="text-xs text-gray-500 uppercase font-medium">
                               {file.file_url?.split('.').pop() || 'File'}
                             </span>
                           </div>
                         )}
-                        <div className="p-3 bg-white border-t border-gray-100">
-                          <p className="text-sm text-gray-700 truncate font-medium">
+                        <div className="p-2 sm:p-3 bg-white border-t border-gray-100">
+                          <p className="text-xs sm:text-sm text-gray-700 truncate font-medium">
                             {file.original_filename || 'File'}
                           </p>
                           <p className="text-xs text-blue-600 mt-1 group-hover:underline">
@@ -1074,37 +1128,37 @@ export default function ClientOrdersPage() {
 
       {/* Notes Modal */}
       {notesModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-2xl max-w-lg w-full max-h-[85vh] sm:max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-5 h-5 text-blue-600" />
+            <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">Order Notes</h3>
-                  <p className="text-sm text-gray-500">{notesModal.orderName}</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">Order Notes</h3>
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">{notesModal.orderName}</p>
                 </div>
               </div>
               <button
                 onClick={() => setNotesModal({ isOpen: false, orderId: '', orderName: '', notes: [] })}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
               </button>
             </div>
             
             {/* Notes History */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[200px] max-h-[400px] bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 min-h-[200px] max-h-[400px] bg-gray-50">
               {loadingNotes ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 animate-spin" />
                 </div>
               ) : notesModal.notes.length === 0 ? (
-                <div className="text-center py-8">
-                  <MessageSquare className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500 text-sm">No notes yet</p>
+                <div className="text-center py-6 sm:py-8">
+                  <MessageSquare className="w-8 h-8 sm:w-10 sm:h-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-500 text-xs sm:text-sm">No notes yet</p>
                   <p className="text-gray-400 text-xs mt-1">Send a message to your account manager</p>
                 </div>
               ) : (
@@ -1115,18 +1169,18 @@ export default function ClientOrdersPage() {
                       key={note.id}
                       className={`flex ${isClient ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className={`max-w-[80%] rounded-xl px-4 py-2.5 ${
+                      <div className={`max-w-[85%] sm:max-w-[80%] rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 ${
                         isClient 
                           ? 'bg-blue-500 text-white' 
                           : 'bg-white border border-gray-200 text-gray-700'
                       }`}>
-                        <p className="text-sm whitespace-pre-wrap">{note.note}</p>
-                        <div className={`flex items-center gap-2 mt-1.5 text-xs ${
+                        <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{note.note}</p>
+                        <div className={`flex items-center gap-2 mt-1 sm:mt-1.5 text-xs ${
                           isClient ? 'text-blue-100' : 'text-gray-400'
                         }`}>
-                          <span>{note.created_by_name}</span>
+                          <span className="truncate">{note.created_by_name}</span>
                           <span>•</span>
-                          <span>{formatDate(note.created_at)}</span>
+                          <span className="whitespace-nowrap">{formatDate(note.created_at)}</span>
                         </div>
                       </div>
                     </div>
@@ -1136,13 +1190,13 @@ export default function ClientOrdersPage() {
             </div>
             
             {/* New Note Input */}
-            <div className="p-4 border-t border-gray-200 bg-white">
+            <div className="p-3 sm:p-4 border-t border-gray-200 bg-white">
               <div className="flex gap-2">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Type your message..."
-                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="flex-1 px-2.5 sm:px-3 md:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   rows={2}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1154,12 +1208,12 @@ export default function ClientOrdersPage() {
                 <button
                   onClick={handleSendNote}
                   disabled={!newNote.trim() || sendingNote}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 self-end"
+                  className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 sm:gap-2 self-end"
                 >
                   {sendingNote ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
                   ) : (
-                    <Send className="w-4 h-4" />
+                    <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   )}
                 </button>
               </div>

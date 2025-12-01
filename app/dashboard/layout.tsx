@@ -685,6 +685,7 @@ export default function DashboardLayout({
             formatRole={formatRole}
             handleLogout={handleLogout}
             onLinkClick={() => setShowMobileMenu(false)}
+            onClose={() => setShowMobileMenu(false)}
           />
         </aside>
       </div>
@@ -732,35 +733,35 @@ export default function DashboardLayout({
                     onClick={() => setShowNotifications(false)}
                   />
                   
-                  <div className="absolute right-0 mt-2 w-full sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                    <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                      <h3 className="font-semibold text-gray-900">Notifications</h3>
-                      <div className="flex items-center gap-2">
+                  <div className="fixed sm:absolute right-2 sm:right-0 mt-2 w-[calc(100vw-1rem)] sm:w-96 max-w-md bg-white rounded-lg shadow-xl border border-gray-200 z-50">
+                    <div className="p-3 sm:p-4 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-sm sm:text-base text-gray-900">Notifications</h3>
+                      <div className="flex items-center gap-1 sm:gap-2">
                         {notificationCounts.total > 0 && (
                           <button
                             onClick={markAllAsRead}
-                            className="text-xs text-blue-600 hover:text-blue-700"
+                            className="text-xs text-blue-600 hover:text-blue-700 whitespace-nowrap"
                           >
-                            Mark all as read
+                            Mark all read
                           </button>
                         )}
                         <button
                           onClick={() => setShowNotifications(false)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-400 hover:text-gray-600 p-1"
                         >
                           <X className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
                     
-                    <div className="max-h-96 overflow-y-auto">
+                    <div className="max-h-[70vh] sm:max-h-96 overflow-y-auto">
                       {/* CLIENT specific notifications */}
                       {user?.role === 'client' && notificationCounts.orders > 0 && (
                         <div className="p-3 bg-amber-50 border-b border-amber-100">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-amber-800">
+                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm font-medium text-amber-800">
                                 {notificationCounts.orders} order{notificationCounts.orders > 1 ? 's' : ''} need your approval
                               </p>
                               <Link 
@@ -779,9 +780,9 @@ export default function DashboardLayout({
                       {user?.role === 'manufacturer' && notificationCounts.samples! > 0 && (
                         <div className="p-3 bg-yellow-50 border-b border-yellow-100">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-yellow-600 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-yellow-800">
+                            <AlertCircle className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm font-medium text-yellow-800">
                                 {notificationCounts.samples} sample request{notificationCounts.samples! > 1 ? 's' : ''} need attention
                               </p>
                             </div>
@@ -792,9 +793,9 @@ export default function DashboardLayout({
                       {user?.role === 'manufacturer' && notificationCounts.production! > 0 && (
                         <div className="p-3 bg-green-50 border-b border-green-100">
                           <div className="flex items-start gap-2">
-                            <Package className="w-4 h-4 text-green-600 mt-0.5" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium text-green-800">
+                            <Package className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs sm:text-sm font-medium text-green-800">
                                 {notificationCounts.production} order{notificationCounts.production! > 1 ? 's' : ''} approved for production
                               </p>
                             </div>
@@ -811,9 +812,9 @@ export default function DashboardLayout({
                               !notif.is_read ? 'bg-blue-50' : ''
                             }`}
                           >
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1 pr-2">
-                                <p className={`text-sm ${!notif.is_read ? 'font-semibold' : ''} text-gray-900`}>
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs sm:text-sm ${!notif.is_read ? 'font-semibold' : ''} text-gray-900 break-words`}>
                                   {notif.message}
                                 </p>
                               </div>
@@ -827,7 +828,7 @@ export default function DashboardLayout({
                           </div>
                         ))
                       ) : (
-                        <div className="p-8 text-center text-gray-500">
+                        <div className="p-6 sm:p-8 text-center text-sm text-gray-500">
                           {user?.role === 'client' ? 'No orders need your attention' : 'No new notifications'}
                         </div>
                       )}
@@ -857,7 +858,8 @@ function SidebarContent({
   getInitial,
   formatRole,
   handleLogout,
-  onLinkClick
+  onLinkClick,
+  onClose
 }: {
   user: User | null;
   visibleMenuItems: any[];
@@ -867,6 +869,7 @@ function SidebarContent({
   formatRole: (role: string) => string;
   handleLogout: () => void;
   onLinkClick?: () => void;
+  onClose?: () => void;
 }) {
   // Debug log
   console.log('SidebarContent - User role:', user?.role, 'Notification counts:', notificationCounts);
@@ -874,11 +877,20 @@ function SidebarContent({
   return (
     <div className="flex flex-col h-full">
       {/* Logo Section */}
-      <div className="h-16 px-6 border-b border-gray-100 flex items-center justify-center">
-        <div className="text-center">
+      <div className="h-16 px-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">BirdHaus</h1>
           <p className="text-xs text-gray-500">Order Management</p>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+            aria-label="Close sidebar"
+          >
+            <X className="w-5 h-5 text-gray-600" />
+          </button>
+        )}
       </div>
 
       {/* User Profile Section */}
