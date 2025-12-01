@@ -82,23 +82,25 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   };
 
   return (
-    <div className="flex flex-wrap gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
-      {subTabs.map((tab) => {
-        const isActive = activeSubTab === tab.key;
-        return (
-          <button
-            key={tab.key}
-            onClick={() => onSubTabChange(tab.key)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${getTabStyles(tab, isActive)}`}
-          >
-            {tab.icon}
-            <span className="font-medium text-sm">{tab.label}</span>
-            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getBadgeStyles(tab, isActive)}`}>
-              {tab.count}
-            </span>
-          </button>
-        );
-      })}
+    <div className="overflow-x-auto mb-4 bg-gray-50 rounded-lg">
+      <div className="flex gap-2 p-2 min-w-min">
+        {subTabs.map((tab) => {
+          const isActive = activeSubTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => onSubTabChange(tab.key)}
+              className={`flex items-center gap-1.5 md:gap-2 px-2.5 md:px-3 py-2 rounded-lg border transition-colors flex-shrink-0 ${getTabStyles(tab, isActive)}`}
+            >
+              <span className="flex-shrink-0">{tab.icon}</span>
+              <span className="font-medium text-sm whitespace-nowrap">{tab.label}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${getBadgeStyles(tab, isActive)}`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 };

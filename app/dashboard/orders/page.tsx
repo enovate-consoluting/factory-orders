@@ -858,27 +858,27 @@ export default function OrdersPage() {
 
       {/* Header */}
       <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             {userRole === 'manufacturer' ? t.yourOrders : t.orders}
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <button
               onClick={toggleLanguage}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg text-sm sm:text-base"
               title="Switch Language / 切换语言"
             >
-              <Globe className="w-5 h-5" />
-              <span className="font-medium">{t.switchToChinese}</span>
+              <Globe className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span className="font-medium whitespace-nowrap">{t.switchToChinese}</span>
             </button>
-            
+
             {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
               <Link
                 href="/dashboard/orders/create"
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base"
               >
-                <Plus className="w-5 h-5" />
-                {t.newOrder}
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                <span className="whitespace-nowrap">{t.newOrder}</span>
               </Link>
             )}
           </div>
@@ -911,35 +911,35 @@ export default function OrdersPage() {
         )}
 
         {/* Search and Price Toggle */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+          <div className="flex-1 min-w-0">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 type="text"
                 placeholder={t.searchPlaceholder}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base text-gray-900 placeholder-gray-500"
               />
             </div>
           </div>
-          
+
           {(userRole === 'admin' || userRole === 'super_admin') && activeTab !== 'invoice_approval' && (
             <button
               onClick={() => setShowPrices(!showPrices)}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base flex-shrink-0"
               title={showPrices ? t.hidePrices : t.showPrices}
             >
               {showPrices ? (
                 <>
-                  <EyeOff className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">{t.hidePrices}</span>
+                  <EyeOff className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                  <span className="text-gray-700 whitespace-nowrap">{t.hidePrices}</span>
                 </>
               ) : (
                 <>
-                  <Eye className="w-4 h-4 text-gray-600" />
-                  <span className="text-gray-700">{t.showPrices}</span>
+                  <Eye className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                  <span className="text-gray-700 whitespace-nowrap">{t.showPrices}</span>
                 </>
               )}
             </button>
@@ -1157,37 +1157,101 @@ export default function OrdersPage() {
               const routingStatus = getOrderRoutingStatus(order);
               const orderTotal = calculateOrderTotal(order, userRole);
               const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
-              
+              const canDelete = canDeleteOrder(order);
+              const visibleProducts = order.order_products;
+
               return (
-                <div 
-                  key={order.id} 
-                  className={`p-4 border-b border-gray-200 ${hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
-                  onClick={() => navigateToOrder(order.id)}
+                <div
+                  key={order.id}
+                  className={`p-4 border-b border-gray-200 hover:bg-gray-50 transition-colors ${hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <div className="font-semibold text-gray-900 flex items-center gap-2">
-                        {order.order_name || t.untitledOrder}
+                  {/* Header Row */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1 min-w-0" onClick={() => navigateToOrder(order.id)}>
+                      <div className="font-semibold text-base text-gray-900 flex items-center gap-2 mb-1">
+                        <span className="truncate">{order.order_name || t.untitledOrder}</span>
                         {hasUnreadNotification && (
-                          <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></span>
+                          <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse flex-shrink-0"></span>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500">{formatOrderNumber(order.order_number)}</div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        {formatOrderNumber(order.order_number)}
+                        {visibleProducts && (
+                          <span className="ml-2">• {visibleProducts.length} {language === 'zh' ? '产品' : `product${visibleProducts.length !== 1 ? 's' : ''}`}</span>
+                        )}
+                      </div>
                     </div>
-                    <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
+                    <span className={`px-2.5 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700 flex-shrink-0 ml-2`}>
                       {routingStatus.label}
                     </span>
                   </div>
-                  <div className="text-sm text-gray-600 mb-2">
-                    {order.client?.name} {userRole !== 'manufacturer' && order.manufacturer?.name && `• ${order.manufacturer.name}`}
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <span>{new Date(order.created_at).toLocaleDateString()}</span>
-                    {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
-                      <span className="font-semibold text-green-700">
-                        {showPrices ? formatCurrencyWithLanguage(orderTotal, language) : 'XXXXX'}
-                      </span>
+
+                  {/* Client and Manufacturer Info */}
+                  <div className="mb-3 text-sm" onClick={() => navigateToOrder(order.id)}>
+                    <div className="flex items-center gap-1.5 text-gray-700 mb-1">
+                      <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      <span className="font-medium">{order.client?.name || '-'}</span>
+                    </div>
+                    {userRole !== 'manufacturer' && order.manufacturer?.name && (
+                      <div className="flex items-center gap-1.5 text-gray-600 text-xs pl-5">
+                        <Building className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <span>{order.manufacturer.name}</span>
+                      </div>
                     )}
+                  </div>
+
+                  {/* Footer Row - Date, Total, Actions */}
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500" onClick={() => navigateToOrder(order.id)}>
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{new Date(order.created_at).toLocaleDateString()}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full inline-flex items-center gap-1">
+                          <DollarSign className="w-3 h-3" />
+                          {showPrices ? formatCurrencyWithLanguage(orderTotal, language).replace(/[$¥]/, '') : 'XXXXX'}
+                        </span>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-1">
+                        {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
+                          <Link
+                            href={`/dashboard/orders/edit/${order.id}`}
+                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+                            title={t.editOrder}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Link>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowDeleteConfirm(order.id);
+                            }}
+                            className={`p-2 rounded-lg ${
+                              userRole === 'super_admin'
+                                ? 'text-red-600 hover:bg-red-50'
+                                : 'text-gray-500 hover:bg-gray-100'
+                            }`}
+                            title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => navigateToOrder(order.id)}
+                          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                          title={t.viewDetails}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               );

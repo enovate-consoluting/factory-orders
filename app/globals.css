@@ -141,6 +141,16 @@ textarea,
   background: #555;
 }
 
+/* Hide scrollbar utility class for horizontal scrolling tabs */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
 /* Loading spinner animation */
 @keyframes spin {
   to {

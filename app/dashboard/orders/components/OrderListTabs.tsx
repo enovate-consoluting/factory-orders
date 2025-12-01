@@ -38,21 +38,21 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
   const shipQueueLabel = readyToShipLabel || t.readyToShip;
 
   return (
-    <div className="border-b border-gray-200 mb-4">
-      <nav className="-mb-px flex flex-wrap gap-y-2">
+    <div className="border-b border-gray-200 mb-4 overflow-x-auto">
+      <nav className="-mb-px flex overflow-x-auto scrollbar-hide whitespace-nowrap gap-x-1">
         {/* My Orders Tab */}
         <button
           onClick={() => onTabChange('my_orders')}
-          className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+          className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
             activeTab === 'my_orders'
               ? 'border-blue-500 text-blue-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
           }`}
         >
-          <Inbox className="w-4 h-4" />
-          <span>{t.myOrders}</span>
+          <Inbox className="w-4 h-4 flex-shrink-0" />
+          <span className="whitespace-nowrap">{t.myOrders}</span>
           {tabCounts.my_orders > 0 && (
-            <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+            <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.my_orders}
             </span>
           )}
@@ -62,16 +62,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {(isAdminOrSuperAdmin || isClient) && (
           <button
             onClick={() => onTabChange('invoice_approval')}
-            className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+            className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
               activeTab === 'invoice_approval'
                 ? 'border-amber-500 text-amber-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            <FileText className="w-4 h-4" />
-            <span>{t.invoiceApproval}</span>
+            <FileText className="w-4 h-4 flex-shrink-0" />
+            <span className="whitespace-nowrap">{t.invoiceApproval}</span>
             {tabCounts.invoice_approval > 0 && (
-              <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+              <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                 {tabCounts.invoice_approval}
               </span>
             )}
@@ -81,16 +81,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {/* Sent To Other Tab */}
         <button
           onClick={() => onTabChange('sent_to_other')}
-          className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+          className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
             activeTab === 'sent_to_other'
               ? 'border-purple-500 text-purple-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
           }`}
         >
-          <SendHorizontal className="w-4 h-4" />
-          <span>{isManufacturer ? t.sentToAdmin : t.sentToManufacturer}</span>
+          <SendHorizontal className="w-4 h-4 flex-shrink-0" />
+          <span className="whitespace-nowrap">{isManufacturer ? t.sentToAdmin : t.sentToManufacturer}</span>
           {tabCounts.sent_to_other > 0 && (
-            <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+            <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.sent_to_other}
             </span>
           )}
@@ -99,16 +99,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {/* Production Status Tab */}
         <button
           onClick={onProductionTabClick}
-          className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+          className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
             activeTab === 'production_status'
               ? 'border-indigo-500 text-indigo-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
           }`}
         >
-          <Layers className="w-4 h-4" />
-          <span>{t.productionStatus}</span>
+          <Layers className="w-4 h-4 flex-shrink-0" />
+          <span className="whitespace-nowrap">{t.productionStatus}</span>
           {tabCounts.production_total > 0 && (
-            <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+            <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.production_total}
             </span>
           )}
@@ -118,18 +118,18 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {isManufacturer && (
           <button
             onClick={() => onTabChange('ready_to_ship')}
-            className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${
+            className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
               activeTab === 'ready_to_ship'
                 ? 'border-orange-500 text-orange-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            <Clock className="w-4 h-4" />
-            <span className="truncate max-w-[150px]" title={shipQueueLabel}>
+            <Clock className="w-4 h-4 flex-shrink-0" />
+            <span className="whitespace-nowrap truncate max-w-[120px] md:max-w-[150px]" title={shipQueueLabel}>
               {shipQueueLabel}
             </span>
             {tabCounts.ready_to_ship > 0 && (
-              <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+              <span className="bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                 {tabCounts.ready_to_ship}
               </span>
             )}
@@ -139,16 +139,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {/* Shipped Tab - Parent Level */}
         <button
           onClick={() => onTabChange('shipped')}
-          className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+          className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
             activeTab === 'shipped'
               ? 'border-green-500 text-green-600'
               : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
           }`}
         >
-          <Truck className="w-4 h-4" />
-          <span>{t.shipped}</span>
+          <Truck className="w-4 h-4 flex-shrink-0" />
+          <span className="whitespace-nowrap">{t.shipped}</span>
           {tabCounts.shipped > 0 && (
-            <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+            <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.shipped}
             </span>
           )}
