@@ -1128,29 +1128,29 @@ export default function ClientOrdersPage() {
 
       {/* Notes Modal */}
       {notesModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl max-w-lg w-full max-h-[85vh] sm:max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg sm:rounded-xl md:rounded-2xl w-full max-w-[95vw] sm:max-w-md md:max-w-lg max-h-[90vh] sm:max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+            <div className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-8 h-8 sm:w-9 sm:h-9 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <MessageSquare className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-blue-600" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">Order Notes</h3>
-                  <p className="text-xs sm:text-sm text-gray-500 truncate">{notesModal.orderName}</p>
+                  <p className="text-xs text-gray-500 truncate">{notesModal.orderName}</p>
                 </div>
               </div>
               <button
                 onClick={() => setNotesModal({ isOpen: false, orderId: '', orderName: '', notes: [] })}
-                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
+                className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors flex-shrink-0"
               >
-                <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
+                <X className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-gray-500" />
               </button>
             </div>
             
             {/* Notes History */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 min-h-[200px] max-h-[400px] bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 sm:space-y-3 bg-gray-50" style={{ minHeight: '200px', maxHeight: 'calc(90vh - 180px)' }}>
               {loadingNotes ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 animate-spin" />
@@ -1169,18 +1169,18 @@ export default function ClientOrdersPage() {
                       key={note.id}
                       className={`flex ${isClient ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div className={`max-w-[85%] sm:max-w-[80%] rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 ${
+                      <div className={`max-w-[90%] sm:max-w-[85%] md:max-w-[80%] rounded-xl px-3 py-2 ${
                         isClient 
                           ? 'bg-blue-500 text-white' 
                           : 'bg-white border border-gray-200 text-gray-700'
                       }`}>
                         <p className="text-xs sm:text-sm whitespace-pre-wrap break-words">{note.note}</p>
-                        <div className={`flex items-center gap-2 mt-1 sm:mt-1.5 text-xs ${
+                        <div className={`flex items-center gap-1.5 sm:gap-2 mt-1 text-xs ${
                           isClient ? 'text-blue-100' : 'text-gray-400'
                         }`}>
-                          <span className="truncate">{note.created_by_name}</span>
+                          <span className="truncate max-w-[100px] sm:max-w-none">{note.created_by_name}</span>
                           <span>•</span>
-                          <span className="whitespace-nowrap">{formatDate(note.created_at)}</span>
+                          <span className="whitespace-nowrap text-[10px] sm:text-xs">{formatDate(note.created_at)}</span>
                         </div>
                       </div>
                     </div>
@@ -1191,12 +1191,12 @@ export default function ClientOrdersPage() {
             
             {/* New Note Input */}
             <div className="p-3 sm:p-4 border-t border-gray-200 bg-white">
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-stretch">
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
                   placeholder="Type your message..."
-                  className="flex-1 px-2.5 sm:px-3 md:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-base sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none h-[52px]"
                   rows={2}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1208,16 +1208,16 @@ export default function ClientOrdersPage() {
                 <button
                   onClick={handleSendNote}
                   disabled={!newNote.trim() || sendingNote}
-                  className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 sm:gap-2 self-end"
+                  className="px-3 sm:px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 min-w-[52px] h-[52px]"
                 >
                   {sendingNote ? (
-                    <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    <Send className="w-4 h-4" />
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Press Enter to send, Shift+Enter for new line</p>
+              <p className="text-[10px] sm:text-xs text-gray-400 mt-1.5 sm:mt-2">Press Enter to send, Shift+Enter for new line</p>
             </div>
           </div>
         </div>
