@@ -984,7 +984,7 @@ export default function ClientOrdersPage() {
                                         {/* Mobile: Stacked layout */}
                                         <div className="sm:hidden space-y-3">
                                           {product.order_items.map((item, idx) => (
-                                            <div key={item.id} className={`pb-3 ${idx < product.order_items.length - 1 ? 'border-b border-gray-200' : ''}`}>
+                                            <div key={item.id} className={`pb-3 ${idx < (product.order_items?.length || 0) - 1 ? 'border-b border-gray-200' : ''}`}>
                                               <div className="flex items-center justify-between mb-1">
                                                 <span className="font-medium text-gray-900 text-sm">{item.variant_combo}</span>
                                                 <span className="font-semibold text-gray-900 text-sm">Qty: {item.quantity}</span>
