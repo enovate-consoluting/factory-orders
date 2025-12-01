@@ -675,7 +675,7 @@ export default function DashboardLayout({
           className="absolute inset-0 bg-black bg-opacity-50 transition-opacity"
           onClick={() => setShowMobileMenu(false)}
         />
-        <aside className={`absolute left-0 top-0 h-full w-72 bg-white shadow-lg transform transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
+        <aside className={`absolute left-0 top-0 h-full w-full bg-white shadow-lg transform transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
           <SidebarContent
             user={user}
             visibleMenuItems={visibleMenuItems}
