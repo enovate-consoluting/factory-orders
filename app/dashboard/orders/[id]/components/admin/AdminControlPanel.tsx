@@ -186,67 +186,68 @@ export function AdminControlPanel({
   return (
     <>
       <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-        {/* Header */}
-        <div className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
-          <Settings className="w-4 h-4 text-white" />
-          <h3 className="text-sm font-semibold text-white">Control Panel</h3>
-        </div>
-        
-        <div className="p-4">
-          {/* Order Info Row */}
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-6">
-              <div>
-                <span className="text-xs text-gray-500">Order</span>
-                <p className="font-bold text-lg text-gray-900">{order.order_number}</p>
-              </div>
-              <div className="h-10 w-px bg-gray-300" />
-              <div>
-                <span className="text-xs text-gray-500">Client</span>
-                <p className="font-semibold text-gray-900">{order.client?.name}</p>
-              </div>
-              <div className="h-10 w-px bg-gray-300" />
-              <div>
-                <span className="text-xs text-gray-500">Products</span>
-                <p className="font-semibold text-gray-900">{visibleProducts.length}</p>
-              </div>
-              
-              {/* Product Distribution */}
-              {productCounts.total > 0 && (
-                <>
-                  <div className="h-10 w-px bg-gray-300" />
-                  <div className="flex items-center gap-2">
-                    {productCounts.withAdmin > 0 && (
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                        {productCounts.withAdmin} with Admin
-                      </span>
-                    )}
-                    {productCounts.withManufacturer > 0 && (
-                      <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded">
-                        {productCounts.withManufacturer} with Mfr
-                      </span>
-                    )}
-                    {productCounts.withClient > 0 && (
-                      <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                        {productCounts.withClient} with Client
-                      </span>
-                    )}
-                  </div>
-                </>
-              )}
+        {/* Header Row - Control Panel Title and Order Info */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          {/* Control Panel Header */}
+          <div className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+            <Settings className="w-4 h-4 text-white flex-shrink-0" />
+            <h3 className="text-sm font-semibold text-white">Control Panel</h3>
+          </div>
+
+          {/* Order Info Summary */}
+          <div className="px-4 py-2 bg-gray-50 flex flex-wrap items-center gap-3 sm:gap-4">
+            <div>
+              <span className="text-xs text-gray-500">Order</span>
+              <p className="font-bold text-sm sm:text-base text-gray-900">{order.order_number}</p>
             </div>
-            
+            <div className="hidden sm:block h-8 w-px bg-gray-300" />
+            <div>
+              <span className="text-xs text-gray-500">Client</span>
+              <p className="font-semibold text-xs sm:text-sm text-gray-900 truncate max-w-[150px]">{order.client?.name}</p>
+            </div>
+            <div className="hidden sm:block h-8 w-px bg-gray-300" />
+            <div>
+              <span className="text-xs text-gray-500">Products</span>
+              <p className="font-semibold text-sm text-gray-900">{visibleProducts.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-3 sm:p-4">
+          {/* Product Distribution and Totals */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4 mb-4">
+            {/* Product Distribution */}
+            {productCounts.total > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {productCounts.withAdmin > 0 && (
+                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
+                    {productCounts.withAdmin} with Admin
+                  </span>
+                )}
+                {productCounts.withManufacturer > 0 && (
+                  <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded whitespace-nowrap">
+                    {productCounts.withManufacturer} with Mfr
+                  </span>
+                )}
+                {productCounts.withClient > 0 && (
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded whitespace-nowrap">
+                    {productCounts.withClient} with Client
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Totals */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 sm:gap-4 justify-end sm:justify-start lg:justify-end">
               {totals.shipping > 0 && (
                 <div className="text-right">
                   <span className="text-xs text-gray-500">Shipping</span>
-                  <p className="font-semibold text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                  <p className="font-semibold text-sm sm:text-base text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                 </div>
               )}
               <div className="text-right">
                 <span className="text-xs text-gray-500">Client Total</span>
-                <p className="font-bold text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                <p className="font-bold text-lg sm:text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
               </div>
             </div>
           </div>
@@ -267,23 +268,23 @@ export function AdminControlPanel({
           )}
 
           {/* Action Buttons Row */}
-          <div className="flex flex-wrap items-center gap-3 pt-3 border-t">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3 pt-3 border-t">
             {/* Print All */}
             <button
               onClick={onPrintAll}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
+              className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm sm:text-base"
             >
               <Printer className="w-4 h-4" />
-              Print All
+              <span>Print All</span>
             </button>
 
             {/* Client Notes */}
             <button
               onClick={openNotesModal}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2 font-medium relative"
+              className="px-3 sm:px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium relative text-sm sm:text-base"
             >
               <MessageSquare className="w-4 h-4" />
-              Client Notes
+              <span>Client Notes</span>
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -295,10 +296,10 @@ export function AdminControlPanel({
             {productCounts.withAdmin > 0 && (
               <button
                 onClick={onSaveAndRoute}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium ml-auto"
+                className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium sm:ml-auto text-sm sm:text-base"
               >
                 <Save className="w-4 h-4" />
-                Save All & Route ({productCounts.withAdmin})
+                <span className="whitespace-nowrap">Save All & Route ({productCounts.withAdmin})</span>
               </button>
             )}
           </div>

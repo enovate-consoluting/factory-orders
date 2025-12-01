@@ -310,31 +310,31 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const showRoutingButtons = isSampleActive;
 
   return (
-    <div className={`rounded-lg p-4 border mb-4 ${
+    <div className={`rounded-lg p-3 sm:p-4 border mb-4 ${
       isSampleActive ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
     }`}>
       {/* Header with routing status */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3">
         <h3 className={`text-sm font-semibold flex items-center ${
           isSampleActive ? 'text-amber-900' : 'text-gray-500'
         }`}>
-          <AlertCircle className="w-4 h-4 mr-2" />
-          Order Sample Request / Technical Pack
+          <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+          <span className="text-xs sm:text-sm">Order Sample Request / Technical Pack</span>
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {getRoutingStatusBadge()}
           {getSampleStatusBadge()}
-          
+
           {existingMedia && existingMedia.length > 0 && (
-            <span className="text-xs text-amber-700">
+            <span className="text-xs text-amber-700 whitespace-nowrap">
               {existingMedia.length} file(s)
             </span>
           )}
-          
+
           {onViewHistory && (
             <button
               onClick={onViewHistory}
-              className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-xs font-medium flex items-center gap-1 relative"
+              className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-xs font-medium flex items-center gap-1 relative flex-shrink-0"
               title="View sample history"
             >
               <History className="w-3 h-3" />
@@ -349,48 +349,48 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
       {/* ROUTING BUTTONS */}
       {showRoutingButtons && (
-        <div className="mb-4 p-3 bg-white rounded-lg border border-amber-200">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-700">Sample Routing:</span>
-            
-            <div className="flex items-center gap-2">
+        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-white rounded-lg border border-amber-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Sample Routing:</span>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {canRouteToManufacturer && (
                 <button
                   onClick={() => openRouteModal('manufacturer')}
                   disabled={isRouting}
-                  className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                  className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
-                  <Send className="w-3 h-3" />
-                  Send to Manufacturer
+                  <Send className="w-3 h-3 flex-shrink-0" />
+                  <span>Send to Manufacturer</span>
                 </button>
               )}
-              
+
               {canRouteToClient && (
                 <button
                   onClick={() => openRouteModal('client')}
                   disabled={isRouting}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                  className="px-2.5 sm:px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
-                  <Send className="w-3 h-3" />
-                  Send to Client
+                  <Send className="w-3 h-3 flex-shrink-0" />
+                  <span>Send to Client</span>
                 </button>
               )}
-              
+
               {canRouteToAdmin && (
                 <button
                   onClick={() => openRouteModal('admin')}
                   disabled={isRouting}
-                  className="px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center gap-1 transition-colors"
+                  className="px-2.5 sm:px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
-                  <Send className="w-3 h-3" />
-                  {isManufacturer ? 'Send to Admin' : 'Return to Admin'}
+                  <Send className="w-3 h-3 flex-shrink-0" />
+                  <span>{isManufacturer ? 'Send to Admin' : 'Return to Admin'}</span>
                 </button>
               )}
-              
+
               {isRouting && (
                 <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
               )}
-              
+
               {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
                 <span className="text-xs text-gray-500 italic">
                   {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
@@ -405,11 +405,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       )}
 
       {/* Sample Details Fields */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-3">
         <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample Fee
-            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -421,7 +421,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               onChange={(e) => handleFeeChange(e.target.value)}
               placeholder={isManufacturer ? "Enter fee" : "Set by manufacturer"}
               disabled={!canEditFeeETA}
-              className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full pl-7 pr-2 py-2 sm:py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-2 focus:ring-amber-500"
             />
           </div>
         </div>
@@ -429,7 +429,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Sample ETA
-            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1">(Manufacturer only)</span>}
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">(Manufacturer only)</span>}
           </label>
           <div className="relative">
             <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -438,12 +438,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               value={localETA}
               onChange={(e) => handleETAChange(e.target.value)}
               disabled={!canEditFeeETA}
-              className="w-full pl-7 pr-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
+              className="w-full pl-7 pr-2 py-2 sm:py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-2 focus:ring-amber-500"
             />
           </div>
         </div>
 
-        <div className={!canEdit ? "opacity-60" : ""}>
+        <div className={`${!canEdit ? "opacity-60" : ""} sm:col-span-2 lg:col-span-1`}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Status
           </label>
@@ -451,7 +451,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             value={localStatus}
             onChange={(e) => handleStatusChange(e.target.value)}
             disabled={!canEdit}
-            className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-1 focus:ring-amber-500"
+            className="w-full px-2 py-2 sm:py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-2 focus:ring-amber-500"
           >
             <option value="no_sample">No Sample</option>
             <option value="pending">Pending</option>
@@ -535,10 +535,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           <label className="block text-xs font-medium text-amber-800 mb-1">
             Upload New Technical Pack / Sample Media
           </label>
-          <div className="flex items-center gap-2">
-            <label className="px-2 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer flex items-center text-xs transition-colors">
-              <Upload className="w-3 h-3 mr-1" />
-              Upload Tech Pack
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <label className="px-3 py-2 sm:py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors w-full sm:w-auto">
+              <Upload className="w-4 h-4 flex-shrink-0" />
+              <span>Upload Tech Pack</span>
               <input
                 type="file"
                 multiple
@@ -560,13 +560,13 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </span>
             )}
           </div>
-          
+
           {sampleFiles.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {sampleFiles.map((file, index) => (
-                <div key={index} className="flex items-center gap-1 bg-amber-100 px-2 py-1 rounded text-xs border border-amber-300">
-                  <Upload className="w-3 h-3 text-amber-700" />
-                  <span className="text-amber-800">{file.name}</span>
+                <div key={index} className="flex items-center gap-1 bg-amber-100 px-2 py-1.5 rounded text-xs border border-amber-300">
+                  <Upload className="w-3 h-3 text-amber-700 flex-shrink-0" />
+                  <span className="text-amber-800 truncate max-w-[150px] sm:max-w-none">{file.name}</span>
                   {onFileRemove && (
                     <button
                       onClick={() => {
@@ -575,9 +575,9 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                           setIsDirty(false);
                         }
                       }}
-                      className="text-red-600 hover:text-red-800 ml-1"
+                      className="text-red-600 hover:text-red-800 ml-1 flex-shrink-0 p-0.5"
                     >
-                      <X className="w-2.5 h-2.5" />
+                      <X className="w-3 h-3" />
                     </button>
                   )}
                 </div>
@@ -589,28 +589,28 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
       {/* Save Button */}
       {showSaveButton && onSave && canEdit && (
-        <div className="flex justify-end gap-2 pt-3 border-t border-amber-200">
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t border-amber-200">
           <button
             onClick={handleCancel}
             disabled={saving}
-            className="px-3 py-1.5 text-xs text-amber-700 hover:text-amber-900 border border-amber-300 rounded hover:bg-amber-50 transition-colors disabled:opacity-50"
+            className="px-3 sm:px-4 py-2 sm:py-1.5 text-xs sm:text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded hover:bg-amber-50 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3 py-1.5 bg-amber-600 text-white rounded text-xs hover:bg-amber-700 flex items-center gap-1 transition-colors disabled:opacity-50"
+            className="px-3 sm:px-4 py-2 sm:py-1.5 bg-amber-600 text-white rounded text-xs sm:text-sm hover:bg-amber-700 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
           >
             {saving ? (
               <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Saving...
+                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                <span>Saving...</span>
               </>
             ) : (
               <>
-                <Save className="w-3 h-3" />
-                Save Sample Section
+                <Save className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span>Save Sample Section</span>
               </>
             )}
           </button>

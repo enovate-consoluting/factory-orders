@@ -536,14 +536,14 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     return (
       <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
         {/* Product Header */}
-        <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
+        <div className="p-3 sm:p-4 bg-gray-50 border-b-2 border-gray-200">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2 sm:gap-3">
               {/* Collapse Button */}
               {autoCollapse && (
                 <button
                   onClick={handleCollapse}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors mt-1"
+                  className="p-1 hover:bg-gray-200 rounded transition-colors mt-1 flex-shrink-0"
                   title="Collapse details"
                 >
                   <ChevronDown className="w-5 h-5 text-gray-600" />
@@ -551,100 +551,106 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               )}
               {getProductStatusIcon(displayStatus)}
               <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold text-lg text-gray-900">
+                {/* Title and Status Badge - Always on same line */}
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h3 className="font-semibold text-base sm:text-lg text-gray-900 truncate flex-1 min-w-0">
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
-                  <ProductStatusBadge status={displayStatus} />
-                  {(product as any).payment_status === 'paid' && (
-                    <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      Paid
-                    </span>
-                  )}
-                  
-                  {/* CLIENT TOTAL BADGE - Always showing client prices */}
-                  {totalPrice > 0 && (
-                    <span className={`px-3 py-1 text-sm font-semibold rounded-full flex items-center gap-1 ${
-                      shippingPrice > 0 || hasShippingLink
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      <DollarSign className="w-4 h-4" />
-                      Client Total {(shippingPrice > 0 || hasShippingLink) ? (
-                        <span className="text-green-700">(w/ shipping)</span>
-                      ) : (
-                        <span className="text-red-600">(no shipping)</span>
-                      )}: ${formatCurrency(totalPrice)}
-                    </span>
-                  )}
-                </div>
-                
-                {(product as any).description && (product as any).product?.title && (
-                  <p className="text-sm text-gray-600 mt-1">{(product as any).product?.title}</p>
-                )}
-                
-                <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mt-2 text-xs text-gray-500">
-                  <div className="flex items-center gap-2 sm:gap-4">
-                    <span>{(product as any).product_order_number}</span>
-                    <span className="hidden sm:inline">•</span>
-                    <span>Qty: {totalQuantity}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <ProductStatusBadge status={displayStatus} />
+                    {(product as any).payment_status === 'paid' && (
+                      <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" />
+                        <span className="hidden sm:inline">Paid</span>
+                      </span>
+                    )}
                   </div>
-                  
-                  {userRole === 'super_admin' && (
-                    <select
-                      value={displayStatus}
-                      onChange={(e) => handleProductStatusChange(e.target.value)}
-                      className="px-2 py-0.5 text-xs border border-gray-300 rounded bg-white text-gray-700 focus:ring-1 focus:ring-blue-500"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="sample_requested">Sample Requested</option>
-                      <option value="sent_to_manufacturer">Sent to Manufacturer</option>
-                      <option value="pending_admin">Pending Admin</option>
-                      <option value="approved_for_production">Approved for Production</option>
-                      <option value="in_production">In Production</option>
-                      <option value="pending_client_approval">Pending Client</option>
-                      <option value="revision_requested">Revision Requested</option>
-                      <option value="completed">Completed</option>
-                      <option value="rejected">Rejected</option>
-                      <option value="shipped">Shipped</option>
-                      <option value="in_transit">In Transit</option>
-                    </select>
-                  )}
+                </div>
+
+                {/* CLIENT TOTAL BADGE - Simplified for mobile */}
+                {totalPrice > 0 && (
+                  <div className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-1 text-xs sm:text-sm font-semibold rounded-lg mb-2 ${
+                    shippingPrice > 0 || hasShippingLink
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                    <span className="whitespace-nowrap">Client: ${formatCurrency(totalPrice)}</span>
+                    {shippingPrice > 0 || hasShippingLink ? (
+                      <span className="hidden sm:inline text-green-600">(+ shipping)</span>
+                    ) : (
+                      <span className="hidden sm:inline text-red-600">(no ship)</span>
+                    )}
+                  </div>
+                )}
+
+                {(product as any).description && (product as any).product?.title && (
+                  <p className="text-xs sm:text-sm text-gray-600 mb-2">{(product as any).product?.title}</p>
+                )}
+
+                {/* Product Info Row */}
+                <div className="flex items-center gap-2 sm:gap-4 text-xs text-gray-500">
+                  <span className="font-medium">{(product as any).product_order_number}</span>
+                  <span className="hidden sm:inline">•</span>
+                  <span>Qty: <span className="font-semibold text-gray-700">{totalQuantity}</span></span>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Status Dropdown - Super Admin Only */}
+            {userRole === 'super_admin' && (
+              <select
+                value={displayStatus}
+                onChange={(e) => handleProductStatusChange(e.target.value)}
+                className="w-full px-2 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="pending">Pending</option>
+                <option value="sample_requested">Sample Requested</option>
+                <option value="sent_to_manufacturer">Sent to Manufacturer</option>
+                <option value="pending_admin">Pending Admin</option>
+                <option value="approved_for_production">Approved for Production</option>
+                <option value="in_production">In Production</option>
+                <option value="pending_client_approval">Pending Client</option>
+                <option value="revision_requested">Revision Requested</option>
+                <option value="completed">Completed</option>
+                <option value="rejected">Rejected</option>
+                <option value="shipped">Shipped</option>
+                <option value="in_transit">In Transit</option>
+              </select>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {onViewHistory && (
                 <button
                   onClick={handleViewHistory}
-                  className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
+                  className="px-3 py-2 sm:py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center justify-center gap-2 relative"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  <span className="hidden sm:inline">History</span>
+                  <span>History</span>
                   {showNewHistoryDot && (
                     <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
                   )}
                 </button>
               )}
-              
+
               {(userRole === 'admin' || userRole === 'super_admin') && onRoute && (
                 <button
                   onClick={() => onRoute(product)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  className="px-3 py-2 sm:py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
                 >
-                  Route
+                  <Send className="w-4 h-4 sm:hidden" />
+                  <span>Route</span>
                 </button>
               )}
-              
+
               {canLockProducts && (
                 <button
                   onClick={handleToggleLock}
                   disabled={processingProduct}
-                  className={`p-2 rounded-lg transition-colors ${
-                    (product as any).is_locked 
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                  className={`px-3 py-2 sm:py-1.5 sm:px-2 rounded-lg transition-colors flex items-center justify-center gap-2 sm:gap-0 ${
+                    (product as any).is_locked
+                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
                       : 'bg-green-50 text-green-600 hover:bg-green-100'
                   } disabled:opacity-50`}
                   title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
@@ -652,9 +658,15 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   {processingProduct ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (product as any).is_locked ? (
-                    <Lock className="w-4 h-4" />
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span className="sm:hidden text-sm font-medium">Unlock</span>
+                    </>
                   ) : (
-                    <Unlock className="w-4 h-4" />
+                    <>
+                      <Unlock className="w-4 h-4" />
+                      <span className="sm:hidden text-sm font-medium">Lock</span>
+                    </>
                   )}
                 </button>
               )}
@@ -662,10 +674,10 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           </div>
 
           {/* Bulk Order Information */}
-          <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
+          <div className="mt-3 bg-white rounded-lg border border-gray-300 p-3 sm:p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-              <Package className="w-4 h-4 mr-2" />
-              Bulk Order Information
+              <Package className="w-4 h-4 mr-2 flex-shrink-0" />
+              <span>Bulk Order Information</span>
             </h4>
 
             {/* Show shipping link note if this product's shipping is linked */}
@@ -697,16 +709,16 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             )}
 
             {/* Bulk Order Notes */}
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
-              
+            <div className="mb-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <h5 className="text-xs sm:text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
+
               {(product as any).client_notes && (
-                <div className="mb-2 p-2 bg-blue-50 rounded text-sm text-blue-700">
+                <div className="mb-2 p-2 bg-blue-50 rounded text-xs sm:text-sm text-blue-700">
                   <strong>Current note:</strong>
                   <div className="whitespace-pre-wrap mt-1">{(product as any).client_notes}</div>
                 </div>
               )}
-              
+
               <textarea
                 value={tempBulkNotes}
                 onChange={(e) => {
@@ -715,7 +727,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 }}
                 placeholder="Add bulk order specific instructions, shipping details, production notes..."
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                className="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-xs sm:text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
               />
             </div>
 
@@ -741,41 +753,41 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             />
 
             {/* Product Price and Production Info - ALWAYS CLIENT PRICES */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Client Price (Per Unit)
                 </label>
                 <div className="relative">
-                  <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
                   <input
                     type="text"
                     value={unitPrice > 0 ? `$${formatCurrency(unitPrice)}` : 'Not set'}
                     disabled={true}
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+                    className="w-full pl-7 sm:pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-xs sm:text-sm"
                   />
                 </div>
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                   Production Time
                 </label>
                 <div className="relative">
-                  <Clock className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Clock className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
                   <input
                     type="text"
                     value={(product as any).production_time || 'Not set'}
                     disabled={true}
-                    className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+                    className="w-full pl-7 sm:pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-xs sm:text-sm"
                   />
                 </div>
               </div>
             </div>
 
             {/* Shipping Method Selection - CLIENT PRICES */}
-            <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
-              <h5 className="text-sm font-semibold text-gray-800 mb-3">
+            <div className="mb-4 p-3 sm:p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
+              <h5 className="text-xs sm:text-sm font-semibold text-gray-800 mb-3">
                 Select Shipping Method (Client Prices)
               </h5>
               
@@ -804,12 +816,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   )}
                 </div>
               ) : ((product as any).client_shipping_air_price || (product as any).client_shipping_boat_price) ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4">
                   {/* Air Shipping Option */}
                   <div className="space-y-3">
-                    <label className={`flex items-center gap-3 p-3 border-2 rounded-lg transition-all cursor-pointer ${
-                      (product as any).selected_shipping_method === 'air' 
-                        ? 'border-blue-500 bg-blue-50' 
+                    <label className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 border-2 rounded-lg transition-all cursor-pointer ${
+                      (product as any).selected_shipping_method === 'air'
+                        ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-200 hover:bg-blue-50'
                     } ${!(product as any).client_shipping_air_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
                       <input
@@ -819,20 +831,20 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         checked={(product as any).selected_shipping_method === 'air'}
                         onChange={() => handleShippingMethodChange('air')}
                         disabled={!(product as any).client_shipping_air_price}
-                        className="w-4 h-4 text-blue-600"
+                        className="w-4 h-4 text-blue-600 flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Plane className="w-5 h-5 text-blue-600" />
-                          <span className="font-medium text-gray-900">Air Shipping</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Plane className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+                          <span className="font-medium text-sm sm:text-base text-gray-900">Air Shipping</span>
                         </div>
                         {(product as any).client_shipping_air_price ? (
                           <div className="mt-1">
-                            <span className="text-sm text-gray-600">
+                            <span className="text-xs sm:text-sm text-gray-600 font-semibold">
                               ${formatCurrency((product as any).client_shipping_air_price || 0)}
                             </span>
                             {(product as any).shipping_air_days && (
-                              <span className="text-xs text-gray-500 ml-2">
+                              <span className="text-xs text-gray-500 ml-1.5 sm:ml-2">
                                 ({(product as any).shipping_air_days} days)
                               </span>
                             )}
@@ -846,9 +858,9 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
 
                   {/* Boat Shipping Option */}
                   <div className="space-y-3">
-                    <label className={`flex items-center gap-3 p-3 border-2 rounded-lg transition-all cursor-pointer ${
-                      (product as any).selected_shipping_method === 'boat' 
-                        ? 'border-cyan-500 bg-cyan-50' 
+                    <label className={`flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 border-2 rounded-lg transition-all cursor-pointer ${
+                      (product as any).selected_shipping_method === 'boat'
+                        ? 'border-cyan-500 bg-cyan-50'
                         : 'border-gray-200 hover:bg-cyan-50'
                     } ${!(product as any).client_shipping_boat_price ? 'opacity-50 cursor-not-allowed' : ''}`}>
                       <input
@@ -858,20 +870,20 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         checked={(product as any).selected_shipping_method === 'boat'}
                         onChange={() => handleShippingMethodChange('boat')}
                         disabled={!(product as any).client_shipping_boat_price}
-                        className="w-4 h-4 text-cyan-600"
+                        className="w-4 h-4 text-cyan-600 flex-shrink-0"
                       />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Ship className="w-5 h-5 text-cyan-600" />
-                          <span className="font-medium text-gray-900">Boat Shipping</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <Ship className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600 flex-shrink-0" />
+                          <span className="font-medium text-sm sm:text-base text-gray-900">Boat Shipping</span>
                         </div>
                         {(product as any).client_shipping_boat_price ? (
                           <div className="mt-1">
-                            <span className="text-sm text-gray-600">
+                            <span className="text-xs sm:text-sm text-gray-600 font-semibold">
                               ${formatCurrency((product as any).client_shipping_boat_price || 0)}
                             </span>
                             {(product as any).shipping_boat_days && (
-                              <span className="text-xs text-gray-500 ml-2">
+                              <span className="text-xs text-gray-500 ml-1.5 sm:ml-2">
                                 ({(product as any).shipping_boat_days} days)
                               </span>
                             )}

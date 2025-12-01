@@ -37,15 +37,15 @@ export function ProductDistributionBar({
   if (counts.total === 0) return null;
 
   return (
-    <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">Product Distribution</h3>
-        
+    <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Product Distribution</h3>
+
         <div className="flex items-center gap-3">
           <select
             value={selectedProductId}
             onChange={(e) => onProductSelect(e.target.value)}
-            className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full sm:w-auto min-w-[200px] px-2 sm:px-3 py-1.5 sm:py-1 text-xs sm:text-sm border border-gray-300 rounded-lg text-gray-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="all">Show All Products ({products.length})</option>
             {products.map((product: any) => (
@@ -56,8 +56,8 @@ export function ProductDistributionBar({
           </select>
         </div>
       </div>
-      
-      <div className="flex flex-wrap gap-2 mt-2">
+
+      <div className="flex flex-wrap gap-2 mt-3">
         {counts.withAdmin > 0 && (
           <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
             {counts.withAdmin} with Admin

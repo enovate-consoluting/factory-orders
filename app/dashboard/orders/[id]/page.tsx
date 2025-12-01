@@ -891,9 +891,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
         {/* Client & Manufacturer Info Cards */}
         {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-4">
             {/* Client Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow relative">
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
                   onClick={() => {
@@ -989,7 +989,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-4 hover:shadow-xl transition-shadow">
+            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Building className="w-5 h-5 text-green-600" />
