@@ -25,6 +25,8 @@ interface CollapsedProductHeaderProps {
   hasNewHistory?: boolean;
   userRole?: string;
   trackingNumber?: string;
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
 }
 
 export function CollapsedProductHeader({
@@ -40,7 +42,9 @@ export function CollapsedProductHeader({
   processingLock = false,
   hasNewHistory = false,
   userRole,
-  trackingNumber
+  trackingNumber,
+  translate = (text) => text || '',
+  t = (key) => key
 }: CollapsedProductHeaderProps) {
   const displayStatus = product.product_status || 'pending';
   const productionTime = product.production_time;
@@ -69,15 +73,15 @@ export function CollapsedProductHeader({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-lg text-gray-900">
-                  {product.description || product.product?.title || 'Product'}
+                  {translate(product.description || product.product?.title) || t('product')}
                 </h3>
                 <ProductStatusBadge status={displayStatus} />
-                
+
                 {/* Payment status for admin view */}
                 {!isManufacturerView && product.payment_status === 'paid' && (
                   <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
-                    Paid
+                    {t('paid')}
                   </span>
                 )}
                 

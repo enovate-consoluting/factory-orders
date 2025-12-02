@@ -21,10 +21,16 @@ import {
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
+// Translation imports
+
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
+import '../../i18n';
+
 // Extracted imports
 import { Order, TabType, ProductionSubTab, TabCounts } from './types/orderList.types';
-import { translations, Language } from './utils/orderListTranslations';
-import { 
+import {
   formatCurrencyWithLanguage,
   calculateProductTotal,
   calculateOrderTotal,
@@ -66,6 +72,8 @@ const DEFAULT_SHIP_QUEUE_NAME = 'Ready to Ship';
 const DEFAULT_SHIP_QUEUE_NAME_ZH = '准备发货';
 
 export default function OrdersPage() {
+  // Dynamic translation hook
+  const { translate, translateBatch } = useDynamicTranslation();
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
@@ -75,12 +83,10 @@ export default function OrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [deletingOrder, setDeletingOrder] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  
-  // Language state
-  const [language, setLanguage] = useState<Language>('en');
-  
-  // Get translations
-  const t = translations[language];
+
+  // Use global translation context
+  const { t, i18n } = useTranslation();
+  const { language, setLanguage } = useLanguage();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('my_orders');
@@ -97,21 +103,6 @@ export default function OrdersPage() {
   const [readyToShipLabel, setReadyToShipLabel] = useState<string>(DEFAULT_SHIP_QUEUE_NAME);
   const [readyToShipLabelZh, setReadyToShipLabelZh] = useState<string>(DEFAULT_SHIP_QUEUE_NAME_ZH);
   const [readyToShipDays, setReadyToShipDays] = useState<number>(3);
-  
-  // Load language preference from localStorage
-  useEffect(() => {
-    const savedLanguage = localStorage.getItem('orderLanguage') as Language;
-    if (savedLanguage) {
-      setLanguage(savedLanguage);
-    }
-  }, []);
-  
-  // Toggle language function
-  const toggleLanguage = () => {
-    const newLanguage = language === 'en' ? 'zh' : 'en';
-    setLanguage(newLanguage);
-    localStorage.setItem('orderLanguage', newLanguage);
-  };
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -218,6 +209,30 @@ export default function OrdersPage() {
       return () => {};
     }
   };
+
+
+  // Batch translate all dynamic fields when orders change
+  useEffect(() => {
+    if (orders.length === 0) return;
+    if (language === 'en') return; // Skip translation for English
+
+    const textsToTranslate: string[] = [];
+    orders.forEach(order => {
+      if (order.order_name) textsToTranslate.push(order.order_name);
+      if (order.client?.name) textsToTranslate.push(order.client.name);
+      if (order.manufacturer?.name) textsToTranslate.push(order.manufacturer.name);
+      if (order.order_products && Array.isArray(order.order_products)) {
+        order.order_products.forEach(product => {
+          if (product.description) textsToTranslate.push(product.description);
+          if (product.product?.title) textsToTranslate.push(product.product.title);
+        });
+      }
+    });
+
+    if (textsToTranslate.length > 0) {
+      translateBatch(textsToTranslate, 'orders');
+    }
+  }, [orders, language, translateBatch]);
 
   useEffect(() => {
     filterOrders();
@@ -712,7 +727,7 @@ export default function OrdersPage() {
 
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
-      return { status: 'no_products', label: t.products, color: 'gray' };
+      return { status: 'no_products', label: t('products'), color: 'gray' };
     }
 
     const products = order.order_products;
@@ -758,40 +773,40 @@ export default function OrdersPage() {
       if (isAdminUser) {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'admin') ? 1 : 0;
         const totalWithAdmin = withAdmin + sampleCount;
-        return { status: 'with_admin', label: `${totalWithAdmin} ${t.withAdmin}`, color: 'purple' };
+        return { status: 'with_admin', label: `${totalWithAdmin} ${t('withAdmin')}`, color: 'purple' };
       } else {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
         const totalWithManufacturer = withManufacturer + sampleCount;
-        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t.needAction}`, color: 'indigo' };
+        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('needAction')}`, color: 'indigo' };
       }
     } else if (activeTab === 'sent_to_other') {
       if (isAdminUser) {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
         const totalWithManufacturer = withManufacturer + sampleCount;
-        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t.withManufacturer}`, color: 'indigo' };
+        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('withManufacturer')}`, color: 'indigo' };
       } else {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'admin') ? 1 : 0;
         const totalWithAdmin = withAdmin + sampleCount;
-        return { status: 'with_admin', label: `${totalWithAdmin} ${t.withAdmin}`, color: 'purple' };
+        return { status: 'with_admin', label: `${totalWithAdmin} ${t('withAdmin')}`, color: 'purple' };
       }
     } else if (activeTab === 'invoice_approval') {
-      return { status: 'with_fees', label: `${withFees} ${t.productsWithFees}`, color: 'amber' };
+      return { status: 'with_fees', label: `${withFees} ${t('productsWithFees')}`, color: 'amber' };
     } else if (activeTab === 'production_status') {
       if (productionSubTab === 'sample_approved') {
-        return { status: 'sample_approved', label: `${sampleApproved} ${t.sampleApproved}`, color: 'amber' };
+        return { status: 'sample_approved', label: `${sampleApproved} ${t('sampleApproved')}`, color: 'amber' };
       } else if (productionSubTab === 'approved_for_production') {
-        return { status: 'approved', label: `${approvedForProduction} ${t.approvedForProd}`, color: 'green' };
+        return { status: 'approved', label: `${approvedForProduction} ${t('approvedForProd')}`, color: 'green' };
       } else if (productionSubTab === 'in_production') {
-        return { status: 'in_production', label: `${inProduction} ${t.inProduction}`, color: 'blue' };
+        return { status: 'in_production', label: `${inProduction} ${t('inProduction')}`, color: 'blue' };
       }
     } else if (activeTab === 'ready_to_ship') {
       // Ready to ship status - use display label based on language
       return { status: 'ready_to_ship', label: `${readyToShipCount} ${getReadyToShipDisplayLabel()}`, color: 'orange' };
     } else if (activeTab === 'shipped') {
-      return { status: 'shipped', label: `${shipped} ${t.shipped}`, color: 'green' };
+      return { status: 'shipped', label: `${shipped} ${t('shipped')}`, color: 'green' };
     }
     
-    return { status: 'mixed', label: `${products.length} ${t.products}`, color: 'gray' };
+    return { status: 'mixed', label: `${products.length} ${t('products')}`, color: 'gray' };
   };
 
   const getProductRoutingBadge = (product: any) => {
@@ -799,16 +814,16 @@ export default function OrdersPage() {
                      (userRole !== 'manufacturer' && product.routed_to === 'admin');
 
     if (product.product_status === 'completed') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.completed}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('completed')}</span>;
     }
     if (product.product_status === 'approved_for_production') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.approvedForProd}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('approvedForProd')}</span>;
     }
     if (product.product_status === 'in_production') {
-      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{t.inProduction}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{t('inProduction')}</span>;
     }
     if (product.product_status === 'shipped') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t.shipped}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('shipped')}</span>;
     }
     
     return (
@@ -818,12 +833,12 @@ export default function OrdersPage() {
         {product.routed_to === 'admin' ? (
           <>
             <Users className="w-3 h-3" />
-            {t.withAdmin}
+            {t('withAdmin')}
           </>
         ) : (
           <>
             <Building className="w-3 h-3" />
-            {t.withManufacturer}
+            {t('withManufacturer')}
           </>
         )}
         {product.product_status === 'question_for_admin' && (
@@ -848,29 +863,41 @@ export default function OrdersPage() {
       {/* Delete Confirmation Modal */}
       <DeleteOrderModal
         isOpen={!!showDeleteConfirm}
-        orderNumber={formatOrderNumber(orders.find(o => o.id === showDeleteConfirm)?.order_number || '')}
+        orderNumber={
+          (() => {
+            const order = orders.find(o => o.id === showDeleteConfirm);
+            if (!order) return '';
+            // Translate order name, client name, manufacturer name for modal
+            const name = order.order_name ? translate(order.order_name) : t('untitledOrder');
+            const client = order.client?.name ? translate(order.client.name) : '';
+            const manufacturer = order.manufacturer?.name ? translate(order.manufacturer.name) : '';
+            // Combine for display
+            return `${name}${client ? ' • ' + client : ''}${manufacturer ? ' • ' + manufacturer : ''} (${formatOrderNumber(order.order_number)})`;
+          })()
+        }
         userRole={userRole}
         isDeleting={deletingOrder === showDeleteConfirm}
-        translations={t}
+        t={t}
         onConfirm={() => showDeleteConfirm && handleDeleteOrder(showDeleteConfirm)}
         onCancel={() => setShowDeleteConfirm(null)}
       />
 
       {/* Header */}
+      
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            {userRole === 'manufacturer' ? t.yourOrders : t.orders}
+            {userRole === 'manufacturer' ? t('yourOrders') : t('orders')}
           </h1>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            <button
-              onClick={toggleLanguage}
+            {/* <button
+              onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
               className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg text-sm sm:text-base"
               title="Switch Language / 切换语言"
             >
               <Globe className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-medium whitespace-nowrap">{t.switchToChinese}</span>
-            </button>
+              <span className="font-medium whitespace-nowrap">{t('switchToChinese')}</span>
+            </button> */}
 
             {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
               <Link
@@ -878,7 +905,7 @@ export default function OrdersPage() {
                 className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className="whitespace-nowrap">{t.newOrder}</span>
+                <span className="whitespace-nowrap">{t('newOrder')}</span>
               </Link>
             )}
           </div>
@@ -890,7 +917,7 @@ export default function OrdersPage() {
             activeTab={activeTab}
             tabCounts={tabCounts}
             userRole={userRole}
-            translations={t}
+            t={t}
             onTabChange={setActiveTab}
             onProductionTabClick={() => {
               setActiveTab('production_status');
@@ -905,7 +932,7 @@ export default function OrdersPage() {
           <ProductionSubTabs
             activeSubTab={productionSubTab}
             tabCounts={tabCounts}
-            translations={t}
+            t={t}
             onSubTabChange={setProductionSubTab}
           />
         )}
@@ -917,7 +944,7 @@ export default function OrdersPage() {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
               <input
                 type="text"
-                placeholder={t.searchPlaceholder}
+                placeholder={t('searchPlaceholder')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base text-gray-900 placeholder-gray-500"
@@ -929,17 +956,17 @@ export default function OrdersPage() {
             <button
               onClick={() => setShowPrices(!showPrices)}
               className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base flex-shrink-0"
-              title={showPrices ? t.hidePrices : t.showPrices}
+              title={showPrices ? t('hidePrices') : t('showPrices')}
             >
               {showPrices ? (
                 <>
                   <EyeOff className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                  <span className="text-gray-700 whitespace-nowrap">{t.hidePrices}</span>
+                  <span className="text-gray-700 whitespace-nowrap">{t('hidePrices')}</span>
                 </>
               ) : (
                 <>
                   <Eye className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                  <span className="text-gray-700 whitespace-nowrap">{t.showPrices}</span>
+                  <span className="text-gray-700 whitespace-nowrap">{t('showPrices')}</span>
                 </>
               )}
             </button>
@@ -952,7 +979,7 @@ export default function OrdersPage() {
         <InvoiceApprovalView
           filteredOrders={filteredOrders}
           expandedOrders={expandedOrders}
-          translations={t}
+          t={t}
           userRole={userRole}
           onToggleExpansion={toggleOrderExpansion}
           onNavigateToOrder={navigateToOrder}
@@ -965,24 +992,24 @@ export default function OrdersPage() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t.order}
+                    {t('order')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {userRole === 'manufacturer' ? t.client : t.clientMfr}
+                    {userRole === 'manufacturer' ? t('client') : t('clientMfr')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t.products}
+                    {t('products')}
                   </th>
                   {(userRole === 'admin' || userRole === 'super_admin') && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {t.clientTotal}
+                      {t('clientTotal')}
                     </th>
                   )}
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t.created}
+                    {t('created')}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t.actions}
+                    {t('actions')}
                   </th>
                 </tr>
               </thead>
@@ -1022,7 +1049,7 @@ export default function OrdersPage() {
                             )}
                             <div>
                               <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                                {order.order_name || t.untitledOrder}
+                                {order.order_name ? translate(order.order_name) : t('untitledOrder')}
                                 {hasUnreadNotification && (
                                   <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
                                 )}
@@ -1040,9 +1067,9 @@ export default function OrdersPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div>
-                            <div className="text-sm text-gray-900">{order.client?.name || '-'}</div>
+                            <div className="text-sm text-gray-900">{order.client?.name ? translate(order.client.name) : '-'}</div>
                             {userRole !== 'manufacturer' && (
-                              <div className="text-xs text-gray-500">{order.manufacturer?.name || '-'}</div>
+                              <div className="text-xs text-gray-500">{order.manufacturer?.name ? translate(order.manufacturer.name) : '-'}</div>
                             )}
                           </div>
                         </td>
@@ -1073,7 +1100,7 @@ export default function OrdersPage() {
                               <Link
                                 href={`/dashboard/orders/edit/${order.id}`}
                                 className="text-blue-600 hover:text-blue-800"
-                                title={t.editOrder}
+                                title={t('editOrder')}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <Edit className="w-5 h-5" />
@@ -1099,7 +1126,7 @@ export default function OrdersPage() {
                               href={`/dashboard/orders/${order.id}`}
                               target="_blank"
                               className="text-gray-600 hover:text-gray-800"
-                              title={t.viewDetails}
+                              title={t('viewDetails')}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <Eye className="w-5 h-5" />
@@ -1124,7 +1151,7 @@ export default function OrdersPage() {
                                           {product.product_order_number}
                                         </span>
                                         <span className="text-xs text-gray-500 ml-2">
-                                          {product.description || product.product?.title || t.product}
+                                          {product.description ? translate(product.description) : (product.product?.title ? translate(product.product.title) : t('product'))}
                                         </span>
                                       </div>
                                     </div>
@@ -1169,7 +1196,7 @@ export default function OrdersPage() {
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1 min-w-0" onClick={() => navigateToOrder(order.id)}>
                       <div className="font-semibold text-base text-gray-900 flex items-center gap-2 mb-1">
-                        <span className="truncate">{order.order_name || t.untitledOrder}</span>
+                        <span className="truncate">{order.order_name ? translate(order.order_name) : t('untitledOrder')}</span>
                         {hasUnreadNotification && (
                           <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse flex-shrink-0"></span>
                         )}
@@ -1190,12 +1217,12 @@ export default function OrdersPage() {
                   <div className="mb-3 text-sm" onClick={() => navigateToOrder(order.id)}>
                     <div className="flex items-center gap-1.5 text-gray-700 mb-1">
                       <Users className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <span className="font-medium">{order.client?.name || '-'}</span>
+                      <span className="font-medium">{order.client?.name ? translate(order.client.name) : '-'}</span>
                     </div>
                     {userRole !== 'manufacturer' && order.manufacturer?.name && (
                       <div className="flex items-center gap-1.5 text-gray-600 text-xs pl-5">
                         <Building className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-                        <span>{order.manufacturer.name}</span>
+                        <span>{order.manufacturer?.name ? translate(order.manufacturer.name) : '-'}</span>
                       </div>
                     )}
                   </div>
@@ -1221,7 +1248,7 @@ export default function OrdersPage() {
                           <Link
                             href={`/dashboard/orders/edit/${order.id}`}
                             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                            title={t.editOrder}
+                            title={t('editOrder')}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Edit className="w-4 h-4" />
@@ -1236,7 +1263,7 @@ export default function OrdersPage() {
                             className={`p-2 rounded-lg ${
                               userRole === 'super_admin'
                                 ? 'text-red-600 hover:bg-red-50'
-                                : 'text-gray-500 hover:bg-gray-100'
+                                : 'text-gray-900 hover:bg-gray-100'
                             }`}
                             title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
                           >
@@ -1246,7 +1273,7 @@ export default function OrdersPage() {
                         <button
                           onClick={() => navigateToOrder(order.id)}
                           className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                          title={t.viewDetails}
+                          title={t('viewDetails')}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -1261,21 +1288,21 @@ export default function OrdersPage() {
           {filteredOrders.length === 0 && (
             <div className="text-center py-12">
               <Package className="mx-auto h-12 w-12 text-gray-300" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">{t.noOrders}</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">{t('noOrders')}</h3>
               <p className="mt-1 text-sm text-gray-500">
                 {activeTab === 'production_status'
-                  ? t.noProductionOrders
+                  ? t('noProductionOrders')
                   : activeTab === 'ready_to_ship'
                   ? `No products ${getReadyToShipDisplayLabel().toLowerCase()} yet.`
                   : activeTab === 'shipped'
-                  ? t.noProductionOrders
+                  ? t('noProductionOrders')
                   : (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin')
                     ? activeTab === 'my_orders' 
-                      ? t.noOrdersMessage
-                      : `${t.noOrders} in ${activeTab.replace('_', ' ')}`
+                      ? t('noOrdersMessage')
+                      : `${t('noOrders')} in ${activeTab.replace('_', ' ')}`
                     : searchTerm
-                      ? t.tryAdjustingSearch
-                      : t.getStarted}
+                      ? t('tryAdjustingSearch')
+                      : t('getStarted')}
               </p>
             </div>
           )}

@@ -13,6 +13,12 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2 } from 'lucide-react'
 
+// Translation imports
+import { useTranslation } from 'react-i18next'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation'
+import '../../../i18n'
+
 // Import all our new shared components
 import { StepIndicator } from '../shared-components/StepIndicator'
 import { OrderSummaryCard } from '../shared-components/OrderSummaryCard'
@@ -71,16 +77,18 @@ const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus
 const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
 
 // Sleek loading overlay component
-function LoadingOverlay({ 
-  isVisible, 
-  currentStep, 
+function LoadingOverlay({
+  isVisible,
+  currentStep,
   steps,
-  orderNumber
-}: { 
+  orderNumber,
+  t
+}: {
   isVisible: boolean
   currentStep: number
   steps: string[]
   orderNumber?: string
+  t: any
 }) {
   if (!isVisible) return null
 
@@ -90,12 +98,12 @@ function LoadingOverlay({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blurred backdrop */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-purple-900/30 to-indigo-900/40 backdrop-blur-md" />
-      
+
       {/* Content */}
       <div className="relative">
         {/* Glowing ring effect */}
         <div className="absolute -inset-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-3xl opacity-20 blur-xl animate-pulse" />
-        
+
         {/* Main card - compact and sleek */}
         <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 min-w-[320px]">
           {/* Header with spinner or checkmark */}
@@ -114,7 +122,7 @@ function LoadingOverlay({
             )}
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {isComplete ? 'Complete!' : 'Processing...'}
+                {isComplete ? t('complete') : t('processing')}
               </h3>
               {orderNumber && (
                 <p className="text-sm font-mono text-blue-600">{orderNumber}</p>
@@ -156,6 +164,9 @@ function LoadingOverlay({
 }
 
 export default function CreateOrderPage() {
+  const { translate, translateBatch } = useDynamicTranslation();
+  const { t, i18n } = useTranslation();
+  const { language } = useLanguage();
   const router = useRouter()
   const productDataRef = useRef<any>({})
   const [currentStep, setCurrentStep] = useState(1)
@@ -847,13 +858,13 @@ export default function CreateOrderPage() {
     
     // Setup loading steps
     const steps = [
-      'Creating order...',
-      `Saving ${orderProducts.length} product${orderProducts.length > 1 ? 's' : ''}...`,
+      t('creatingOrder'),
+      t('addingProducts'),
     ]
     if (totalFiles > 0) {
-      steps.push(`Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''}...`)
+      steps.push(t('uploadingFiles'))
     }
-    steps.push('Finalizing...')
+    steps.push(t('processing'))
     
     setLoadingSteps(steps)
     setLoadingStep(0)
@@ -1157,11 +1168,12 @@ export default function CreateOrderPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Smart Loading Overlay */}
-      <LoadingOverlay 
+      <LoadingOverlay
         isVisible={showLoadingOverlay}
         currentStep={loadingStep}
         steps={loadingSteps}
         orderNumber={createdOrderNumber}
+        t={t}
       />
 
       {/* Notification Toast */}
@@ -1203,10 +1215,10 @@ export default function CreateOrderPage() {
           className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Orders
+          {t('backToOrders')}
         </button>
-        
-        <h1 className="text-2xl font-bold text-gray-900">Create New Order</h1>
+
+        <h1 className="text-2xl font-bold text-gray-900">{t('createNewOrder')}</h1>
         
         {/* Progress Steps using new component */}
         <div className="mt-6">
@@ -1224,27 +1236,27 @@ export default function CreateOrderPage() {
       {/* Step 1: Basic Info */}
       {currentStep === 1 && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h2>
-          
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('basicInfo')}</h2>
+
           <div className="mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Order Name *
+              {t('orderName')}
             </label>
             <input
               type="text"
               value={orderName}
               onChange={(e) => setOrderName(e.target.value)}
-              placeholder='e.g., "Spring 2024 Collection" or "Holiday Drop"'
+              placeholder={t('e.gSpringCollection2024')}
               className={inputClassName}
               required
             />
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Client Autocomplete */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Client *
+                {t('selectClient')}
               </label>
               <div className="relative">
                 <div className="relative">
@@ -1256,7 +1268,7 @@ export default function CreateOrderPage() {
                     onChange={handleClientInputChange}
                     onFocus={handleClientInputFocus}
                     onKeyDown={handleClientKeyDown}
-                    placeholder="Type to search clients..."
+                    placeholder={t('searchClient')}
                     className={`${inputClassName} pl-9 pr-10`}
                     autoComplete="off"
                   />
@@ -1270,16 +1282,16 @@ export default function CreateOrderPage() {
                     </button>
                   )}
                 </div>
-                
+
                 {/* Dropdown - Fixed rounded corners */}
                 {showClientDropdown && (
-                  <div 
+                  <div
                     ref={clientDropdownRef}
                     className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                   >
                     {filteredClients.length === 0 ? (
                       <div className="px-4 py-3 text-sm text-gray-500">
-                        No clients found
+                        {t('noClientsFound')}
                       </div>
                     ) : (
                       filteredClients.map((client, index) => (
@@ -1322,7 +1334,7 @@ export default function CreateOrderPage() {
             {/* Manufacturer Autocomplete */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Manufacturer *
+                {t('selectManufacturer')}
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
@@ -1337,7 +1349,7 @@ export default function CreateOrderPage() {
                     onChange={handleManufacturerInputChange}
                     onFocus={handleManufacturerInputFocus}
                     onKeyDown={handleManufacturerKeyDown}
-                    placeholder="Type to search manufacturers..."
+                    placeholder={t('searchManufacturer')}
                     className={`${inputClassName} pl-9 pr-10`}
                     autoComplete="off"
                   />
@@ -1360,7 +1372,7 @@ export default function CreateOrderPage() {
                   >
                     {filteredManufacturers.length === 0 ? (
                       <div className="px-4 py-3 text-sm text-gray-500">
-                        No manufacturers found
+                        {t('noManufacturersFound')}
                       </div>
                     ) : (
                       filteredManufacturers.map((manufacturer, index) => (
@@ -1406,7 +1418,7 @@ export default function CreateOrderPage() {
               onClick={nextStep}
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
             >
-              Next
+              {t('next')}
               <ArrowRight className="w-4 h-4 ml-2" />
             </button>
           </div>
@@ -1433,13 +1445,13 @@ export default function CreateOrderPage() {
             className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Previous
+            {t('previous')}
           </button>
           <button
             onClick={nextStep}
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
           >
-            Next
+            {t('next')}
             <ArrowRight className="w-4 h-4 ml-2" />
           </button>
         </div>
@@ -1451,9 +1463,15 @@ export default function CreateOrderPage() {
         <div>
           {/* Order Summary Card */}
           <OrderSummaryCard
-            orderName={orderName}
-            client={clients.find(c => c.id === selectedClient)}
-            manufacturer={manufacturers.find(m => m.id === selectedManufacturer)}
+            orderName={orderName ? translate(orderName) : ''}
+            client={(() => {
+              const client = clients.find(c => c.id === selectedClient);
+              return client ? { ...client, name: client.name ? translate(client.name) : client.name } : undefined;
+            })()}
+            manufacturer={(() => {
+              const manufacturer = manufacturers.find(m => m.id === selectedManufacturer);
+              return manufacturer ? { ...manufacturer, name: manufacturer.name ? translate(manufacturer.name) : manufacturer.name } : undefined;
+            })()}
           />
 
           {/* Order-level Sample Request */}
@@ -1478,11 +1496,18 @@ export default function CreateOrderPage() {
             const instances = getProductInstances(orderProduct.product)
             const currentInstance = instances.indexOf(orderProduct) + 1
             const totalInstances = instances.length
-            
+            // Translate product title for card
+            const translatedOrderProduct = {
+              ...orderProduct,
+              product: {
+                ...orderProduct.product,
+                title: orderProduct.product.title ? translate(orderProduct.product.title) : orderProduct.product.title
+              }
+            };
             return (
               <CreateProductCard
                 key={productIndex}
-                orderProduct={orderProduct}
+                orderProduct={translatedOrderProduct}
                 productIndex={productIndex}
                 totalInstances={totalInstances}
                 currentInstance={currentInstance}

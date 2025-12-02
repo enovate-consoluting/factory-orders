@@ -9,13 +9,13 @@
 import React from 'react';
 import { Inbox, FileText, SendHorizontal, Layers, Truck, Clock } from 'lucide-react';
 import { TabType, TabCounts } from '../types/orderList.types';
-import { Translations } from '../utils/orderListTranslations';
+import { TFunction } from 'i18next';
 
 interface OrderListTabsProps {
   activeTab: TabType;
   tabCounts: TabCounts;
   userRole: string | null;
-  translations: Translations;
+  t: TFunction;
   onTabChange: (tab: TabType) => void;
   onProductionTabClick: () => void;
   readyToShipLabel?: string;  // NEW: Configurable label from system_config
@@ -25,7 +25,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
   activeTab,
   tabCounts,
   userRole,
-  translations: t,
+  t,
   onTabChange,
   onProductionTabClick,
   readyToShipLabel
@@ -35,7 +35,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
   const isManufacturer = userRole === 'manufacturer';
 
   // Use configured label or fall back to translation default
-  const shipQueueLabel = readyToShipLabel || t.readyToShip;
+  const shipQueueLabel = readyToShipLabel || t('readyToShip');
 
   return (
     <div className="border-b border-gray-200 mb-4 overflow-x-auto">
@@ -50,7 +50,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           }`}
         >
           <Inbox className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t.myOrders}</span>
+          <span className="whitespace-nowrap">{t('myOrders')}</span>
           {tabCounts.my_orders > 0 && (
             <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.my_orders}
@@ -69,7 +69,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
             }`}
           >
             <FileText className="w-4 h-4 flex-shrink-0" />
-            <span className="whitespace-nowrap">{t.invoiceApproval}</span>
+            <span className="whitespace-nowrap">{t('invoiceApproval')}</span>
             {tabCounts.invoice_approval > 0 && (
               <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                 {tabCounts.invoice_approval}
@@ -88,7 +88,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           }`}
         >
           <SendHorizontal className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{isManufacturer ? t.sentToAdmin : t.sentToManufacturer}</span>
+          <span className="whitespace-nowrap">{isManufacturer ? t('sentToAdmin') : t('sentToManufacturer')}</span>
           {tabCounts.sent_to_other > 0 && (
             <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.sent_to_other}
@@ -106,7 +106,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           }`}
         >
           <Layers className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t.productionStatus}</span>
+          <span className="whitespace-nowrap">{t('productionStatus')}</span>
           {tabCounts.production_total > 0 && (
             <span className="bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.production_total}
@@ -146,7 +146,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           }`}
         >
           <Truck className="w-4 h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t.shipped}</span>
+          <span className="whitespace-nowrap">{t('shipped')}</span>
           {tabCounts.shipped > 0 && (
             <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
               {tabCounts.shipped}

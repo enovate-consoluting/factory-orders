@@ -13,6 +13,7 @@ import {
   Factory, Ban, MessageSquare
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
+import { useTranslation } from 'react-i18next';
 
 // Data to pass to save function
 interface SampleSaveData {
@@ -91,6 +92,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onSave,
   saving = false
 }) => {
+  const { t } = useTranslation();
+
   // LOCAL state for form fields
   const [localFee, setLocalFee] = useState(sampleFee);
   const [localETA, setLocalETA] = useState(sampleETA);
@@ -246,15 +249,15 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       return (
         <span className="px-2 py-1 bg-gray-100 text-gray-500 rounded text-xs font-medium flex items-center gap-1">
           <Ban className="w-3 h-3" />
-          No Sample
+          {t('noSample')}
         </span>
       );
     }
     
     const badges: Record<string, { bg: string; text: string; label: string; icon: any }> = {
-      admin: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'With Admin', icon: User },
-      manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: 'With Manufacturer', icon: Factory },
-      client: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'With Client', icon: Building }
+      admin: { bg: 'bg-purple-100', text: 'text-purple-700', label: t('withAdmin'), icon: User },
+      manufacturer: { bg: 'bg-indigo-100', text: 'text-indigo-700', label: t('withManufacturer'), icon: Factory },
+      client: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('withClient'), icon: Building }
     };
     
     const badge = badges[sampleRoutedTo] || badges.admin;
@@ -271,15 +274,15 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   // Sample status badge
   const getSampleStatusBadge = () => {
     const statuses: Record<string, { bg: string; text: string; label: string }> = {
-      no_sample: { bg: 'bg-gray-100', text: 'text-gray-500', label: 'No Sample' },
-      pending: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Pending' },
-      in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'In Production' },
-      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Ready' },
-      shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Shipped' },
-      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: 'Delivered' },
-      sample_approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
-      approved: { bg: 'bg-green-100', text: 'text-green-700', label: 'Sample Approved' },
-      rejected: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rejected' }
+      no_sample: { bg: 'bg-gray-100', text: 'text-gray-500', label: t('noSample') },
+      pending: { bg: 'bg-gray-100', text: 'text-gray-700', label: t('pending') },
+      in_production: { bg: 'bg-amber-100', text: 'text-amber-700', label: t('inProduction') },
+      ready: { bg: 'bg-blue-100', text: 'text-blue-700', label: t('ready') },
+      shipped: { bg: 'bg-purple-100', text: 'text-purple-700', label: t('shipped') },
+      delivered: { bg: 'bg-green-100', text: 'text-green-700', label: t('delivered') },
+      sample_approved: { bg: 'bg-green-100', text: 'text-green-700', label: t('sampleApproved') },
+      approved: { bg: 'bg-green-100', text: 'text-green-700', label: t('sampleApproved') },
+      rejected: { bg: 'bg-red-100', text: 'text-red-700', label: t('rejected') }
     };
     
     const status = statuses[localStatus] || statuses.pending;
@@ -319,7 +322,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           isSampleActive ? 'text-amber-900' : 'text-gray-500'
         }`}>
           <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-          <span className="text-xs sm:text-sm">Order Sample Request / Technical Pack</span>
+          <span className="text-xs sm:text-sm">{t('orderSampleRequestTechPack')}</span>
         </h3>
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {getRoutingStatusBadge()}
@@ -327,7 +330,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
           {existingMedia && existingMedia.length > 0 && (
             <span className="text-xs text-amber-700 whitespace-nowrap">
-              {existingMedia.length} file(s)
+              {existingMedia.length} {t('files')}
             </span>
           )}
 
@@ -338,7 +341,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               title="View sample history"
             >
               <History className="w-3 h-3" />
-              <span className="hidden sm:inline">History</span>
+              <span className="hidden sm:inline">{t('history')}</span>
               {hasNewHistory && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               )}
@@ -351,7 +354,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {showRoutingButtons && (
         <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-white rounded-lg border border-amber-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Sample Routing:</span>
+            <span className="text-xs font-medium text-gray-700 whitespace-nowrap">{t('sampleRouting')}:</span>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               {canRouteToManufacturer && (
@@ -361,7 +364,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   className="px-2.5 sm:px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
                   <Send className="w-3 h-3 flex-shrink-0" />
-                  <span>Send to Manufacturer</span>
+                  <span>{t('sendToManufacturer')}</span>
                 </button>
               )}
 
@@ -372,7 +375,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   className="px-2.5 sm:px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
                   <Send className="w-3 h-3 flex-shrink-0" />
-                  <span>Send to Client</span>
+                  <span>{t('sendToClient')}</span>
                 </button>
               )}
 
@@ -383,7 +386,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   className="px-2.5 sm:px-3 py-1.5 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-1 transition-colors whitespace-nowrap"
                 >
                   <Send className="w-3 h-3 flex-shrink-0" />
-                  <span>{isManufacturer ? 'Send to Admin' : 'Return to Admin'}</span>
+                  <span>{isManufacturer ? t('sendToAdmin') : t('returnToAdmin')}</span>
                 </button>
               )}
 
@@ -393,10 +396,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
               {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
                 <span className="text-xs text-gray-500 italic">
-                  {sampleRoutedTo === 'admin' && isManufacturer && 'Waiting for admin to send sample request'}
-                  {sampleRoutedTo === 'admin' && isClient && 'Waiting for admin to send for approval'}
-                  {sampleRoutedTo === 'manufacturer' && !isManufacturer && 'With manufacturer for pricing'}
-                  {sampleRoutedTo === 'client' && !isClient && 'With client for approval'}
+                  {sampleRoutedTo === 'admin' && isManufacturer && t('waitingAdminSendSample')}
+                  {sampleRoutedTo === 'admin' && isClient && t('waitingAdminSendApproval')}
+                  {sampleRoutedTo === 'manufacturer' && !isManufacturer && t('withManufacturerPricing')}
+                  {sampleRoutedTo === 'client' && !isClient && t('withClientApproval')}
                 </span>
               )}
             </div>
@@ -408,8 +411,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-3">
         <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            Sample Fee
-            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">(Manufacturer only)</span>}
+            {t('sampleFee')}
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">({t('manufacturerOnly')})</span>}
           </label>
           <div className="relative">
             <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -419,7 +422,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               step="0.01"
               value={localFee}
               onChange={(e) => handleFeeChange(e.target.value)}
-              placeholder={isManufacturer ? "Enter fee" : "Set by manufacturer"}
+              placeholder={isManufacturer ? t('enterFee') : t('setByManufacturer')}
               disabled={!canEditFeeETA}
               className="w-full pl-7 pr-2 py-2 sm:py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 placeholder-gray-500 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-2 focus:ring-amber-500"
             />
@@ -428,8 +431,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
         <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            Sample ETA
-            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">(Manufacturer only)</span>}
+            {t('sampleEta')}
+            {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">({t('manufacturerOnly')})</span>}
           </label>
           <div className="relative">
             <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
@@ -445,7 +448,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
         <div className={`${!canEdit ? "opacity-60" : ""} sm:col-span-2 lg:col-span-1`}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            Status
+            {t('status')}
           </label>
           <select
             value={localStatus}
@@ -453,14 +456,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             disabled={!canEdit}
             className="w-full px-2 py-2 sm:py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 disabled:bg-amber-50 disabled:text-gray-500 focus:ring-2 focus:ring-amber-500"
           >
-            <option value="no_sample">No Sample</option>
-            <option value="pending">Pending</option>
-            <option value="in_production">In Production</option>
-            <option value="ready">Ready</option>
-            <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="sample_approved">Sample Approved</option>
-            <option value="rejected">Rejected</option>
+            <option value="no_sample">{t('noSample')}</option>
+            <option value="pending">{t('pending')}</option>
+            <option value="in_production">{t('inProduction')}</option>
+            <option value="ready">{t('ready')}</option>
+            <option value="shipped">{t('shipped')}</option>
+            <option value="delivered">{t('delivered')}</option>
+            <option value="sample_approved">{t('sampleApproved')}</option>
+            <option value="rejected">{t('rejected')}</option>
           </select>
         </div>
       </div>
@@ -470,7 +473,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         <div className="mb-3 p-3 bg-white rounded-lg border border-amber-200">
           <div className="flex items-center gap-2 mb-2">
             <MessageSquare className="w-4 h-4 text-amber-600" />
-            <h5 className="text-sm font-medium text-amber-800">Previous Notes</h5>
+            <h5 className="text-sm font-medium text-amber-800">{t('previousNotes')}</h5>
           </div>
           <div className="text-sm text-gray-700 whitespace-pre-wrap bg-amber-50 p-2 rounded border border-amber-100">
             {existingSampleNotes}
@@ -481,16 +484,16 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {/* ADD NEW NOTE Section */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
-          Add Note
+          {t('addNote')}
           {onViewHistory && !existingSampleNotes && (
-            <span className="text-gray-500 font-normal ml-2">(View previous notes in History)</span>
+            <span className="text-gray-500 font-normal ml-2">({t('viewPreviousNotesInHistory')})</span>
           )}
         </label>
         
         <textarea
           value={localNotes}
           onChange={(e) => handleNotesChange(e.target.value)}
-          placeholder="Add a note about the sample request..."
+          placeholder={t('addNoteSampleRequest')}
           rows={2}
           disabled={!canEdit}
           className="w-full px-2 py-1.5 text-sm border border-amber-300 rounded bg-white text-gray-900 font-medium placeholder-gray-500 disabled:bg-amber-50 focus:ring-1 focus:ring-amber-500"
@@ -501,7 +504,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {existingMedia && existingMedia.length > 0 && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            Existing Sample Files
+            {t('existingSampleFiles')}
           </label>
           <div className="flex flex-wrap gap-1">
             {existingMedia.map((file: any) => (
@@ -509,16 +512,16 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                 <button
                   onClick={() => handleFileClick(file.file_url)}
                   className="px-2 py-1 bg-white border border-amber-300 rounded text-xs text-amber-700 hover:bg-amber-50 hover:border-amber-400 transition-colors flex items-center gap-1"
-                  title={file.display_name || file.original_filename || 'Sample File'}
+                  title={file.display_name || file.original_filename || t('sampleFile')}
                 >
                   <Paperclip className="w-3 h-3" />
-                  <span>{file.display_name || file.original_filename || 'Sample File'}</span>
+                  <span>{file.display_name || file.original_filename || t('sampleFile')}</span>
                 </button>
                 {canEdit && onExistingFileDelete && (
                   <button
                     onClick={() => onExistingFileDelete(file.id)}
                     className="absolute -top-1 -right-1 p-0.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                    title="Delete file"
+                    title={t('deleteFile')}
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -533,12 +536,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {onFileUpload && canEdit && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            Upload New Technical Pack / Sample Media
+            {t('uploadNewTechPack')}
           </label>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <label className="px-3 py-2 sm:py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors w-full sm:w-auto">
               <Upload className="w-4 h-4 flex-shrink-0" />
-              <span>Upload Tech Pack</span>
+              <span>{t('uploadTechPack')}</span>
               <input
                 type="file"
                 multiple
@@ -556,7 +559,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             </label>
             {sampleFiles.length > 0 && (
               <span className="text-xs text-amber-700">
-                {sampleFiles.length} new file(s) to upload
+                {sampleFiles.length} {t('newFilesToUpload')}
               </span>
             )}
           </div>
@@ -595,7 +598,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             disabled={saving}
             className="px-3 sm:px-4 py-2 sm:py-1.5 text-xs sm:text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded hover:bg-amber-50 transition-colors disabled:opacity-50"
           >
-            Cancel
+            {t('cancel')}
           </button>
           <button
             onClick={handleSave}
@@ -605,12 +608,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             {saving ? (
               <>
                 <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                <span>Saving...</span>
+                <span>{t('saving')}</span>
               </>
             ) : (
               <>
                 <Save className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span>Save Sample Section</span>
+                <span>{t('saveSampleSection')}</span>
               </>
             )}
           </button>
@@ -623,33 +626,33 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Send className="w-5 h-5 text-amber-600" />
-              Route Sample Request
+              {t('routeSampleRequest')}
             </h3>
             
             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-600">Sending to:</span>
+                <span className="text-gray-600">{t('sendingTo')}:</span>
                 <span className="font-semibold text-amber-800">
-                  {routeDestination === 'manufacturer' && '🏭 Manufacturer'}
-                  {routeDestination === 'admin' && '👤 Admin'}
-                  {routeDestination === 'client' && '🏢 Client'}
+                  {routeDestination === 'manufacturer' && `🏭 ${t('manufacturer')}`}
+                  {routeDestination === 'admin' && `👤 ${t('admin')}`}
+                  {routeDestination === 'client' && `🏢 ${t('client')}`}
                 </span>
               </div>
             </div>
             
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Add a note (optional)
+                {t('addNoteOptional')}
               </label>
               <textarea
                 value={routeNotes}
                 onChange={(e) => setRouteNotes(e.target.value)}
                 placeholder={
                   routeDestination === 'manufacturer' 
-                    ? "Instructions for manufacturer..." 
+                    ? t('instructionsForManufacturer')
                     : routeDestination === 'client'
-                    ? "Message for client..."
-                    : "Notes for admin..."
+                    ? t('messageForClient')
+                    : t('notesForAdmin')
                 }
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
@@ -666,7 +669,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                 disabled={isRouting}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={handleRoute}
@@ -676,12 +679,12 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                 {isRouting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Routing...
+                    {t('routing')}
                   </>
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    Send
+                    {t('send')}
                   </>
                 )}
               </button>

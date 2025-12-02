@@ -16,6 +16,12 @@ import { getUserRole, usePermissions } from './hooks/usePermissions';
 import { useSampleRouting } from './hooks/useSampleRouting';
 import { useBulkRouting } from './hooks/useBulkRouting';
 
+// Translation imports
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
+import '../../../i18n';
+
 // Shared Components
 import { OrderHeader } from './components/shared/OrderHeader';
 import { OrderSampleRequest } from '../shared-components/OrderSampleRequest';
@@ -91,10 +97,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const { id } = use(params);
 
+  // Translation hooks
+  const { t, i18n } = useTranslation();
+  const { language } = useLanguage();
+  const { translate, translateBatch } = useDynamicTranslation();
+
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
-  
+
   // State for editing client
   const [isEditingClient, setIsEditingClient] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
@@ -148,6 +159,46 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   
   // Track admin card refs
   const adminCardRefs = useRef<Map<string, any>>(new Map());
+
+  // Batch translate all dynamic fields when order changes
+  useEffect(() => {
+    if (!order || language === 'en') return;
+
+    const textsToTranslate: string[] = [];
+
+    // Order name
+    if (order.order_name) textsToTranslate.push(order.order_name);
+
+    // Client and manufacturer names
+    if (order.client?.name) textsToTranslate.push(order.client.name);
+    if (order.manufacturer?.name) textsToTranslate.push(order.manufacturer.name);
+
+    // Product data
+    if (order.order_products && Array.isArray(order.order_products)) {
+      order.order_products.forEach((product: any) => {
+        if (product.description) textsToTranslate.push(product.description);
+        if (product.product?.title) textsToTranslate.push(product.product.title);
+        if (product.production_time) textsToTranslate.push(product.production_time);
+        if (product.sample_notes) textsToTranslate.push(product.sample_notes);
+        if (product.selected_sub_manufacturer?.name) textsToTranslate.push(product.selected_sub_manufacturer.name);
+
+        // Variant combinations from order items
+        if (product.order_items && Array.isArray(product.order_items)) {
+          product.order_items.forEach((item: any) => {
+            if (item.variant_combination) textsToTranslate.push(item.variant_combination);
+            if (item.notes) textsToTranslate.push(item.notes);
+          });
+        }
+      });
+    }
+
+    // Order sample notes
+    if (order.sample_notes) textsToTranslate.push(order.sample_notes);
+
+    if (textsToTranslate.length > 0) {
+      translateBatch(textsToTranslate, 'order_detail');
+    }
+  }, [order, language, translateBatch]);
 
   // Calculate total based on role
   const totalAmount = calculateOrderTotal(order, userRole || '');
@@ -812,10 +863,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   </div>
                   <div>
                     <h1 className="text-2xl font-bold text-gray-900">
-                      Order {order.order_number}
+                      {t('order')} {order.order_number}
                     </h1>
                     {order.order_name && (
-                      <p className="text-gray-500">{order.order_name}</p>
+                      <p className="text-gray-500">{translate(order.order_name)}</p>
                     )}
                   </div>
                 </div>
@@ -823,7 +874,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               
               {totalAmount > 0 && (
                 <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
-                  <p className="text-sm text-gray-500">Order Total</p>
+                  <p className="text-sm text-gray-500">{t('orderTotal')}</p>
                   <p className="text-3xl font-bold text-green-700">
                     ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
@@ -837,7 +888,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
               <Package className="w-5 h-5 text-gray-400" />
-              Products for Your Review
+              {t('productsForYourReview')}
             </h2>
 
             {clientProducts.length === 0 ? (
@@ -846,10 +897,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <CheckCircle className="w-8 h-8 text-gray-400" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  No Products Pending Review
+                  {t('noProductsPendingReview')}
                 </h3>
                 <p className="text-gray-500">
-                  All products have been reviewed or are still being processed.
+                  {t('allProductsReviewedOrProcessing')}
                 </p>
               </div>
             ) : (
@@ -857,15 +908,36 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 const items = product.order_items || [];
                 const media = product.order_media || [];
                 
+                // Translate product data for client view
+                const translatedProduct = {
+                  ...product,
+                  description: translate(product.description),
+                  product: product.product ? {
+                    ...product.product,
+                    title: translate(product.product.title)
+                  } : product.product,
+                  production_time: translate(product.production_time),
+                  sample_notes: translate(product.sample_notes)
+                };
+                
+                // Translate order items
+                const translatedItems = items.map((item: any) => ({
+                  ...item,
+                  variant_combination: translate(item.variant_combination),
+                  notes: translate(item.notes)
+                }));
+                
                 return (
                   <AdminProductCard
                     key={product.id}
-                    product={product}
-                    items={items}
+                    product={translatedProduct}
+                    items={translatedItems}
                     media={media}
                     orderStatus={order.workflow_status || order.status}
                     onUpdate={refetch}
                     autoCollapse={true}
+                    translate={translate}
+                    t={t}
                   />
                 );
               })
@@ -910,7 +982,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               {isEditingClient ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-500">Select New Client</p>
+                    <p className="text-sm text-gray-500">{t('selectNewClient')}</p>
                     <button
                       onClick={() => {
                         setIsEditingClient(false);
@@ -927,7 +999,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     disabled={savingClient}
                   >
-                    <option value="">Select a client...</option>
+                    <option value="">{t('selectClient')}</option>
                     {availableClients.map(client => (
                       <option key={client.id} value={client.id}>
                         {client.name}
@@ -943,7 +1015,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       disabled={savingClient}
                       className="flex-1 px-3 py-1 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
-                      Cancel
+                      {t('cancel')}
                     </button>
                     <button
                       onClick={handleClientChange}
@@ -953,19 +1025,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       {savingClient ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
+                          {t('saving')}
                         </>
                       ) : (
                         <>
                           <Check className="w-4 h-4" />
-                          Save
+                          {t('save')}
                         </>
                       )}
                     </button>
                   </div>
                   {selectedClientId && selectedClientId !== order.client?.id && (
                     <p className="text-xs text-amber-600">
-                      Note: Order number will change to use new client's prefix
+                      {t('orderNumberWillChange')}
                     </p>
                   )}
                 </div>
@@ -976,8 +1048,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       <Building className="w-5 h-5 text-blue-600" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-500">Client</p>
-                      <p className="font-semibold text-gray-900 truncate">{order.client?.name}</p>
+                      <p className="text-sm text-gray-500">{t('client')}</p>
+                      <p className="font-semibold text-gray-900 truncate">{translate(order.client?.name)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -995,8 +1067,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <Building className="w-5 h-5 text-green-600" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm text-gray-500">Manufacturer</p>
-                  <p className="font-semibold text-gray-900 truncate">{order.manufacturer?.name}</p>
+                  <p className="text-sm text-gray-500">{t('manufacturer')}</p>
+                  <p className="font-semibold text-gray-900 truncate">{translate(order.manufacturer?.name)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -1038,6 +1110,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
           isSuperAdmin={isSuperAdmin}
           counts={productCounts}
+          translate={translate}
         />
 
         {/* ORDER-LEVEL SAMPLE REQUEST SECTION (now BELOW control panel and distribution) */}
@@ -1059,7 +1132,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               setHistoryModal({
                 isOpen: true,
                 productId: 'order-sample-' + order.id,
-                productName: 'Order Sample Request'
+                productName: t('orderSampleRequest')
               });
               
               const historyCount = getOrderSampleHistoryCount();
@@ -1087,13 +1160,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Products Section */}
-        <div className="space-y-4 sm:space-y-6">
+          <div className="space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {selectedProductId !== 'all' ? 'Product Detail' : 'Order Products'}
-            </h2>
-            
-            <div className="flex items-center gap-3">
+              {selectedProductId !== 'all' ? t('productDetail') : t('orderProducts')}
+            </h2>            <div className="flex items-center gap-3">
               {isSuperAdmin && productCounts.withManufacturer > 0 && (
                 <button
                   onClick={() => setShowAllProducts(!showAllProducts)}
@@ -1107,14 +1178,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   {showAllProducts ? (
                     <>
                       <EyeOff className="w-4 h-4" />
-                      <span className="hidden sm:inline">Hide Manufacturer Products</span>
-                      <span className="sm:hidden">Hide</span>
+                      <span className="hidden sm:inline">{t('hideManufacturerProducts')}</span>
+                      <span className="sm:hidden">{t('hide')}</span>
                     </>
                   ) : (
                     <>
                       <Eye className="w-4 h-4" />
-                      <span className="hidden sm:inline">Show All Products</span>
-                      <span className="sm:hidden">Show All</span>
+                      <span className="hidden sm:inline">{t('showAllProducts')}</span>
+                      <span className="sm:hidden">{t('showAll')}</span>
                     </>
                   )}
                 </button>
@@ -1127,14 +1198,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
               <p className="text-gray-500">
                 {selectedProductId !== 'all' 
-                  ? `Product not found.`
+                  ? t('productNotFound')
                   : isManufacturer
-                  ? `No products assigned to you yet.`
-                  : `No products with admin. Check "Show All Products" to see products with manufacturer.`}
+                  ? t('noProductsAssigned')
+                  : t('noProductsWithAdmin')}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
-                  Total products in order: {productCounts.total}
+                  {t('totalProductsInOrder')}: {productCounts.total}
                 </p>
               )}
             </div>
@@ -1143,6 +1214,29 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               const items = product.order_items || [];
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
+              
+              // Translate product data for card
+              const translatedProduct = {
+                ...product,
+                description: translate(product.description),
+                product: product.product ? {
+                  ...product.product,
+                  title: translate(product.product.title)
+                } : product.product,
+                production_time: translate(product.production_time),
+                sample_notes: translate(product.sample_notes),
+                selected_sub_manufacturer: product.selected_sub_manufacturer ? {
+                  ...product.selected_sub_manufacturer,
+                  name: translate(product.selected_sub_manufacturer.name)
+                } : product.selected_sub_manufacturer
+              };
+              
+              // Translate order items (variant combinations)
+              const translatedItems = items.map((item: any) => ({
+                ...item,
+                variant_combo: translate(item.variant_combo),
+                notes: translate(item.notes)
+              }));
               
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
@@ -1155,8 +1249,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         manufacturerCardRefs.current.set(product.id, ref);
                       }
                     }}
-                    product={product}
-                    items={items}
+                    product={translatedProduct}
+                    items={translatedItems}
                     media={media}
                     orderStatus={order.workflow_status || order.status}
                     onUpdate={refetch}
@@ -1166,6 +1260,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     manufacturerId={manufacturerId}
                     autoCollapse={shouldAutoCollapse}
                     allOrderProducts={allProducts}
+                    translate={translate}
+                    t={t}
                   />
                 );
               }
@@ -1178,8 +1274,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                       adminCardRefs.current.set(product.id, ref);
                     }
                   }}
-                  product={product}
-                  items={items}
+                  product={translatedProduct}
+                  items={translatedItems}
                   media={media}
                   orderStatus={order.workflow_status || order.status}
                   onUpdate={refetch}
@@ -1187,6 +1283,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
                   hasNewHistory={hasNewHistory(product.id)}
                   autoCollapse={shouldAutoCollapse}
+                  translate={translate}
+                  t={t}
                 />
               );
             })

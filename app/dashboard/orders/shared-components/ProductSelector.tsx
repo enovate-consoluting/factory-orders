@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, X, Loader2, Edit2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { EditProductVariantsModal } from './EditProductVariantsModal';
+import { useTranslation } from 'react-i18next';
 
 interface Product {
   id: string;
@@ -42,6 +43,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
   showNotification,
   onProductsRefresh
 }) => {
+  const { t } = useTranslation();
   const [showNewProductModal, setShowNewProductModal] = useState(false);
   const [newProductTitle, setNewProductTitle] = useState('');
   const [selectedVariants, setSelectedVariants] = useState<any[]>([]);
@@ -50,7 +52,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
   const [newVariantValues, setNewVariantValues] = useState<{ [key: string]: string[] }>({});
   const [saving, setSaving] = useState(false);
   const [savingVariant, setSavingVariant] = useState<string | null>(null);
-  
+
   // Edit variants modal state
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -266,11 +268,11 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
     <>
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Select Products & Quantities</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{t('selectProductsToAdd')}</h2>
           <div className="flex items-center gap-3">
             {getTotalProductsSelected() > 0 && (
               <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
-                Total: {getTotalProductsSelected()} product{getTotalProductsSelected() > 1 ? 's' : ''} selected
+                {getTotalProductsSelected()} {t('productsAdded')}
               </div>
             )}
             <button
@@ -279,7 +281,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
             >
               <Plus className="w-4 h-4" />
-              New Product
+              {t('product')}
             </button>
           </div>
         </div>
@@ -289,7 +291,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search products by name..."
+            placeholder={t('searchProducts')}
             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
           />
         </div>

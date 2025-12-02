@@ -496,90 +496,90 @@ export default function DashboardLayout({
   const menuItems = [
     {
       type: 'section',
-      label: t('operations'),
+      label: 'Operations',
       roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'manufacturer_team_member', 'sub_manufacturer'],
     },
     {
       href: '/dashboard/orders',
-      label: t('orders'),
+      label: 'Orders',
       icon: ShoppingCart,
       roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'sub_manufacturer', 'manufacturer_team_member'],
       notificationKey: 'orders',
     },
     {
       href: '/dashboard/invoices',
-      label: t('invoices'),
+      label: 'Invoices',
       icon: FileText,
       roles: ['super_admin', 'admin', 'order_approver'],
       notificationKey: 'invoices',
     },
     {
       type: 'section',
-      label: t('productConfig'),
+      label: 'Product Configuration',
       roles: ['super_admin', 'admin'],
     },
     {
       href: '/dashboard/variants',
-      label: t('variants'),
+      label: 'Variants',
       icon: Layers,
       roles: ['super_admin', 'admin'],
       notificationKey: null,
     },
     {
       href: '/dashboard/products',
-      label: t('products'),
+      label: 'Products',
       icon: Package,
       roles: ['super_admin', 'admin'],
       notificationKey: 'products',
     },
     {
       type: 'section',
-      label: t('systemConfig'),
+      label: 'System Configuration',
       roles: ['super_admin', 'admin', 'manufacturer'],
     },
     {
       href: '/dashboard/settings/manufacturer',
-      label: t('settings'),
+      label: 'Settings',
       icon: Settings,
       roles: ['super_admin', 'manufacturer'],
-      description: t('manufacturerSettings'),
+      description: 'Manufacturer settings',
       notificationKey: null,
     },
     {
       href: '/dashboard/clients',
-      label: t('clients'),
+      label: 'Clients',
       icon: Users,
       roles: ['super_admin', 'admin'],
-      description: t('manageClientEmails'),
+      description: 'Manage client emails',
       notificationKey: null,
     },
     {
       href: '/dashboard/manufacturers',
-      label: t('manufacturers'),
+      label: 'Manufacturers',
       icon: Factory,
       roles: ['super_admin', 'admin'],
-      description: t('manageManufacturerEmails'),
+      description: 'Manage manufacturer emails',
       notificationKey: null,
     },
     {
       href: '/dashboard/users',
-      label: t('users'),
+      label: 'Users',
       icon: UserCheck,
       roles: ['super_admin', 'manufacturer'],
-      description: t('manageSystemUsers'),
+      description: 'Manage system users',
       notificationKey: null,
     },
     {
       type: 'section',
-      label: t('finance'),
+      label: 'Finance',
       roles: ['super_admin'],
     },
     {
       href: '/dashboard/settings/finance',
-      label: t('financeSettings'),
+      label: 'Finance Settings',
       icon: DollarSign,
       roles: ['super_admin'],
-      description: t('configureMargins'),
+      description: 'Configure profit margins',
       notificationKey: null,
     }
   ];
@@ -588,20 +588,20 @@ export default function DashboardLayout({
   const clientMenuItems = [
     {
       href: '/dashboard',
-      label: t('dashboard'),
+      label: 'Dashboard',
       icon: LayoutGrid,
       roles: ['client'],
     },
     {
       href: '/dashboard/orders/client',
-      label: t('orders'),
+      label: 'Orders',
       icon: ShoppingCart,
       roles: ['client'],
       notificationKey: 'orders',
     },
     {
       href: '/dashboard/invoices',
-      label: t('invoices'),
+      label: 'Invoices',
       icon: FileText,
       roles: ['client'],
     },
@@ -629,26 +629,26 @@ export default function DashboardLayout({
   };
 
   const getPageTitle = () => {
-    if (pathname === '/dashboard') return user?.role === 'client' ? 'My Dashboard' : 'Dashboard';
-    if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? 'Your Orders' : 'Orders Management';
-    if (pathname === '/dashboard/orders/client') return 'My Orders';
-    if (pathname.startsWith('/dashboard/orders/create')) return 'Create Order';
-    if (pathname.startsWith('/dashboard/orders/edit')) return 'Edit Order';
-    if (pathname === '/dashboard/invoices') return 'Invoices';
-    if (pathname.startsWith('/dashboard/invoices/create')) return 'Create Invoice';
-    if (pathname === '/dashboard/products') return 'Products';
-    if (pathname === '/dashboard/variants') return 'Variants Configuration';
-    if (pathname === '/dashboard/activity') return 'Activity Log';
-    if (pathname === '/dashboard/clients') return 'Client Management';
-    if (pathname === '/dashboard/manufacturers') return 'Manufacturer Management';
-    if (pathname === '/dashboard/users') return 'User Management';
-    if (pathname === '/dashboard/review') return 'Review Orders';
-    if (pathname === '/dashboard/settings/finance') return 'Finance Settings';
-    if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
-    if (pathname === '/dashboard/settings/manufacturer') return 'Manufacturer Settings';
-    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return 'Order Details';
-    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return 'Invoice Details';
-    return 'Dashboard';
+    if (pathname === '/dashboard') return user?.role === 'client' ? t('myDashboard') : t('dashboard');
+    if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? t('yourOrders') : t('ordersManagement');
+    if (pathname === '/dashboard/orders/client') return t('myOrders');
+    if (pathname.startsWith('/dashboard/orders/create')) return t('createNewOrder');
+    if (pathname.startsWith('/dashboard/orders/edit')) return t('editOrder');
+    if (pathname === '/dashboard/invoices') return t('invoices');
+    if (pathname.startsWith('/dashboard/invoices/create')) return t('createInvoice');
+    if (pathname === '/dashboard/products') return t('products');
+    if (pathname === '/dashboard/variants') return t('variantsConfiguration');
+    if (pathname === '/dashboard/activity') return t('activityLog');
+    if (pathname === '/dashboard/clients') return t('clientManagement');
+    if (pathname === '/dashboard/manufacturers') return t('manufacturerManagement');
+    if (pathname === '/dashboard/users') return t('userManagement');
+    if (pathname === '/dashboard/review') return t('reviewOrders');
+    if (pathname === '/dashboard/settings/finance') return t('financeSettings');
+    if (pathname === '/dashboard/settings/finance/orders') return t('orderMargins');
+    if (pathname === '/dashboard/settings/manufacturer') return t('manufacturerSettings');
+    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return t('orderDetails');
+    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return t('invoiceDetails');
+    return t('dashboard');
   };
 
   if (loading) {

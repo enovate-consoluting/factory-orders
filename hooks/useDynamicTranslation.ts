@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { translateText, translateBatchTexts } from '@/lib/translate';
 import { translationCache } from '@/lib/translationCache';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTranslation } from 'react-i18next';
 
 interface TranslationState {
   [key: string]: string;
@@ -26,82 +27,103 @@ interface TranslationState {
  */
 export function useDynamicTranslation() {
   const { language } = useLanguage();
+  const { t, i18n } = useTranslation();
   const [translations, setTranslations] = useState<TranslationState>({});
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [pendingQueue, setPendingQueue] = useState<Set<string>>(new Set());
   const batchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const translationsRef = useRef<TranslationState>({});
 
-  // Process pending queue in batch
-  const processPendingQueue = useCallback(async () => {
-    if (pendingQueue.size === 0) return;
+  // Keep ref in sync with state
+  useEffect(() => {
+    translationsRef.current = translations;
+  }, [translations]);
 
-    const textsToTranslate = Array.from(pendingQueue);
-    setPendingQueue(new Set()); // Clear queue
-
-    setLoading(prev => {
-      const next = new Set(prev);
-      textsToTranslate.forEach(t => next.add(t));
-      return next;
-    });
-
-    try {
-      const translationMap = await translateBatchTexts(textsToTranslate, language);
-
-      Object.entries(translationMap).forEach(([original, translated]) => {
-        translationCache.set(original, language, translated);
-      });
-
-      setTranslations(prev => ({ ...prev, ...translationMap }));
-    } catch (error) {
-      console.error('Batch translation error:', error);
-
-      // Fallback: use original texts
-      const fallbackMap: TranslationState = {};
-      textsToTranslate.forEach(text => {
-        fallbackMap[text] = text;
-      });
-      setTranslations(prev => ({ ...prev, ...fallbackMap }));
-    } finally {
-      setLoading(prev => {
-        const next = new Set(prev);
-        textsToTranslate.forEach(t => next.delete(t));
-        return next;
-      });
-    }
-  }, [pendingQueue, language]);
-
-  // Translate a single text (now queues for batch processing)
+  // Translate a single text (NO setState during render)
   const translate = useCallback((text: string | null | undefined): string => {
     if (!text) return '';
     if (language === 'en') return text;
 
-    // Check cache first
+    // 1. Check static translations first (en.json / zh.json)
+    const staticTranslation = i18n.exists(text) ? t(text) : null;
+    if (staticTranslation && staticTranslation !== text) return staticTranslation;
+
+    // 2. Check cache
     const cached = translationCache.get(text, language);
     if (cached) return cached;
 
-    // Check if already translated
-    if (translations[text]) return translations[text];
+    // 3. Check if already translated in state (use ref to avoid dependency)
+    const stateTranslation = translationsRef.current[text];
+    if (stateTranslation) return stateTranslation;
 
-    // Check if already loading or pending
-    if (loading.has(text) || pendingQueue.has(text)) {
-      return text; // Return original while loading
+    // 4. Queue for translation if not already loading/pending
+    if (!loading.has(text)) {
+      // Use setTimeout to batch multiple translate() calls and avoid setState during render
+      setTimeout(() => {
+        setPendingQueue(prev => new Set(prev).add(text));
+      }, 0);
     }
 
-    // Add to pending queue instead of immediate translation
-    setPendingQueue(prev => new Set(prev).add(text));
+    // Return original text while translation is pending
+    return text;
+  }, [language, loading, t, i18n]);
 
-    // Debounce: wait 100ms to collect more texts, then process batch
+  // Collect untranslated texts for batch translation with debouncing
+  useEffect(() => {
+    if (language === 'en') return;
+    if (pendingQueue.size === 0) return;
+
+    // Debounce: wait 100ms to collect more texts before translating
     if (batchTimerRef.current) {
       clearTimeout(batchTimerRef.current);
     }
 
-    batchTimerRef.current = setTimeout(() => {
-      processPendingQueue();
-    }, 100);
+    batchTimerRef.current = setTimeout(async () => {
+      const queueArray = Array.from(pendingQueue);
+      const toTranslate = queueArray.filter(text => !translationCache.get(text, language));
 
-    // Return original text while loading
-    return text;
-  }, [language, translations, loading, pendingQueue, processPendingQueue]);
+      if (toTranslate.length === 0) {
+        setPendingQueue(new Set());
+        return;
+      }
+
+      setLoading(prev => {
+        const next = new Set(prev);
+        toTranslate.forEach(t => next.add(t));
+        return next;
+      });
+
+      try {
+        const translationMap = await translateBatchTexts(toTranslate, language);
+        Object.entries(translationMap).forEach(([original, translated]) => {
+          translationCache.set(original, language, translated);
+        });
+        setTranslations(prev => ({ ...prev, ...translationMap }));
+      } catch (error) {
+        console.error('Batch translation error:', error);
+        // Fallback: use original texts
+        const fallbackMap: TranslationState = {};
+        toTranslate.forEach(text => {
+          fallbackMap[text] = text;
+        });
+        setTranslations(prev => ({ ...prev, ...fallbackMap }));
+      } finally {
+        setLoading(prev => {
+          const next = new Set(prev);
+          toTranslate.forEach(t => next.delete(t));
+          return next;
+        });
+        setPendingQueue(new Set());
+      }
+    }, 100); // 100ms debounce
+
+    // Cleanup
+    return () => {
+      if (batchTimerRef.current) {
+        clearTimeout(batchTimerRef.current);
+      }
+    };
+  }, [language, pendingQueue]);
 
   // Translate multiple texts at once (more efficient)
   const translateBatch = useCallback(async (
@@ -111,25 +133,22 @@ export function useDynamicTranslation() {
     if (language === 'en') return;
 
     const uniqueTexts = [...new Set(texts.filter(Boolean))];
-    const newTranslations: TranslationState = {};
 
-    // Check cache and filter out already translated texts
+    // Check static translations and cache (don't check translations state to avoid dependency)
     const textsToTranslate = uniqueTexts.filter(text => {
-      const cached = translationCache.get(text, language);
-      if (cached) {
-        newTranslations[text] = cached;
-        return false;
+      // Skip if exists in static translations
+      if (i18n.exists(text)) {
+        const staticTranslation = t(text);
+        if (staticTranslation !== text) {
+          translationCache.set(text, language, staticTranslation);
+          return false;
+        }
       }
-      if (translations[text]) {
-        newTranslations[text] = translations[text];
-        return false;
-      }
-      return true;
+      return !translationCache.get(text, language);
     });
 
     if (textsToTranslate.length === 0) {
-      setTranslations(prev => ({ ...prev, ...newTranslations }));
-      return;
+      return; // All texts are already cached
     }
 
     setLoading(prev => {
@@ -143,6 +162,7 @@ export function useDynamicTranslation() {
       const translationMap = await translateBatchTexts(textsToTranslate, language);
 
       // Cache all translations and update state
+      const newTranslations: TranslationState = {};
       Object.entries(translationMap).forEach(([original, translated]) => {
         translationCache.set(original, language, translated);
         newTranslations[original] = translated;
@@ -153,11 +173,12 @@ export function useDynamicTranslation() {
       console.error('Batch translation failed:', error);
 
       // Fallback: use original texts
+      const fallbackTranslations: TranslationState = {};
       textsToTranslate.forEach(text => {
-        newTranslations[text] = text;
+        fallbackTranslations[text] = text;
       });
 
-      setTranslations(prev => ({ ...prev, ...newTranslations }));
+      setTranslations(prev => ({ ...prev, ...fallbackTranslations }));
     } finally {
       setLoading(prev => {
         const next = new Set(prev);
@@ -165,11 +186,12 @@ export function useDynamicTranslation() {
         return next;
       });
     }
-  }, [language, translations]);
+  }, [language, t, i18n]);
 
   // Clear translations when language changes
   useEffect(() => {
     setTranslations({});
+    setPendingQueue(new Set());
   }, [language]);
 
   return {

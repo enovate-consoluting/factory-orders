@@ -13,6 +13,8 @@ import { StatusBadge } from '../../../shared-components/StatusBadge';
 import { usePermissions, getUserRole } from '../../hooks/usePermissions';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 import { formatCurrency } from '../../../utils/orderCalculations';
+import { useTranslation } from 'react-i18next';
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
 
 interface OrderHeaderProps {
   order: Order;
@@ -23,14 +25,16 @@ interface OrderHeaderProps {
   allProductsPaid?: boolean;
 }
 
-export function OrderHeader({ 
-  order, 
-  totalAmount = 0, 
+export function OrderHeader({
+  order,
+  totalAmount = 0,
   onEditDraft,
   onStatusChange,
   onTogglePaid,
-  allProductsPaid = false 
+  allProductsPaid = false
 }: OrderHeaderProps) {
+  const { t } = useTranslation();
+  const { translate } = useDynamicTranslation();
   const permissions = usePermissions() as any;
   const userRole = getUserRole();
   const isSuperAdmin = userRole === 'super_admin';
@@ -40,15 +44,15 @@ export function OrderHeader({
   const getCreatorName = () => {
     // First try the creator object - using type assertion to avoid TypeScript errors
     if ((order as any).created_by_user) {
-      return (order as any).created_by_user.name || (order as any).created_by_user.email || 'Admin User';
+      return (order as any).created_by_user.name || (order as any).created_by_user.email || t('adminUser');
     }
     // Then try creator field
     if ((order as any).creator) {
-      return (order as any).creator.name || (order as any).creator.email || 'Admin User';
+      return (order as any).creator.name || (order as any).creator.email || t('adminUser');
     }
     // Try to get from created_by and users table (might need to fetch separately)
     // For now, if we don't have the creator info, show "Admin"
-    return 'Admin';
+    return t('admin');
   };
 
   const creatorName = getCreatorName();
@@ -65,12 +69,12 @@ export function OrderHeader({
                 <div className="min-w-0">
                   {/* SHOW ORDER NAME/DESCRIPTION AS MAIN TITLE */}
                   <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">
-                    {(order as any).order_name || `Order ${formatOrderNumber(order.order_number)}`}
+                    {(order as any).order_name ? translate((order as any).order_name) : `${t('order')} ${formatOrderNumber(order.order_number)}`}
                   </h1>
                   {/* Show order number as subtitle if we have a name */}
                   {(order as any).order_name && (
                     <p className="text-sm text-gray-600">
-                      Order #{formatOrderNumber(order.order_number)}
+                      {t('order')} #{formatOrderNumber(order.order_number)}
                     </p>
                   )}
                 </div>
@@ -82,21 +86,21 @@ export function OrderHeader({
                     onChange={(e) => onStatusChange(e.target.value)}
                     className="px-2 sm:px-3 py-1 text-xs sm:text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-auto"
                   >
-                    <option value="draft">Draft</option>
-                    <option value="sent_to_manufacturer">Sent to Manufacturer</option>
-                    <option value="submitted_to_manufacturer">Submitted to Manufacturer</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="approved">Approved</option>
-                    <option value="pending">Pending</option>
-                    <option value="submitted_for_sample">Submitted for Sample</option>
-                    <option value="priced_by_manufacturer">Priced by Manufacturer</option>
-                    <option value="submitted_to_client">Submitted to Client</option>
-                    <option value="client_approved">Client Approved</option>
-                    <option value="ready_for_production">Ready for Production</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="in_production">In Production</option>
-                    <option value="completed">Completed</option>
-                    <option value="rejected">Rejected</option>
+                    <option value="draft">{t('draft')}</option>
+                    <option value="sent_to_manufacturer">{t('sentToManufacturer')}</option>
+                    <option value="submitted_to_manufacturer">{t('submittedToManufacturer')}</option>
+                    <option value="submitted">{t('submitted')}</option>
+                    <option value="approved">{t('approved')}</option>
+                    <option value="pending">{t('pending')}</option>
+                    <option value="submitted_for_sample">{t('submittedForSample')}</option>
+                    <option value="priced_by_manufacturer">{t('pricedByManufacturer')}</option>
+                    <option value="submitted_to_client">{t('submittedToClient')}</option>
+                    <option value="client_approved">{t('clientApproved')}</option>
+                    <option value="ready_for_production">{t('readyForProduction')}</option>
+                    <option value="in_progress">{t('inProgress')}</option>
+                    <option value="in_production">{t('inProduction')}</option>
+                    <option value="completed">{t('completed')}</option>
+                    <option value="rejected">{t('rejected')}</option>
                   </select>
                 ) : (
                   // Regular admins and manufacturers just see the status badge
@@ -117,7 +121,7 @@ export function OrderHeader({
                 {!isManufacturer && ((order as any).is_paid || allProductsPaid) && (
                   <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1 flex-shrink-0">
                     <CheckCircle className="w-3 h-3" />
-                    Paid
+                    {t('paid')}
                   </span>
                 )}
 
@@ -130,7 +134,7 @@ export function OrderHeader({
                 <div className="flex items-center gap-1 text-xs sm:text-sm text-gray-600 flex-wrap">
                   <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                   <span>{new Date(order.created_at).toLocaleDateString()}</span>
-                  <span className="text-gray-400">Created by</span>
+                  <span className="text-gray-400">{t('created')}</span>
                   <span className="font-medium text-gray-900">{creatorName}</span>
                 </div>
               </div>
@@ -143,7 +147,7 @@ export function OrderHeader({
                 <div className="flex flex-col gap-2">
                   <div className="bg-gray-50 px-3 sm:px-4 py-2 rounded-lg border border-gray-200">
                     <div className="text-right">
-                      <p className="text-xs text-gray-500 uppercase tracking-wide">Estimated Total</p>
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">{t('estimatedTotal')}</p>
                       <p className="text-xl sm:text-2xl font-bold text-gray-900">
                         ${formatCurrency(totalAmount || 0)}
                       </p>
@@ -160,7 +164,7 @@ export function OrderHeader({
                         className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                       />
                       <span className="text-sm font-medium text-gray-700">
-                        {(order as any).is_paid ? 'Paid' : 'Mark as Paid'}
+                        {(order as any).is_paid ? t('paid') : t('markAsPaid')}
                       </span>
                     </label>
                   )}
@@ -169,7 +173,7 @@ export function OrderHeader({
                   {!isSuperAdmin && (order as any).is_paid && (
                     <span className="text-sm text-green-600 font-medium flex items-center gap-1 justify-end">
                       <CheckCircle className="w-3 h-3" />
-                      Paid
+                      {t('paid')}
                     </span>
                   )}
                 </div>
@@ -182,7 +186,7 @@ export function OrderHeader({
                   className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   <Edit className="w-4 h-4" />
-                  <span>Edit Draft</span>
+                  <span>{t('editDraft')}</span>
                 </button>
               )}
             </div>

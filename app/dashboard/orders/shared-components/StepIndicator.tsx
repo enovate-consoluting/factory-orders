@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Step {
   number: number;
@@ -25,10 +26,12 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
   onStepClick,
   canNavigate = true
 }) => {
+  const { t } = useTranslation();
+
   const steps: Step[] = [
-    { number: 1, label: 'Basic Info', completed: currentStep > 1, active: currentStep === 1 },
-    { number: 2, label: 'Select Products', completed: currentStep > 2, active: currentStep === 2 },
-    { number: 3, label: 'Order Details', completed: false, active: currentStep === 3 }
+    { number: 1, label: t('basicInfo'), completed: currentStep > 1, active: currentStep === 1 },
+    { number: 2, label: t('addProducts'), completed: currentStep > 2, active: currentStep === 2 },
+    { number: 3, label: t('configureProducts'), completed: false, active: currentStep === 3 }
   ];
 
   return (

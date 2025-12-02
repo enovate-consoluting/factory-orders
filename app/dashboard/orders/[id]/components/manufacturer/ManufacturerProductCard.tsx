@@ -51,11 +51,13 @@ interface ManufacturerProductCardProps {
   onExpand?: () => void;
   onDataChange?: (data: any) => void;
   allOrderProducts?: OrderProduct[]; // For shipping allocation dropdown
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
 }
 
 export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, ManufacturerProductCardProps>(
-  function ManufacturerProductCard({ 
-    product, 
+  function ManufacturerProductCard({
+    product,
     items = [],
     media = [],
     orderStatus,
@@ -69,7 +71,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     forceExpanded = false,
     onExpand,
     onDataChange,
-    allOrderProducts = []
+    allOrderProducts = [],
+    translate = (text) => text || '',
+    t = (key) => key
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
@@ -896,6 +900,8 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           hasNewHistory={showNewHistoryDot}
           userRole={userRole}
           trackingNumber={(product as any).tracking_number}
+          translate={translate}
+          t={t}
         />
       );
     }

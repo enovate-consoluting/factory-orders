@@ -12,6 +12,7 @@ import {
   AlertCircle, Settings, MessageSquare, X, Loader2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslation } from 'react-i18next';
 
 interface ClientNote {
   id: string;
@@ -38,6 +39,7 @@ export function AdminControlPanel({
   onPrintAll,
   totalAmount = 0
 }: AdminControlPanelProps) {
+  const { t } = useTranslation();
   // Notes Modal State
   const [notesModal, setNotesModal] = useState(false);
   const [notes, setNotes] = useState<ClientNote[]>([]);
@@ -191,23 +193,23 @@ export function AdminControlPanel({
           {/* Control Panel Header */}
           <div className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
             <Settings className="w-4 h-4 text-white flex-shrink-0" />
-            <h3 className="text-sm font-semibold text-white">Control Panel</h3>
+            <h3 className="text-sm font-semibold text-white">{t('controlPanel')}</h3>
           </div>
 
           {/* Order Info Summary */}
           <div className="px-4 py-2 bg-gray-50 flex flex-wrap items-center gap-3 sm:gap-4">
             <div>
-              <span className="text-xs text-gray-500">Order</span>
+              <span className="text-xs text-gray-500">{t('order')}</span>
               <p className="font-bold text-sm sm:text-base text-gray-900">{order.order_number}</p>
             </div>
             <div className="hidden sm:block h-8 w-px bg-gray-300" />
             <div>
-              <span className="text-xs text-gray-500">Client</span>
+              <span className="text-xs text-gray-500">{t('client')}</span>
               <p className="font-semibold text-xs sm:text-sm text-gray-900 truncate max-w-[150px]">{order.client?.name}</p>
             </div>
             <div className="hidden sm:block h-8 w-px bg-gray-300" />
             <div>
-              <span className="text-xs text-gray-500">Products</span>
+              <span className="text-xs text-gray-500">{t('products')}</span>
               <p className="font-semibold text-sm text-gray-900">{visibleProducts.length}</p>
             </div>
           </div>
@@ -221,17 +223,17 @@ export function AdminControlPanel({
               <div className="flex flex-wrap items-center gap-2">
                 {productCounts.withAdmin > 0 && (
                   <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withAdmin} with Admin
+                    {productCounts.withAdmin} {t('withAdmin')}
                   </span>
                 )}
                 {productCounts.withManufacturer > 0 && (
                   <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withManufacturer} with Mfr
+                    {productCounts.withManufacturer} {t('withMfr')}
                   </span>
                 )}
                 {productCounts.withClient > 0 && (
                   <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withClient} with Client
+                    {productCounts.withClient} {t('withClient')}
                   </span>
                 )}
               </div>
@@ -241,12 +243,12 @@ export function AdminControlPanel({
             <div className="flex items-center gap-3 sm:gap-4 justify-end sm:justify-start lg:justify-end">
               {totals.shipping > 0 && (
                 <div className="text-right">
-                  <span className="text-xs text-gray-500">Shipping</span>
+                  <span className="text-xs text-gray-500">{t('shipping')}</span>
                   <p className="font-semibold text-sm sm:text-base text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
                 </div>
               )}
               <div className="text-right">
-                <span className="text-xs text-gray-500">Client Total</span>
+                <span className="text-xs text-gray-500">{t('clientTotal')}</span>
                 <p className="font-bold text-lg sm:text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
               </div>
             </div>
@@ -258,10 +260,10 @@ export function AdminControlPanel({
               <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
               <div className="flex-1 text-sm text-amber-800">
                 {productsNeedingPricing > 0 && (
-                  <span>{productsNeedingPricing} product{productsNeedingPricing > 1 ? 's' : ''} need pricing. </span>
+                  <span>{productsNeedingPricing} {t('productsNeedPricing')}. </span>
                 )}
                 {productsWithoutShipping > 0 && (
-                  <span>{productsWithoutShipping} product{productsWithoutShipping > 1 ? 's' : ''} need shipping selection.</span>
+                  <span>{productsWithoutShipping} {t('productsNeedShipping')}.</span>
                 )}
               </div>
             </div>
@@ -275,7 +277,7 @@ export function AdminControlPanel({
               className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm sm:text-base"
             >
               <Printer className="w-4 h-4" />
-              <span>Print All</span>
+              <span>{t('printAll')}</span>
             </button>
 
             {/* Client Notes */}
@@ -284,7 +286,7 @@ export function AdminControlPanel({
               className="px-3 sm:px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium relative text-sm sm:text-base"
             >
               <MessageSquare className="w-4 h-4" />
-              <span>Client Notes</span>
+              <span>{t('clientNotes')}</span>
               {unreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -299,7 +301,7 @@ export function AdminControlPanel({
                 className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium sm:ml-auto text-sm sm:text-base"
               >
                 <Save className="w-4 h-4" />
-                <span className="whitespace-nowrap">Save All & Route ({productCounts.withAdmin})</span>
+                <span className="whitespace-nowrap">{t('saveAllAndRoute')} ({productCounts.withAdmin})</span>
               </button>
             )}
           </div>
@@ -317,7 +319,7 @@ export function AdminControlPanel({
                   <MessageSquare className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Client Notes</h3>
+                  <h3 className="font-semibold text-gray-900">{t('clientNotes')}</h3>
                   <p className="text-sm text-gray-500">{order.client?.name} - {order.order_number}</p>
                 </div>
               </div>
@@ -338,8 +340,8 @@ export function AdminControlPanel({
               ) : notes.length === 0 ? (
                 <div className="text-center py-8">
                   <MessageSquare className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500 text-sm">No notes yet</p>
-                  <p className="text-gray-400 text-xs mt-1">Start a conversation with the client</p>
+                  <p className="text-gray-500 text-sm">{t('noNotesYet')}</p>
+                  <p className="text-gray-400 text-xs mt-1">{t('startConversationWithClient')}</p>
                 </div>
               ) : (
                 notes.map((note) => {
@@ -375,7 +377,7 @@ export function AdminControlPanel({
                 <textarea
                   value={newNote}
                   onChange={(e) => setNewNote(e.target.value)}
-                  placeholder="Type your message to the client..."
+                  placeholder={t('typeMessageToClient')}
                   className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                   rows={2}
                   onKeyDown={(e) => {
@@ -397,7 +399,7 @@ export function AdminControlPanel({
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-400 mt-2">Press Enter to send, Shift+Enter for new line</p>
+              <p className="text-xs text-gray-400 mt-2">{t('pressEnterToSend')}</p>
             </div>
           </div>
         </div>

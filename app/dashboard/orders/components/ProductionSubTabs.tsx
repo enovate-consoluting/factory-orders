@@ -9,40 +9,40 @@
 import React from 'react';
 import { CheckCircle, Wrench, Award } from 'lucide-react';
 import { ProductionSubTab, TabCounts } from '../types/orderList.types';
-import { Translations } from '../utils/orderListTranslations';
+import { TFunction } from 'i18next';
 
 interface ProductionSubTabsProps {
   activeSubTab: ProductionSubTab;
   tabCounts: TabCounts;
-  translations: Translations;
+  t: TFunction;
   onSubTabChange: (tab: ProductionSubTab) => void;
 }
 
 export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   activeSubTab,
   tabCounts,
-  translations: t,
+  t,
   onSubTabChange
 }) => {
   // UPDATED: Removed 'shipped' - now at parent level
   const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
     {
       key: 'sample_approved',
-      label: t.sampleApproved,
+      label: t('sampleApproved'),
       count: tabCounts.sample_approved,
       icon: <Award className="w-4 h-4" />,
       color: 'amber'
     },
     {
       key: 'approved_for_production',
-      label: t.approvedForProd,
+      label: t('approvedForProd'),
       count: tabCounts.approved_for_production,
       icon: <CheckCircle className="w-4 h-4" />,
       color: 'green'
     },
     {
       key: 'in_production',
-      label: t.inProduction,
+      label: t('inProduction'),
       count: tabCounts.in_production,
       icon: <Wrench className="w-4 h-4" />,
       color: 'blue'

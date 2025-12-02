@@ -12,6 +12,7 @@ import {
   Clock, FileText, ExternalLink, Plane, Ship, 
   AlertTriangle, Users, Building
 } from 'lucide-react';
+
 import { formatCurrency } from '../utils/orderCalculations';
 import { 
   daysSinceInvoiceReady,
@@ -23,12 +24,12 @@ import {
 } from '../utils/orderListCalculations';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 import { Order, OrderProduct } from '../types/orderList.types';
-import { Translations } from '../utils/orderListTranslations';
+import { TFunction } from 'i18next';
 
 interface InvoiceApprovalViewProps {
   filteredOrders: Order[];
   expandedOrders: Set<string>;
-  translations: Translations;
+  t: TFunction;
   userRole: string | null;
   onToggleExpansion: (orderId: string) => void;
   onNavigateToOrder: (orderId: string) => void;
@@ -37,7 +38,7 @@ interface InvoiceApprovalViewProps {
 export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
   filteredOrders,
   expandedOrders,
-  translations: t,
+  t,
   userRole,
   onToggleExpansion,
   onNavigateToOrder
@@ -55,7 +56,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
     return (
       <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded flex items-center gap-1">
         <Users className="w-3 h-3" />
-        {t.withAdmin}
+        {t('withAdmin')}
       </span>
     );
   };
@@ -69,7 +70,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
       {filteredOrders.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-300" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">{t.noOrders}</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">{t('noOrders')}</h3>
           <p className="mt-1 text-sm text-gray-500">No orders ready for invoicing.</p>
         </div>
       ) : (
@@ -111,7 +112,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                           <div className="flex-1">
                             <div className="flex items-center gap-3">
                               <h3 className="font-semibold text-gray-900 text-sm">
-                                {order.order_name || t.untitledOrder}
+                                {order.order_name || t('untitledOrder')}
                               </h3>
                               <span className="text-xs text-gray-500">
                                 {formatOrderNumber(order.order_number)}
