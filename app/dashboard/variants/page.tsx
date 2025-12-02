@@ -16,6 +16,9 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
+import { useTranslation } from 'react-i18next';
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
+import '../../i18n';
 
 interface VariantType {
   id: string;
@@ -32,6 +35,12 @@ interface VariantOption {
 }
 
 export default function VariantsPage() {
+  // Static text translation
+  const { t } = useTranslation();
+
+  // Dynamic content translation (for variant names and option values from database)
+  const { translate, translateBatch } = useDynamicTranslation();
+
   const [variantTypes, setVariantTypes] = useState<VariantType[]>([]);
   const [variantOptions, setVariantOptions] = useState<VariantOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +62,20 @@ export default function VariantsPage() {
   useEffect(() => {
     fetchVariants();
   }, []);
+
+  // Pre-load translations for all variant data when data changes
+  useEffect(() => {
+    if (variantTypes.length === 0 && variantOptions.length === 0) return;
+
+    // Collect all text that needs translation
+    const textsToTranslate = [
+      ...variantTypes.map(type => type.name),
+      ...variantOptions.map(option => option.value)
+    ].filter(Boolean);
+
+    // Batch translate all texts at once (more efficient than individual calls)
+    translateBatch(textsToTranslate, 'variants');
+  }, [variantTypes, variantOptions, translateBatch]);
 
   const fetchVariants = async () => {
     try {
@@ -318,9 +341,9 @@ export default function VariantsPage() {
             <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg">
               <Layers className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">Variant Management</h1>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{t('variantManagement')}</h1>
           </div>
-          <p className="text-sm sm:text-base text-gray-600">Manage product variants like sizes, colors, and materials</p>
+          <p className="text-sm sm:text-base text-gray-600">{t('variantManagementDesc')}</p>
         </div>
 
         {/* Add Variant Type Button - Mobile Responsive */}
@@ -336,7 +359,7 @@ export default function VariantsPage() {
             className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium shadow-sm"
           >
             <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-            Add Variant Type
+            {t('addVariantType')}
           </button>
         </div>
 
@@ -361,7 +384,7 @@ export default function VariantsPage() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">
                       <Tag className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
-                      <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{type.name}</h3>
+                      <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{translate(type.name)}</h3>
                     </div>
                     <div className="flex gap-1">
                       <button
@@ -397,7 +420,7 @@ export default function VariantsPage() {
                               processingId === option.id ? 'opacity-50' : ''
                             }`}
                           >
-                            <span className="text-gray-700 font-medium truncate">{option.value}</span>
+                            <span className="text-gray-700 font-medium truncate">{translate(option.value)}</span>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => handleDeleteSingleOption(option)}
@@ -426,8 +449,8 @@ export default function VariantsPage() {
                       </div>
                     ) : (
                       <div className="text-center py-8 text-gray-500">
-                        <p className="text-sm">No options yet</p>
-                        <p className="text-xs mt-1">Click below to add options</p>
+                        <p className="text-sm">{t('noOptionsYet')}</p>
+                        <p className="text-xs mt-1">{t('clickBelowToAddOptions')}</p>
                       </div>
                     )}
                   </div>
@@ -438,7 +461,7 @@ export default function VariantsPage() {
                     className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm font-medium flex-shrink-0 mt-auto"
                   >
                     <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                    {options.length > 0 ? 'Manage Options' : 'Add Options'}
+                    {options.length > 0 ? t('manageOptions') : t('addOptions')}
                   </button>
                 </div>
               </div>
@@ -448,8 +471,8 @@ export default function VariantsPage() {
           {variantTypes.length === 0 && (
             <div className="col-span-full text-center py-8 sm:py-12">
               <Layers className="w-10 h-10 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
-              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1 sm:mb-2">No variant types yet</h3>
-              <p className="text-sm sm:text-base text-gray-500">Get started by adding your first variant type</p>
+              <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-1 sm:mb-2">{t('noVariantTypesYet')}</h3>
+              <p className="text-sm sm:text-base text-gray-500">{t('getStartedByAddingFirstVariantType')}</p>
             </div>
           )}
         </div>
@@ -462,12 +485,12 @@ export default function VariantsPage() {
             <div className="flex justify-between items-start mb-4 sm:mb-6">
               <div>
                 <h2 className="text-xl sm:text-2xl font-semibold text-gray-900">
-                  {editingType ? 'Edit Variant Type' : 'Create Variant Type'}
+                  {editingType ? t('editVariantType') : t('createVariantType')}
                 </h2>
                 <p className="text-xs sm:text-sm text-gray-500 mt-1">
                   {editingType 
-                    ? 'Update the variant type name and manage its options' 
-                    : 'Create a variant type and add its options all at once'}
+                    ? t('updateVariantTypeNameAndManageOptions') 
+                    : t('createVariantTypeAndAddOptions')}
                 </p>
               </div>
               <button
@@ -488,19 +511,19 @@ export default function VariantsPage() {
               {/* Type Name Field */}
               <div className="mb-4 sm:mb-6">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1.5 sm:mb-2">
-                  Type Name <span className="text-red-500">*</span>
+                  {t('typeName')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
                   className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm sm:text-base"
-                  placeholder="e.g. Size, Color, Material"
+                  placeholder={t('e.gSizeColorMaterial')}
                   required
                   autoFocus
                 />
                 <p className="mt-1 text-xs sm:text-sm text-gray-500">
-                  This will be the category name for your variants
+                  {t('thisWillBeTheCategoryNameForYourVariants')}
                 </p>
               </div>
 
@@ -508,7 +531,7 @@ export default function VariantsPage() {
               <div className="mb-4 sm:mb-6">
                 <div className="flex justify-between items-center mb-2 sm:mb-3">
                   <label className="block text-xs sm:text-sm font-medium text-gray-700">
-                    Options <span className="text-gray-400">(Add at least one)</span>
+                    {t('options')} <span className="text-gray-400">({t('addAtLeastOne')})</span>
                   </label>
                   <button
                     type="button"
@@ -516,7 +539,7 @@ export default function VariantsPage() {
                     className="text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
                   >
                     <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Add More
+                    {t('addMore')}
                   </button>
                 </div>
 
@@ -532,10 +555,10 @@ export default function VariantsPage() {
                           existingOptionIds[index] 
                             ? `Current: ${option}` 
                             : newTypeName.toLowerCase() === 'size' 
-                              ? index === 0 ? 'e.g. Small' : index === 1 ? 'e.g. Medium' : index === 2 ? 'e.g. Large' : 'Enter option'
+                              ? index === 0 ? t('e.gSmall') : index === 1 ? t('e.gMedium') : index === 2 ? t('e.gLarge') : t('enterOption')
                             : newTypeName.toLowerCase() === 'color'
-                              ? index === 0 ? 'e.g. Red' : index === 1 ? 'e.g. Blue' : index === 2 ? 'e.g. Green' : 'Enter option'
-                            : `Option ${index + 1}`
+                              ? index === 0 ? t('e.gRed') : index === 1 ? t('e.gBlue') : index === 2 ? t('e.gGreen') : t('enterOption')
+                            : `${t('option')} ${index + 1}`
                         }
                       />
                       {optionsList.length > 1 && (
@@ -543,7 +566,7 @@ export default function VariantsPage() {
                           type="button"
                           onClick={() => removeOptionField(index)}
                           className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                          title={existingOptionIds[index] ? "Remove this option (will be deleted)" : "Remove this field"}
+                          title={existingOptionIds[index] ? t("removeThisOptionWillBeDeleted") : t("removeThisField")}
                         >
                           <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                         </button>
@@ -554,8 +577,8 @@ export default function VariantsPage() {
 
                 <p className="mt-2 text-xs sm:text-sm text-gray-500">
                   {editingType 
-                    ? 'Empty fields will be ignored. Removed existing options will be deleted.'
-                    : 'You can always add more options later'}
+                    ? t('emptyFieldsWillBeIgnoredRemovedExistingOptionsWillBeDeleted')
+                    : t('youCanAlwaysAddMoreOptionsLater')}
                 </p>
               </div>
 
@@ -572,7 +595,7 @@ export default function VariantsPage() {
                   }}
                   className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
                 <button
                   type="submit"
@@ -582,12 +605,12 @@ export default function VariantsPage() {
                   {processingId === 'create-type' ? (
                     <>
                       <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                      {editingType ? 'Updating...' : 'Creating...'}
+                      {editingType ? t('updating') : t('creating')}
                     </>
                   ) : (
                     <>
                       {editingType ? <Save className="w-3 h-3 sm:w-4 sm:h-4" /> : <Check className="w-3 h-3 sm:w-4 sm:h-4" />}
-                      {editingType ? 'Update Type & Options' : 'Create Type & Options'}
+                      {editingType ? t('updateTypeOptions') : t('createTypeOptions')}
                     </>
                   )}
                 </button>
@@ -607,21 +630,21 @@ export default function VariantsPage() {
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900">
-                  Delete {deleteConfirm.type === 'type' ? 'Variant Type' : 'Option'}?
+                  {t('delete')} {deleteConfirm.type === 'type' ? t('variantType') : t('option')}?
                 </h3>
-                <p className="text-xs sm:text-sm text-gray-500">This action cannot be undone</p>
+                <p className="text-xs sm:text-sm text-gray-500">{t('thisActionCannotBeUndone')}</p>
               </div>
             </div>
 
             <div className="mb-4 sm:mb-6">
               {deleteConfirm.type === 'type' ? (
                 <p className="text-sm sm:text-base text-gray-700">
-                  Are you sure you want to delete <span className="font-semibold">{deleteConfirm.item.name}</span>? 
-                  This will also delete all its options.
+                  {t('areYouSureYouWantToDelete')} <span className="font-semibold">{deleteConfirm.item.name}</span>? 
+                  {t('thisWillAlsoDeleteAllItsOptions')}
                 </p>
               ) : (
                 <p className="text-sm sm:text-base text-gray-700">
-                  Are you sure you want to delete the option <span className="font-semibold">{deleteConfirm.item.value}</span>?
+                  {t('areYouSureYouWantToDeleteTheOption')} <span className="font-semibold">{deleteConfirm.item.value}</span>?
                 </p>
               )}
             </div>
@@ -631,7 +654,7 @@ export default function VariantsPage() {
                 onClick={() => setDeleteConfirm(null)}
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={() => {
@@ -647,12 +670,12 @@ export default function VariantsPage() {
                 {processingId === deleteConfirm.item.id ? (
                   <>
                     <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                    Deleting...
+                    {t('deleting')}
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
-                    Delete
+                    {t('delete')}
                   </>
                 )}
               </button>

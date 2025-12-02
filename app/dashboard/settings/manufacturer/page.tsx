@@ -8,6 +8,8 @@
 
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../../i18n';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -33,6 +35,7 @@ interface Manufacturer {
 }
 
 export default function ManufacturerSettingsPage() {
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -212,6 +215,17 @@ export default function ManufacturerSettingsPage() {
 
   return (
     <div className="p-4 md:p-6 max-w-4xl">
+      {/* Language Switcher */}
+      {/* <div className="flex justify-end mb-4">
+        <select
+          value={i18n.language}
+          onChange={e => i18n.changeLanguage(e.target.value)}
+          className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
+        >
+          <option value="en">English</option>
+          <option value="zh">中文</option>
+        </select>
+      </div> */}
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -298,7 +312,7 @@ export default function ManufacturerSettingsPage() {
           <div>
             <label htmlFor="shipQueueName" className="block text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
-                <span>Tab Name (English)</span>
+                <span>{t('tabName')}</span>
               </div>
             </label>
             <input
@@ -306,12 +320,12 @@ export default function ManufacturerSettingsPage() {
               id="shipQueueName"
               value={shipQueueName}
               onChange={(e) => setShipQueueName(e.target.value)}
-              placeholder="Ready to Ship"
+              placeholder={t('readyToShip')}
               maxLength={30}
               className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Displayed when language is set to English (max 30 characters)
+              {t('readyToShipChinese')} (max 30 characters)
             </p>
           </div>
 
@@ -320,7 +334,7 @@ export default function ManufacturerSettingsPage() {
             <label htmlFor="shipQueueNameZh" className="block text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
                 <Globe className="w-4 h-4 text-gray-500" />
-                <span>Tab Name (Chinese / 中文)</span>
+                <span>{t('tabNameChinese')}</span>
               </div>
             </label>
             <input
@@ -328,12 +342,12 @@ export default function ManufacturerSettingsPage() {
               id="shipQueueNameZh"
               value={shipQueueNameZh}
               onChange={(e) => setShipQueueNameZh(e.target.value)}
-              placeholder="准备发货"
+              placeholder={t('readyToShipChinese')}
               maxLength={30}
               className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Displayed when language is set to Chinese (max 30 characters)
+              {t('readyToShip')} (max 30 characters)
             </p>
           </div>
 
@@ -342,7 +356,7 @@ export default function ManufacturerSettingsPage() {
             <label htmlFor="shipQueueDays" className="block text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-gray-500" />
-                <span>Days Before Ship Date</span>
+                <span>{t('daysBeforeShip')}</span>
               </div>
             </label>
             <div className="flex items-center gap-3">
@@ -355,20 +369,19 @@ export default function ManufacturerSettingsPage() {
                 max="30"
                 className="w-24 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
-              <span className="text-gray-600">days</span>
+              <span className="text-gray-600">{i18n.language === 'zh' ? '天' : 'days'}</span>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Products will appear in the queue when their estimated ship date is within this many days
+              {t('daysBeforeShipChinese')}
             </p>
-            
             {/* Visual Example */}
             <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
               <p className="text-sm text-orange-800">
-                <strong>Example:</strong> If set to {shipQueueDays} days, a product with ship date of{' '}
+                <strong>Example:</strong> If set to {shipQueueDays} {i18n.language === 'zh' ? '天' : 'days'}, a product with ship date of{' '}
                 <strong>
                   {new Date(Date.now() + parseInt(shipQueueDays || '3', 10) * 24 * 60 * 60 * 1000).toLocaleDateString()}
                 </strong>{' '}
-                will appear in the "{shipQueueName}" tab starting today.
+                will appear in the "{i18n.language === 'zh' ? shipQueueNameZh : shipQueueName}" tab starting today.
               </p>
             </div>
           </div>
@@ -391,12 +404,12 @@ export default function ManufacturerSettingsPage() {
           {saving ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              <span>Saving...</span>
+              <span>{i18n.language === 'zh' ? '保存中...' : 'Saving...'}</span>
             </>
           ) : (
             <>
               <Save className="w-5 h-5" />
-              <span>Save Settings</span>
+              <span>{t('saveSettings')}</span>
             </>
           )}
         </button>

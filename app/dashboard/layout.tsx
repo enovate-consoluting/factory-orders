@@ -24,6 +24,9 @@ import {
   Settings
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import '../i18n';
 
 interface User {
   id: string;
@@ -72,6 +75,8 @@ export default function DashboardLayout({
   const [notifications, setNotifications] = useState<any[]>([]);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const { language, setLanguage } = useLanguage();
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -491,90 +496,90 @@ export default function DashboardLayout({
   const menuItems = [
     {
       type: 'section',
-      label: 'OPERATIONS',
+      label: t('operations'),
       roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'manufacturer_team_member', 'sub_manufacturer'],
     },
     {
       href: '/dashboard/orders',
-      label: 'Orders',
+      label: t('orders'),
       icon: ShoppingCart,
       roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'sub_manufacturer', 'manufacturer_team_member'],
       notificationKey: 'orders',
     },
     {
       href: '/dashboard/invoices',
-      label: 'Invoices',
+      label: t('invoices'),
       icon: FileText,
       roles: ['super_admin', 'admin', 'order_approver'],
       notificationKey: 'invoices',
     },
     {
       type: 'section',
-      label: 'PRODUCT CONFIG',
+      label: t('productConfig'),
       roles: ['super_admin', 'admin'],
     },
     {
       href: '/dashboard/variants',
-      label: 'Variants',
+      label: t('variants'),
       icon: Layers,
       roles: ['super_admin', 'admin'],
       notificationKey: null,
     },
     {
       href: '/dashboard/products',
-      label: 'Products',
+      label: t('products'),
       icon: Package,
       roles: ['super_admin', 'admin'],
       notificationKey: 'products',
     },
     {
       type: 'section',
-      label: 'SYSTEM CONFIG',
+      label: t('systemConfig'),
       roles: ['super_admin', 'admin', 'manufacturer'],
     },
     {
       href: '/dashboard/settings/manufacturer',
-      label: 'Settings',
+      label: t('settings'),
       icon: Settings,
       roles: ['super_admin', 'manufacturer'],
-      description: 'Manufacturer settings',
+      description: t('manufacturerSettings'),
       notificationKey: null,
     },
     {
       href: '/dashboard/clients',
-      label: 'Clients',
+      label: t('clients'),
       icon: Users,
       roles: ['super_admin', 'admin'],
-      description: 'Manage client emails',
+      description: t('manageClientEmails'),
       notificationKey: null,
     },
     {
       href: '/dashboard/manufacturers',
-      label: 'Manufacturers',
+      label: t('manufacturers'),
       icon: Factory,
       roles: ['super_admin', 'admin'],
-      description: 'Manage manufacturer emails',
+      description: t('manageManufacturerEmails'),
       notificationKey: null,
     },
     {
       href: '/dashboard/users',
-      label: 'Users',
+      label: t('users'),
       icon: UserCheck,
       roles: ['super_admin', 'manufacturer'],
-      description: 'Manage system users',
+      description: t('manageSystemUsers'),
       notificationKey: null,
     },
     {
       type: 'section',
-      label: 'FINANCE',
+      label: t('finance'),
       roles: ['super_admin'],
     },
     {
       href: '/dashboard/settings/finance',
-      label: 'Finance Settings',
+      label: t('financeSettings'),
       icon: DollarSign,
       roles: ['super_admin'],
-      description: 'Configure margins',
+      description: t('configureMargins'),
       notificationKey: null,
     }
   ];
@@ -583,20 +588,20 @@ export default function DashboardLayout({
   const clientMenuItems = [
     {
       href: '/dashboard',
-      label: 'Dashboard',
+      label: t('dashboard'),
       icon: LayoutGrid,
       roles: ['client'],
     },
     {
       href: '/dashboard/orders/client',
-      label: 'Orders',
+      label: t('orders'),
       icon: ShoppingCart,
       roles: ['client'],
       notificationKey: 'orders',
     },
     {
       href: '/dashboard/invoices',
-      label: 'Invoices',
+      label: t('invoices'),
       icon: FileText,
       roles: ['client'],
     },
@@ -710,8 +715,21 @@ export default function DashboardLayout({
               </h1>
             </div>
 
-            {/* Notification Bell - right side */}
-            <div className="relative flex-shrink-0">
+            {/* Top right controls: Language Switcher + Notification Bell */}
+            <div className="flex items-center gap-4">
+              {/* Language Switcher */}
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
+                style={{ minWidth: 90 }}
+              >
+                <option value="en">🇺🇸 EN</option>
+                <option value="zh">🇨🇳 中文</option>
+              </select>
+
+              {/* Notification Bell - right side */}
+              <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
@@ -836,6 +854,7 @@ export default function DashboardLayout({
                   </div>
                 </>
               )}
+              </div>
             </div>
           </div>
         </header>
