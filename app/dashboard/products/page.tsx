@@ -86,6 +86,19 @@ export default function ProductsPage() {
     }
   }, [notification])
 
+  // Lock body scroll when modals are open
+  useEffect(() => {
+    if (showCreateForm || editingProduct || deleteModalOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [showCreateForm, editingProduct, deleteModalOpen])
+
   const loadData = async () => {
     setLoading(true)
     try {
@@ -534,8 +547,8 @@ export default function ProductsPage() {
 
       {/* Create/Edit Modal - FIXED: Using bg-black/50 for semi-transparent background */}
       {(showCreateForm || editingProduct) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto my-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center">
@@ -671,8 +684,8 @@ export default function ProductsPage() {
 
       {/* Delete Confirmation Modal - ALSO FIXED with bg-black/50 */}
       {deleteModalOpen && productToDelete && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 my-auto">
             <div className="mb-4">
               <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
                 <Trash2 className="w-6 h-6 text-red-600" />

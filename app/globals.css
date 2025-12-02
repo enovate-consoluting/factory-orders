@@ -141,6 +141,17 @@ textarea,
   background: #555;
 }
 
+/* Hide main page scrollbar while keeping functionality */
+html {
+  overflow-y: scroll;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;  /* IE and Edge */
+}
+
+html::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}
+
 /* Hide scrollbar utility class for horizontal scrolling tabs */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* IE and Edge */
