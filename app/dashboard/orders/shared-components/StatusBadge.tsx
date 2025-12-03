@@ -85,17 +85,19 @@ export function PaidBadge({ isPaid }: { isPaid: boolean }) {
 }
 
 // Product status badge matching original
-export function ProductStatusBadge({ 
-  status, 
+export function ProductStatusBadge({
+  status,
   translate = (text) => text || '',
-  t = (key) => key 
-}: { 
+  t: tProp
+}: {
   status: string;
   translate?: (text: string | null | undefined) => string;
   t?: (key: string) => string;
 }) {
+  const { t: tHook } = useTranslation();
+  const t = tProp || tHook;
   const normalizedStatus = status || 'pending';
-  
+
   const statusColors: Record<string, string> = {
     pending: 'bg-gray-100 text-gray-700',
     in_production: 'bg-blue-100 text-blue-700',
@@ -104,7 +106,9 @@ export function ProductStatusBadge({
     revision_requested: 'bg-orange-100 text-orange-700',
     completed: 'bg-green-100 text-green-700',
     rejected: 'bg-red-100 text-red-700',
-    approved_for_production: 'bg-green-100 text-green-700'
+    approved_for_production: 'bg-green-100 text-green-700',
+    sent_to_manufacturer: 'bg-purple-100 text-purple-700',
+    submitted_to_manufacturer: 'bg-purple-100 text-purple-700'
   };
 
   const getDisplayText = () => {
@@ -125,6 +129,9 @@ export function ProductStatusBadge({
         return t('completed');
       case 'rejected':
         return t('rejected');
+      case 'sent_to_manufacturer':
+      case 'submitted_to_manufacturer':
+        return t('sentToManufacturer');
       default:
         return normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
     }

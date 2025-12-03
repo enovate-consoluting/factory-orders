@@ -240,12 +240,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
         const user = JSON.parse(userData);
         return {
           id: user.id || crypto.randomUUID(),
-          name: user.name || user.email || 'Unknown User'
+          name: user.name || user.email || t('unknownUser')
         };
       }
       return {
         id: crypto.randomUUID(),
-        name: 'Unknown User'
+        name: t('unknownUser')
       };
     };
 
@@ -550,7 +550,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                 <button
                   onClick={handleCollapse}
                   className="p-1 hover:bg-gray-200 rounded transition-colors mt-1 flex-shrink-0"
-                  title="Collapse details"
+                  title={t('collapseDetails')}
                 >
                   <ChevronDown className="w-5 h-5 text-gray-600" />
                 </button>
@@ -701,11 +701,12 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-amber-800">
-                  <span className="font-medium">{t('shippingAllocation')}:</span> 
+                  <span className="font-medium">{t('shippingAllocation')}:</span>
                   {(() => {
                     try {
                       const linkedIds = JSON.parse((product as any).shipping_linked_products);
-                      return ` This product's shipping fees apply to ${linkedIds.length} other product${linkedIds.length > 1 ? 's' : ''}`;
+                      const productWord = linkedIds.length > 1 ? 'products' : 'product';
+                      return ` This product's shipping fees apply to ${linkedIds.length} other ${productWord}`;
                     } catch {
                       return ' Shipping fees allocated to other products';
                     }
@@ -858,7 +859,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Not priced yet</span>
+                          <span className="text-xs text-gray-400">{t('notPricedYet')}</span>
                         )}
                       </div>
                     </label>
@@ -897,7 +898,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                             )}
                           </div>
                         ) : (
-                          <span className="text-xs text-gray-400">Not priced yet</span>
+                          <span className="text-xs text-gray-400">{t('notPricedYet')}</span>
                         )}
                       </div>
                     </label>
