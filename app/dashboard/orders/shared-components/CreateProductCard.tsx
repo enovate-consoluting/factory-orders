@@ -2,8 +2,9 @@
  * Create Product Card Component
  * Used in create and edit order pages to display product configuration
  * Handles product description, variants, media uploads, and sample requests
+ * UPDATED: Added Bulk Order Notes field
  * Roles: Admin, Super Admin
- * Last Modified: November 2025
+ * Last Modified: December 2025
  */
 
 import React from 'react';
@@ -27,6 +28,7 @@ interface OrderProduct {
   productDescription: string;
   standardPrice: string;
   bulkPrice: string;
+  bulkNotes?: string; // NEW: Bulk order notes
   sampleRequired: boolean;
   sampleFee: string;
   sampleETA: string;
@@ -214,6 +216,20 @@ export const CreateProductCard: React.FC<CreateProductCardProps> = ({
             buttonText="Upload Files"
             buttonClassName="bg-gray-100 text-gray-700 hover:bg-gray-200"
             fileClassName="bg-gray-100 text-gray-700"
+          />
+        </div>
+
+        {/* Bulk Order Notes - NEW */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Bulk Order Notes
+          </label>
+          <textarea
+            value={orderProduct.bulkNotes || ''}
+            onChange={(e) => onUpdate(productIndex, 'bulkNotes', e.target.value)}
+            placeholder="Add notes about this bulk order - special instructions, materials, colors, packaging requirements, etc..."
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 text-sm placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 

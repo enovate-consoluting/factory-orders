@@ -2,8 +2,9 @@
  * Create Order Page - /dashboard/orders/create
  * Allows admins to create new orders with products and variants
  * OPTIMIZED: Bulk DB inserts, parallel file uploads, sleek loading overlay
+ * UPDATED: Added bulkNotes field that saves to client_notes column
  * Roles: Admin, Super Admin
- * Last Modified: November 29, 2025
+ * Last Modified: December 2025
  */
 
 'use client'
@@ -55,6 +56,7 @@ interface OrderProduct {
   productDescription: string
   standardPrice: string
   bulkPrice: string
+  bulkNotes: string  // NEW: Bulk order notes
   sampleRequired: boolean
   sampleFee: string
   sampleETA: string
@@ -599,6 +601,7 @@ export default function CreateOrderPage() {
           productDescription: '',
           standardPrice: '',
           bulkPrice: '',
+          bulkNotes: '',  // NEW: Initialize bulkNotes
           sampleRequired: false,
           sampleFee: '',
           sampleETA: '',
@@ -984,6 +987,7 @@ export default function CreateOrderPage() {
           product_id: orderProduct.product.id,
           product_order_number: finalProductOrderNumber,
           description: orderProduct.productDescription || '',
+          client_notes: orderProduct.bulkNotes || '',  // NEW: Save bulkNotes to client_notes
           product_status: productStatus,
           routed_to: routedTo
         }

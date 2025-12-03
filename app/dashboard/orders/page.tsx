@@ -4,7 +4,8 @@
  * Roles: Admin, Super Admin, Manufacturer, Client
  * REFACTORED: Extracted translations, calculations, types, modals, tabs, and views
  * UPDATED: Ready to Ship tab reads from per-manufacturer settings with Chinese support
- * Last Modified: Nov 28 2025
+ * FIXED: handleDeleteOrder now deletes all related records (invoices, email_history, etc.)
+ * Last Modified: Dec 3 2025
  */
 
 'use client';
@@ -653,59 +654,179 @@ export default function OrdersPage() {
     return false;
   };
 
+  /**
+   * Delete order and ALL related records in correct order
+   * Tables that reference orders (deleted in dependency order):
+   * 1. invoice_items -> invoices
+   * 2. invoices -> orders
+   * 3. email_history -> orders
+   * 4. order_media -> order_products, orders
+   * 5. order_items -> order_products
+   * 6. order_products -> orders
+   * 7. notifications -> orders
+   * 8. manufacturer_notifications -> orders
+   * 9. manufacturer_views -> orders
+   * 10. workflow_log -> orders
+   * 11. order_margins -> orders
+   * 12. orders_backup_numbers -> orders
+   * 13. client_admin_notes -> orders
+   * 14. audit_log (by target_id)
+   * 15. orders (finally)
+   */
   const handleDeleteOrder = async (orderId: string) => {
     try {
       setDeletingOrder(orderId);
       
+      // 1. Get all order_products for this order
       const { data: orderProducts, error: fetchError } = await supabase
         .from('order_products')
         .select('id')
         .eq('order_id', orderId);
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('Error fetching order products:', fetchError);
+        throw fetchError;
+      }
 
       const productIds = orderProducts?.map(p => p.id) || [];
 
+      // 2. Get all invoices for this order (need their IDs for invoice_items)
+      const { data: invoices } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('order_id', orderId);
+      
+      const invoiceIds = invoices?.map(i => i.id) || [];
+
+      // 3. Delete invoice_items first (references invoices)
+      if (invoiceIds.length > 0) {
+        const { error: invoiceItemsError } = await supabase
+          .from('invoice_items')
+          .delete()
+          .in('invoice_id', invoiceIds);
+        
+        if (invoiceItemsError) {
+          console.warn('Error deleting invoice_items:', invoiceItemsError);
+        }
+      }
+
+      // 4. Delete invoices (references orders)
+      const { error: invoicesError } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('order_id', orderId);
+      
+      if (invoicesError) {
+        console.warn('Error deleting invoices:', invoicesError);
+      }
+
+      // 5. Delete email_history
+      try {
+        await supabase.from('email_history').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting email_history:', e);
+      }
+
+      // 6. Delete order_media for products
       if (productIds.length > 0) {
         await supabase.from('order_media').delete().in('order_product_id', productIds);
       }
 
+      // 7. Delete order_media for order itself
       await supabase.from('order_media').delete().eq('order_id', orderId);
 
+      // 8. Delete order_items (references order_products)
       if (productIds.length > 0) {
         await supabase.from('order_items').delete().in('order_product_id', productIds);
       }
 
-      await supabase
-        .from('audit_log')
-        .delete()
-        .or(`target_id.eq.${orderId},target_id.in.(${productIds.join(',')})`);
+      // 9. Delete order_products
+      await supabase.from('order_products').delete().eq('order_id', orderId);
 
+      // 10. Delete notifications
       await supabase.from('notifications').delete().eq('order_id', orderId);
 
+      // 11. Delete manufacturer_notifications
       try {
         await supabase.from('manufacturer_notifications').delete().eq('order_id', orderId);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Error deleting manufacturer_notifications:', e);
+      }
 
+      // 12. Delete manufacturer_views
+      try {
+        await supabase.from('manufacturer_views').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting manufacturer_views:', e);
+      }
+
+      // 13. Delete workflow_log
       try {
         await supabase.from('workflow_log').delete().eq('order_id', orderId);
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Error deleting workflow_log:', e);
+      }
 
-      await supabase.from('order_products').delete().eq('order_id', orderId);
+      // 14. Delete order_margins
+      try {
+        await supabase.from('order_margins').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting order_margins:', e);
+      }
+
+      // 15. Delete orders_backup_numbers
+      try {
+        await supabase.from('orders_backup_numbers').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting orders_backup_numbers:', e);
+      }
+
+      // 16. Delete client_admin_notes
+      try {
+        await supabase.from('client_admin_notes').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting client_admin_notes:', e);
+      }
+
+      // 17. Delete audit_log entries (for order and all products)
+      try {
+        if (productIds.length > 0) {
+          await supabase
+            .from('audit_log')
+            .delete()
+            .or(`target_id.eq.${orderId},target_id.in.(${productIds.join(',')})`);
+        } else {
+          await supabase.from('audit_log').delete().eq('target_id', orderId);
+        }
+      } catch (e) {
+        console.warn('Error deleting audit_log:', e);
+      }
+
+      // 18. Finally delete the order itself
+      const { error: orderError } = await supabase
+        .from('orders')
+        .delete()
+        .eq('id', orderId);
       
-      const { error: orderError } = await supabase.from('orders').delete().eq('id', orderId);
-      if (orderError) throw orderError;
+      if (orderError) {
+        console.error('Order delete error:', JSON.stringify(orderError), orderError.message, orderError.code);
+        throw orderError;
+      }
 
+      // Success - update local state
       setOrders(prev => prev.filter(order => order.id !== orderId));
       setFilteredOrders(prev => prev.filter(order => order.id !== orderId));
       setShowDeleteConfirm(null);
+      
     } catch (error: any) {
-      console.error('Error deleting order:', error);
+      console.error('Error deleting order:', JSON.stringify(error), error?.message, error?.code);
       let errorMessage = 'Error deleting order. ';
       if (error?.message?.includes('foreign key')) {
         errorMessage += 'There are still related records that need to be deleted first.';
       } else if (error?.message) {
         errorMessage += error.message;
+      } else if (error?.code) {
+        errorMessage += `Error code: ${error.code}`;
       } else {
         errorMessage += 'Please try again.';
       }
