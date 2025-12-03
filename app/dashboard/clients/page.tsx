@@ -24,7 +24,7 @@ interface Notification {
 }
 
 // IMPORTANT: Dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+const inputClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([])
@@ -66,6 +66,25 @@ export default function ClientsPage() {
       return () => clearTimeout(timer)
     }
   }, [notification])
+
+  // Prevent background scroll when any modal is open
+  useEffect(() => {
+    if (showModal || showDeleteModal || showSuccessModal) {
+      // Store original styles
+      const originalStyle = window.getComputedStyle(document.body).overflow
+      const originalPosition = window.getComputedStyle(document.body).position
+
+      // Prevent scroll
+      document.body.style.overflow = 'hidden'
+      document.body.style.paddingRight = window.innerWidth - document.documentElement.clientWidth + 'px'
+
+      return () => {
+        // Restore original styles
+        document.body.style.overflow = originalStyle
+        document.body.style.paddingRight = ''
+      }
+    }
+  }, [showModal, showDeleteModal, showSuccessModal])
 
   const showNotification = (type: 'success' | 'error' | 'info', title: string, message: string) => {
     const id = Date.now().toString()
@@ -556,10 +575,10 @@ export default function ClientsPage() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
                 {editingClient ? 'Edit Client' : 'Add New Client'}
               </h2>
               <button
@@ -568,24 +587,24 @@ export default function ClientsPage() {
                   setEditingClient(null)
                   setFormError(null)
                 }}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0 ml-2"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
 
             <form onSubmit={handleSubmit}>
               {/* Error Message Display */}
               {formError && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
-                  <XCircle className="h-5 w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-red-700">{formError}</p>
+                <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
+                  <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-red-700">{formError}</p>
                 </div>
               )}
-              
-              <div className="space-y-4">
+
+              <div className="space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Company Name
                   </label>
                   <input
@@ -598,7 +617,7 @@ export default function ClientsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Email Address
                   </label>
                   <input
@@ -620,7 +639,7 @@ export default function ClientsPage() {
                 </div>
 
                  <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Phone Number
                   </label>
                   <PhoneInput
@@ -660,12 +679,12 @@ export default function ClientsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Company Logo (Optional)
                   </label>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 sm:gap-4">
                     {logoPreview && (
-                      <div className="w-16 h-16 border-2 border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 border-2 border-gray-200 rounded-lg overflow-hidden flex items-center justify-center bg-gray-50 flex-shrink-0">
                         <img
                           src={logoPreview}
                           alt="Logo preview"
@@ -673,11 +692,11 @@ export default function ClientsPage() {
                         />
                       </div>
                     )}
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <label className="cursor-pointer">
-                        <div className="flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors">
-                          <Upload className="w-5 h-5 text-gray-600" />
-                          <span className="text-sm text-gray-600">
+                        <div className="flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                          <Upload className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm text-gray-600 truncate">
                             {logoFile ? logoFile.name : 'Choose logo image'}
                           </span>
                         </div>
@@ -697,7 +716,7 @@ export default function ClientsPage() {
 
                 {!editingClient && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                       Initial Password
                     </label>
                     <input
@@ -715,7 +734,7 @@ export default function ClientsPage() {
                 )}
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
+              <div className="mt-4 sm:mt-6 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => {
@@ -723,14 +742,14 @@ export default function ClientsPage() {
                     setEditingClient(null)
                     setFormError(null)
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  className="px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                   disabled={creating}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 text-sm sm:text-base bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
                   disabled={creating}
                 >
                   {creating ? 'Creating...' : (editingClient ? 'Update' : 'Create')} Client
@@ -743,40 +762,40 @@ export default function ClientsPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && clientToDelete && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-start mb-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl">
+            <div className="flex items-start mb-4 sm:mb-6">
               <div className="flex-shrink-0">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
-                  <Trash2 className="h-6 w-6 text-red-600" />
+                <div className="mx-auto flex items-center justify-center h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-red-100">
+                  <Trash2 className="h-5 w-5 sm:h-6 sm:w-6 text-red-600" />
                 </div>
               </div>
-              <div className="ml-4">
-                <h3 className="text-lg font-medium text-gray-900">Delete Client</h3>
-                <div className="mt-2">
-                  <p className="text-sm text-gray-500">
-                    Are you sure you want to delete <strong>{clientToDelete.name}</strong>? 
+              <div className="ml-3 sm:ml-4">
+                <h3 className="text-base sm:text-lg font-medium text-gray-900">Delete Client</h3>
+                <div className="mt-1 sm:mt-2">
+                  <p className="text-xs sm:text-sm text-gray-500">
+                    Are you sure you want to delete <strong>{clientToDelete.name}</strong>?
                     This action cannot be undone and will permanently remove their access to the system.
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end gap-3">
+            <div className="mt-4 sm:mt-5 flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setShowDeleteModal(false)
                   setClientToDelete(null)
                 }}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-sm sm:text-base text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm sm:text-base bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
                 disabled={deleting}
               >
                 {deleting ? 'Deleting...' : 'Delete Client'}
@@ -788,41 +807,41 @@ export default function ClientsPage() {
 
       {/* Success Modal with Credentials */}
       {showSuccessModal && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl">
-            <div className="flex items-center mb-4">
-              <CheckCircle className="h-8 w-8 text-green-500 mr-3" />
-              <h2 className="text-xl font-semibold text-gray-900">Client Created Successfully!</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl">
+            <div className="flex items-center mb-4 sm:mb-6">
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 mr-2 sm:mr-3 flex-shrink-0" />
+              <h2 className="text-base sm:text-xl font-semibold text-gray-900">Client Created Successfully!</h2>
             </div>
-            
-            <div className="bg-gray-50 rounded-lg p-4 mb-4">
-              <p className="text-sm text-gray-700 mb-3">
+
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+              <p className="text-xs sm:text-sm text-gray-700 mb-2 sm:mb-3">
                 Please share these credentials with <strong>{createdCredentials.name}</strong>:
               </p>
               <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Email:</span>
-                  <code className="bg-white px-2 py-1 rounded text-sm">{createdCredentials.email}</code>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-xs sm:text-sm text-gray-600">Email:</span>
+                  <code className="bg-white px-2 py-1 rounded text-xs sm:text-sm truncate max-w-[60%]">{createdCredentials.email}</code>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Password:</span>
-                  <code className="bg-white px-2 py-1 rounded text-sm">{createdCredentials.password}</code>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-xs sm:text-sm text-gray-600">Password:</span>
+                  <code className="bg-white px-2 py-1 rounded text-xs sm:text-sm">{createdCredentials.password}</code>
                 </div>
               </div>
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   copyToClipboard(`Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`)
                 }}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Copy Credentials
               </button>
               <button
                 onClick={() => setShowSuccessModal(false)}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Done
               </button>

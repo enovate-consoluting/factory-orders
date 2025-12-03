@@ -13,6 +13,12 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2 } from 'lucide-react'
 
+// Translation imports
+import { useTranslation } from 'react-i18next'
+import { useLanguage } from '@/contexts/LanguageContext'
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation'
+import '../../../i18n'
+
 // Import all our new shared components
 import { StepIndicator } from '../shared-components/StepIndicator'
 import { OrderSummaryCard } from '../shared-components/OrderSummaryCard'
@@ -67,20 +73,22 @@ interface OrderProduct {
 }
 
 // Consistent dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+const inputClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+const selectClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
 
 // Sleek loading overlay component
-function LoadingOverlay({ 
-  isVisible, 
-  currentStep, 
+function LoadingOverlay({
+  isVisible,
+  currentStep,
   steps,
-  orderNumber
-}: { 
+  orderNumber,
+  t
+}: {
   isVisible: boolean
   currentStep: number
   steps: string[]
   orderNumber?: string
+  t: any
 }) {
   if (!isVisible) return null
 
@@ -90,34 +98,34 @@ function LoadingOverlay({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Blurred backdrop */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-900/40 via-purple-900/30 to-indigo-900/40 backdrop-blur-md" />
-      
+
       {/* Content */}
       <div className="relative">
         {/* Glowing ring effect */}
         <div className="absolute -inset-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-3xl opacity-20 blur-xl animate-pulse" />
-        
+
         {/* Main card - compact and sleek */}
-        <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 min-w-[320px]">
+        <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-4 sm:px-8 py-4 sm:py-6 min-w-[280px] sm:min-w-[320px]">
           {/* Header with spinner or checkmark */}
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
             {isComplete ? (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
-                <CheckCircle2 className="w-7 h-7 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
+                <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
             ) : (
-              <div className="relative w-12 h-12">
+              <div className="relative w-10 h-10 sm:w-12 sm:h-12">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 animate-pulse" />
                 <div className="absolute inset-1 rounded-full bg-white flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 animate-spin" />
                 </div>
               </div>
             )}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                {isComplete ? 'Complete!' : 'Processing...'}
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
+                {isComplete ? t('complete') : t('processing')}
               </h3>
               {orderNumber && (
-                <p className="text-sm font-mono text-blue-600">{orderNumber}</p>
+                <p className="text-xs sm:text-sm font-mono text-blue-600">{orderNumber}</p>
               )}
             </div>
           </div>
@@ -156,6 +164,9 @@ function LoadingOverlay({
 }
 
 export default function CreateOrderPage() {
+  const { translate, translateBatch } = useDynamicTranslation();
+  const { t, i18n } = useTranslation();
+  const { language } = useLanguage();
   const router = useRouter()
   const productDataRef = useRef<any>({})
   const [currentStep, setCurrentStep] = useState(1)
@@ -847,13 +858,13 @@ export default function CreateOrderPage() {
     
     // Setup loading steps
     const steps = [
-      'Creating order...',
-      `Saving ${orderProducts.length} product${orderProducts.length > 1 ? 's' : ''}...`,
+      t('creatingOrder'),
+      t('addingProducts'),
     ]
     if (totalFiles > 0) {
-      steps.push(`Uploading ${totalFiles} file${totalFiles > 1 ? 's' : ''}...`)
+      steps.push(t('uploadingFiles'))
     }
-    steps.push('Finalizing...')
+    steps.push(t('processing'))
     
     setLoadingSteps(steps)
     setLoadingStep(0)
@@ -1144,7 +1155,7 @@ export default function CreateOrderPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-sm sm:text-base text-gray-500">Loading...</div>
       </div>
     )
   }
@@ -1155,63 +1166,64 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
       {/* Smart Loading Overlay */}
-      <LoadingOverlay 
+      <LoadingOverlay
         isVisible={showLoadingOverlay}
         currentStep={loadingStep}
         steps={loadingSteps}
         orderNumber={createdOrderNumber}
+        t={t}
       />
 
       {/* Notification Toast */}
       {notification.show && (
         <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          fixed top-4 right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[90vw] sm:max-w-none transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {notification.type === 'success' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
               {notification.type === 'error' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
-              <p className="font-semibold text-white">{notification.message}</p>
+              <p className="font-semibold text-white text-sm sm:text-base">{notification.message}</p>
             </div>
           </div>
         </div>
       )}
-      
+
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Orders
+          <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          {t('backToOrders')}
         </button>
-        
-        <h1 className="text-2xl font-bold text-gray-900">Create New Order</h1>
-        
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{t('createNewOrder')}</h1>
+
         {/* Progress Steps using new component */}
-        <div className="mt-6">
-          <StepIndicator 
-            currentStep={currentStep} 
+        <div className="mt-4 sm:mt-6">
+          <StepIndicator
+            currentStep={currentStep}
             onStepClick={(step) => {
               if (step < currentStep) {
                 setCurrentStep(step)
@@ -1223,28 +1235,28 @@ export default function CreateOrderPage() {
 
       {/* Step 1: Basic Info */}
       {currentStep === 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Order Information</h2>
-          
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Order Name *
+        <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">{t('basicInfo')}</h2>
+
+          <div className="mb-4 sm:mb-6">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              {t('orderName')}
             </label>
             <input
               type="text"
               value={orderName}
               onChange={(e) => setOrderName(e.target.value)}
-              placeholder='e.g., "Spring 2024 Collection" or "Holiday Drop"'
+              placeholder={t('e.gSpringCollection2024')}
               className={inputClassName}
               required
             />
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Client Autocomplete */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Client *
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                {t('selectClient')}
               </label>
               <div className="relative">
                 <div className="relative">
@@ -1256,7 +1268,7 @@ export default function CreateOrderPage() {
                     onChange={handleClientInputChange}
                     onFocus={handleClientInputFocus}
                     onKeyDown={handleClientKeyDown}
-                    placeholder="Type to search clients..."
+                    placeholder={t('searchClient')}
                     className={`${inputClassName} pl-9 pr-10`}
                     autoComplete="off"
                   />
@@ -1270,16 +1282,16 @@ export default function CreateOrderPage() {
                     </button>
                   )}
                 </div>
-                
+
                 {/* Dropdown - Fixed rounded corners */}
                 {showClientDropdown && (
-                  <div 
+                  <div
                     ref={clientDropdownRef}
                     className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                   >
                     {filteredClients.length === 0 ? (
                       <div className="px-4 py-3 text-sm text-gray-500">
-                        No clients found
+                        {t('noClientsFound')}
                       </div>
                     ) : (
                       filteredClients.map((client, index) => (
@@ -1321,8 +1333,8 @@ export default function CreateOrderPage() {
 
             {/* Manufacturer Autocomplete */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select Manufacturer *
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                {t('selectManufacturer')}
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
                 )}
@@ -1337,7 +1349,7 @@ export default function CreateOrderPage() {
                     onChange={handleManufacturerInputChange}
                     onFocus={handleManufacturerInputFocus}
                     onKeyDown={handleManufacturerKeyDown}
-                    placeholder="Type to search manufacturers..."
+                    placeholder={t('searchManufacturer')}
                     className={`${inputClassName} pl-9 pr-10`}
                     autoComplete="off"
                   />
@@ -1360,7 +1372,7 @@ export default function CreateOrderPage() {
                   >
                     {filteredManufacturers.length === 0 ? (
                       <div className="px-4 py-3 text-sm text-gray-500">
-                        No manufacturers found
+                        {t('noManufacturersFound')}
                       </div>
                     ) : (
                       filteredManufacturers.map((manufacturer, index) => (
@@ -1401,13 +1413,13 @@ export default function CreateOrderPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 sm:mt-6 flex justify-end">
             <button
               onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm sm:text-base"
             >
-              Next
-              <ArrowRight className="w-4 h-4 ml-2" />
+              {t('next')}
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
             </button>
           </div>
         </div>
@@ -1427,20 +1439,20 @@ export default function CreateOrderPage() {
           onProductsRefresh={fetchInitialData}
         />
         
-        <div className="mt-6 flex justify-between">
+        <div className="mt-4 sm:mt-6 flex justify-between">
           <button
             onClick={prevStep}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+            className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center text-sm sm:text-base"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Previous
+            <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            {t('previous')}
           </button>
           <button
             onClick={nextStep}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+            className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm sm:text-base"
           >
-            Next
-            <ArrowRight className="w-4 h-4 ml-2" />
+            {t('next')}
+            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
           </button>
         </div>
       </>
@@ -1451,9 +1463,15 @@ export default function CreateOrderPage() {
         <div>
           {/* Order Summary Card */}
           <OrderSummaryCard
-            orderName={orderName}
-            client={clients.find(c => c.id === selectedClient)}
-            manufacturer={manufacturers.find(m => m.id === selectedManufacturer)}
+            orderName={orderName ? translate(orderName) : ''}
+            client={(() => {
+              const client = clients.find(c => c.id === selectedClient);
+              return client ? { ...client, name: client.name ? translate(client.name) : client.name } : undefined;
+            })()}
+            manufacturer={(() => {
+              const manufacturer = manufacturers.find(m => m.id === selectedManufacturer);
+              return manufacturer ? { ...manufacturer, name: manufacturer.name ? translate(manufacturer.name) : manufacturer.name } : undefined;
+            })()}
           />
 
           {/* Order-level Sample Request */}
@@ -1478,11 +1496,18 @@ export default function CreateOrderPage() {
             const instances = getProductInstances(orderProduct.product)
             const currentInstance = instances.indexOf(orderProduct) + 1
             const totalInstances = instances.length
-            
+            // Translate product title for card
+            const translatedOrderProduct = {
+              ...orderProduct,
+              product: {
+                ...orderProduct.product,
+                title: orderProduct.product.title ? translate(orderProduct.product.title) : orderProduct.product.title
+              }
+            };
             return (
               <CreateProductCard
                 key={productIndex}
-                orderProduct={orderProduct}
+                orderProduct={translatedOrderProduct}
                 productIndex={productIndex}
                 totalInstances={totalInstances}
                 currentInstance={currentInstance}
@@ -1498,33 +1523,33 @@ export default function CreateOrderPage() {
           })}
 
           {/* Action Buttons */}
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0">
             <button
               onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+              className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               Previous
             </button>
-            
-            <div className="flex gap-3">
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                 )}
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                 )}
                 {saving ? 'Submitting...' : 'Submit Order'}
               </button>

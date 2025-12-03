@@ -25,6 +25,8 @@ interface CollapsedProductHeaderProps {
   hasNewHistory?: boolean;
   userRole?: string;
   trackingNumber?: string;
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
 }
 
 export function CollapsedProductHeader({
@@ -40,7 +42,9 @@ export function CollapsedProductHeader({
   processingLock = false,
   hasNewHistory = false,
   userRole,
-  trackingNumber
+  trackingNumber,
+  translate = (text) => text || '',
+  t = (key) => key
 }: CollapsedProductHeaderProps) {
   const displayStatus = product.product_status || 'pending';
   const productionTime = product.production_time;
@@ -59,7 +63,7 @@ export function CollapsedProductHeader({
             <button
               onClick={onExpand}
               className="p-1 hover:bg-gray-200 rounded transition-colors"
-              title="Expand details"
+              title={t('expandDetails')}
             >
               <ChevronRight className="w-5 h-5 text-gray-600" />
             </button>
@@ -69,15 +73,15 @@ export function CollapsedProductHeader({
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-lg text-gray-900">
-                  {product.description || product.product?.title || 'Product'}
+                  {translate(product.description || product.product?.title) || t('product')}
                 </h3>
-                <ProductStatusBadge status={displayStatus} />
-                
+                <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
+
                 {/* Payment status for admin view */}
                 {!isManufacturerView && product.payment_status === 'paid' && (
                   <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
-                    Paid
+                    {t('paid')}
                   </span>
                 )}
                 
@@ -85,21 +89,23 @@ export function CollapsedProductHeader({
                 {needsShippingSelection && (
                   <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
-                    Select Shipping
+                    {t('selectShipping')}
                   </span>
                 )}
-                
+
                 {/* Locked status for manufacturer */}
                 {isManufacturerView && isLocked && (
-                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
-                    🔒 Locked
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    {t('locked')}
                   </span>
                 )}
-                
+
                 {/* Shipped status */}
                 {product.product_status === 'shipped' && (
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
-                    📦 Shipped
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    {t('shipped')}
                   </span>
                 )}
               </div>
@@ -107,44 +113,44 @@ export function CollapsedProductHeader({
               <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                 <span>{product.product_order_number}</span>
                 <span>•</span>
-                <span>Qty: {totalQuantity}</span>
-                
+                <span>{t('qtyLabel')}: {totalQuantity}</span>
+
                 {/* Production time for manufacturer */}
                 {isManufacturerView && productionTime && (
                   <>
                     <span>•</span>
-                    <span>Production: {productionTime}</span>
+                    <span>{t('productionLabel')}: {productionTime}</span>
                   </>
                 )}
-                
+
                 {/* Total price with shipping indicator - USING formatCurrency */}
                 {totalPrice && totalPrice > 0 && (
                   <>
                     <span>•</span>
                     <span className="font-semibold">
                       {isManufacturerView ? (
-                        <span className="text-green-600">Total: ${formatCurrency(totalPrice)}</span>
+                        <span className="text-green-600">{t('total')}: ${formatCurrency(totalPrice)}</span>
                       ) : (
                         <>
-                          <span className="text-green-600">Total: ${formatCurrency(totalPrice)}</span>
+                          <span className="text-green-600">{t('total')}: ${formatCurrency(totalPrice)}</span>
                           {!hasSelectedShipping && (
-                            <span className="text-red-600 ml-1">(w/o shipping)</span>
+                            <span className="text-red-600 ml-1">{t('withoutShipping')}</span>
                           )}
                           {hasSelectedShipping && (
-                            <span className="text-green-600 ml-1">(w/ shipping)</span>
+                            <span className="text-green-600 ml-1">{t('withShipping')}</span>
                           )}
                         </>
                       )}
                     </span>
                   </>
                 )}
-                
+
                 {/* Tracking number */}
                 {trackingNumber && (
                   <>
                     <span>•</span>
                     <span className="text-purple-600 font-medium">
-                      Tracking: {trackingNumber}
+                      {t('trackingLabel')}: {trackingNumber}
                     </span>
                   </>
                 )}
@@ -172,7 +178,7 @@ export function CollapsedProductHeader({
                 onClick={onRoute}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
               >
-                Route
+                {t('route')}
               </button>
             )}
             
@@ -182,11 +188,11 @@ export function CollapsedProductHeader({
                 onClick={onToggleLock}
                 disabled={processingLock}
                 className={`p-2 rounded-lg transition-colors ${
-                  isLocked 
-                    ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                  isLocked
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
                     : 'bg-green-50 text-green-600 hover:bg-green-100'
                 } disabled:opacity-50`}
-                title={isLocked ? 'Unlock for editing' : 'Lock for production'}
+                title={isLocked ? t('unlock') : t('lock')}
               >
                 {processingLock ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

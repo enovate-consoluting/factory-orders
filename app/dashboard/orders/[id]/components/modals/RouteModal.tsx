@@ -8,6 +8,7 @@
 import React, { useState } from 'react';
 import { X, Send, Package, AlertCircle, CheckCircle, RotateCcw, Loader2, Factory, Truck, Ship as ShipIcon, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslation } from 'react-i18next';
 
 interface RouteModalProps {
   isOpen: boolean;
@@ -18,10 +19,11 @@ interface RouteModalProps {
 }
 
 export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: RouteModalProps) {
+  const { t } = useTranslation();
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [sending, setSending] = useState(false);
-  
+
   // Shipping fields
   const [trackingNumber, setTrackingNumber] = useState('');
   const [shippingCarrier, setShippingCarrier] = useState('');
@@ -321,10 +323,10 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
         <div className="flex items-center justify-between mb-4 sm:mb-6">
           <div>
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-              {isManufacturer ? 'Update Product Status' : 'Route Product'}
+              {isManufacturer ? t('updateProductStatus') : t('routeProduct')}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              {product.description || product.product?.title || 'Product'}
+              {product.description || product.product?.title || t('product')}
             </p>
           </div>
           <button
@@ -356,12 +358,12 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                   <Send className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Send to Admin</h3>
-                  <p className="text-xs sm:text-sm text-gray-500">Send question or update to admin for review</p>
+                  <h3 className="font-semibold text-gray-900">{t('sendToAdmin')}</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">{t('sendQuestionToAdmin')}</p>
                 </div>
               </div>
             </button>
-            
+
             <button
               onClick={() => setSelectedRoute('in_production')}
               className={`p-3 sm:p-4 border-2 rounded-lg transition-all text-left group ${
@@ -379,8 +381,8 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                   <Factory className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">In Production</h3>
-                  <p className="text-xs sm:text-sm text-gray-500">Mark this product as currently in production</p>
+                  <h3 className="font-semibold text-gray-900">{t('markInProduction')}</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">{t('markProductInProduction')}</p>
                 </div>
               </div>
             </button>
@@ -404,8 +406,8 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                     <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">Ship to Client</h3>
-                    <p className="text-xs sm:text-sm text-gray-500">Product is complete and ready to ship</p>
+                    <h3 className="font-semibold text-gray-900">{t('shipToClient')}</h3>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('productCompleteReadyToShip')}</p>
                   </div>
                 </div>
               </button>
@@ -430,9 +432,9 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 }`}>
                   <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900">Approve for Production</h3>
+                <h3 className="font-semibold text-gray-900">{t('approveForProduction')}</h3>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500">Send to manufacturer for production</p>
+              <p className="text-xs sm:text-sm text-gray-500">{t('sendToManufacturerForProduction')}</p>
             </button>
 
             <button
@@ -451,9 +453,9 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 }`}>
                   <User className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900">Send to Client</h3>
+                <h3 className="font-semibold text-gray-900">{t('sendForApproval')}</h3>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500">Send for client approval (routes to client portal)</p>
+              <p className="text-xs sm:text-sm text-gray-500">{t('sendForClientApproval')}</p>
             </button>
 
             <button
@@ -472,9 +474,9 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 }`}>
                   <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
                 </div>
-                <h3 className="font-semibold text-gray-900">Back to Manufacturer</h3>
+                <h3 className="font-semibold text-gray-900">{t('backToManufacturer')}</h3>
               </div>
-              <p className="text-xs sm:text-sm text-gray-500">Request revisions from manufacturer</p>
+              <p className="text-xs sm:text-sm text-gray-500">{t('requestRevisionsFromManufacturer')}</p>
             </button>
           </div>
         )}
@@ -484,32 +486,32 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
           <div className="mb-4 sm:mb-6 p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
               <Package className="w-4 h-4 text-purple-600" />
-              Shipping Information
+              {t('shippingInformation')}
             </h3>
-            
+
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1">
-                Tracking Number (Optional)
+                {t('trackingNumberOptional')}
               </label>
               <input
                 type="text"
                 value={trackingNumber}
                 onChange={(e) => setTrackingNumber(e.target.value)}
-                placeholder="Enter tracking number"
+                placeholder={t('enterTrackingNumber')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-500 focus:ring-2 focus:ring-purple-500 bg-white"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1">
-                Shipping Carrier (Optional)
+                {t('shippingCarrierOptional')}
               </label>
               <select
                 value={shippingCarrier}
                 onChange={(e) => setShippingCarrier(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 bg-white"
               >
-                <option value="">Select carrier...</option>
+                <option value="">{t('selectCarrier')}</option>
                 <option value="DHL">DHL</option>
                 <option value="FedEx">FedEx</option>
                 <option value="UPS">UPS</option>
@@ -520,10 +522,10 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 <option value="Other">Other</option>
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1">
-                Estimated Delivery Date (Optional)
+                {t('estimatedDeliveryDateOptional')}
               </label>
               <input
                 type="date"
@@ -532,15 +534,15 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 bg-white"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-semibold text-gray-800 mb-1">
-                Shipping Notes (Optional)
+                {t('shippingNotesOptional')}
               </label>
               <textarea
                 value={shippingNotes}
                 onChange={(e) => setShippingNotes(e.target.value)}
-                placeholder="Package details, special instructions..."
+                placeholder={t('packageDetails')}
                 rows={2}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-500 focus:ring-2 focus:ring-purple-500 bg-white"
               />
@@ -552,14 +554,14 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
         {selectedRoute !== 'shipped' && (
           <div className="mb-4 sm:mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isManufacturer ? 'Notes for Admin' : 'Routing Notes'} (Optional)
+              {isManufacturer ? t('notesForAdmin') : t('routingNotes')} ({t('optional')})
             </label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={3}
-              placeholder={isManufacturer ? "Add any questions or updates for admin..." : "Add any notes or instructions..."}
+              placeholder={isManufacturer ? t('addQuestionsForAdmin') : t('addNotesOrInstructions')}
             />
           </div>
         )}
@@ -570,14 +572,14 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             onClick={handleClose}
             className="w-full sm:w-auto px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
           >
-            Cancel
+            {t('cancel')}
           </button>
           <button
             onClick={handleRoute}
             disabled={!selectedRoute || sending}
             className={`w-full sm:w-auto px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-              selectedRoute === 'shipped' 
-                ? 'bg-purple-600 hover:bg-purple-700' 
+              selectedRoute === 'shipped'
+                ? 'bg-purple-600 hover:bg-purple-700'
                 : selectedRoute === 'send_for_approval'
                 ? 'bg-purple-600 hover:bg-purple-700'
                 : 'bg-blue-600 hover:bg-blue-700'
@@ -586,16 +588,16 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
             {sending ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                {selectedRoute === 'shipped' ? 'Shipping...' : 'Routing...'}
+                {selectedRoute === 'shipped' ? t('shipping') : t('routing')}
               </>
             ) : (
               <>
-                {selectedRoute === 'shipped' ? <Truck className="w-4 h-4" /> : 
-                 selectedRoute === 'send_for_approval' ? <User className="w-4 h-4" /> : 
+                {selectedRoute === 'shipped' ? <Truck className="w-4 h-4" /> :
+                 selectedRoute === 'send_for_approval' ? <User className="w-4 h-4" /> :
                  <Send className="w-4 h-4" />}
-                {selectedRoute === 'shipped' ? 'Ship Product' : 
-                 selectedRoute === 'send_for_approval' ? 'Send to Client' :
-                 'Submit Routing'}
+                {selectedRoute === 'shipped' ? t('shipProduct') :
+                 selectedRoute === 'send_for_approval' ? t('sendForApproval') :
+                 t('submitRouting')}
               </>
             )}
           </button>

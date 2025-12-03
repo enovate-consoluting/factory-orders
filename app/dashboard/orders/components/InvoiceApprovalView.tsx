@@ -1,9 +1,4 @@
-/**
- * Invoice Approval View Component
- * Displays orders ready for invoicing with expandable product details
- * Location: app/dashboard/orders/components/InvoiceApprovalView.tsx
- * Last Modified: Nov 26 2025
- */
+
 
 import React from 'react';
 import Link from 'next/link';
@@ -12,6 +7,7 @@ import {
   Clock, FileText, ExternalLink, Plane, Ship, 
   AlertTriangle, Users, Building
 } from 'lucide-react';
+
 import { formatCurrency } from '../utils/orderCalculations';
 import { 
   daysSinceInvoiceReady,
@@ -23,12 +19,13 @@ import {
 } from '../utils/orderListCalculations';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 import { Order, OrderProduct } from '../types/orderList.types';
-import { Translations } from '../utils/orderListTranslations';
+import { TFunction } from 'i18next';
+import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
 
 interface InvoiceApprovalViewProps {
   filteredOrders: Order[];
   expandedOrders: Set<string>;
-  translations: Translations;
+  t: TFunction;
   userRole: string | null;
   onToggleExpansion: (orderId: string) => void;
   onNavigateToOrder: (orderId: string) => void;
@@ -37,25 +34,26 @@ interface InvoiceApprovalViewProps {
 export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
   filteredOrders,
   expandedOrders,
-  translations: t,
+  t,
   userRole,
   onToggleExpansion,
   onNavigateToOrder
 }) => {
+  const { translate } = useDynamicTranslation();
   
   const getProductRoutingBadge = (product: OrderProduct) => {
     if (product.routed_to === 'client' || product.product_status === 'client_review') {
       return (
         <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded flex items-center gap-1">
           <Users className="w-3 h-3" />
-          With Client
+          {t('withClient')}
         </span>
       );
     }
     return (
       <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded flex items-center gap-1">
         <Users className="w-3 h-3" />
-        {t.withAdmin}
+        {t('withAdmin')}
       </span>
     );
   };
@@ -63,14 +61,14 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
   return (
     <div className="bg-white rounded-lg shadow">
       <div className="p-3 border-b bg-amber-50">
-        <h2 className="text-base font-semibold text-gray-900">Orders Ready for Invoicing</h2>
+        <h2 className="text-base font-semibold text-gray-900">{t('ordersReadyForInvoicing')}</h2>
       </div>
       
       {filteredOrders.length === 0 ? (
         <div className="text-center py-12">
           <FileText className="mx-auto h-12 w-12 text-gray-300" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">{t.noOrders}</h3>
-          <p className="mt-1 text-sm text-gray-500">No orders ready for invoicing.</p>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">{t('noOrders')}</h3>
+          <p className="mt-1 text-sm text-gray-500">{t('noOrdersReadyForInvoicing')}</p>
         </div>
       ) : (
         <div className="divide-y divide-gray-200">
@@ -111,28 +109,28 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                           <div className="flex-1">
                             <div className="flex items-center gap-3">
                               <h3 className="font-semibold text-gray-900 text-sm">
-                                {order.order_name || t.untitledOrder}
+                                {order.order_name ? translate(order.order_name) : t('untitledOrder')}
                               </h3>
                               <span className="text-xs text-gray-500">
                                 {formatOrderNumber(order.order_number)}
                               </span>
                               <span className="text-xs text-gray-500">
-                                {order.client?.name}
+                                {order.client?.name ? translate(order.client.name) : ''}
                               </span>
                             </div>
                             <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3" />
-                                Created: {new Date(order.created_at).toLocaleDateString()}
+                                {t('created')}: {new Date(order.created_at).toLocaleDateString()}
                               </span>
                               {earliestDate && (
                                 <span className="flex items-center gap-1 text-amber-600 font-medium">
                                   <Clock className="w-3 h-3" />
-                                  Invoice Ready: {daysWaiting} {daysWaiting === 1 ? 'day ago' : 'days ago'}
+                                  {t('invoiceReady')}: {daysWaiting} {daysWaiting === 1 ? t('dayAgo') : t('daysAgo')}
                                 </span>
                               )}
                               <span className="font-semibold text-gray-900">
-                                {invoiceableProducts.length} products • Total: ${formatCurrency(totalFees)}
+                                {invoiceableProducts.length} {t('products')} • {t('total')}: ${formatCurrency(totalFees)}
                               </span>
                             </div>
                           </div>
@@ -143,17 +141,17 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                               target="_blank"
                               onClick={(e) => e.stopPropagation()}
                               className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
-                              title="Create Invoice"
+                              title={t('createInvoice')}
                             >
                               <FileText className="w-3.5 h-3.5" />
-                              Create Invoice
+                              {t('createInvoice')}
                             </Link>
                             <Link
                               href={`/dashboard/orders/${order.id}`}
                               target="_blank"
                               onClick={(e) => e.stopPropagation()}
                               className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                              title="View Order"
+                              title={t('viewOrder')}
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </Link>
@@ -188,16 +186,16 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                     {product.product_order_number}
                                   </p>
                                   <span className="text-xs text-gray-600">
-                                    {product.description || product.product?.title || 'Product'}
+                                    {product.description ? translate(product.description) : (product.product?.title ? translate(product.product.title) : t('product'))}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
-                                  <span>Qty: {totalQty}</span>
+                                  <span>{t('qty')}: {totalQty}</span>
                                   {(product.client_product_price || 0) > 0 && (
-                                    <span>${formatCurrency(product.client_product_price || 0)}/unit</span>
+                                    <span>${formatCurrency(product.client_product_price || 0)}/{t('unit')}</span>
                                   )}
                                   {(product.sample_fee || 0) > 0 && (
-                                    <span>Sample: ${formatCurrency(product.sample_fee || 0)}</span>
+                                    <span>{t('sample')}: ${formatCurrency(product.sample_fee || 0)}</span>
                                   )}
                                   {product.selected_shipping_method && hasShipping && (
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-300 rounded-full">
@@ -217,7 +215,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                   )}
                                   {daysReady > 0 && (
                                     <span className="text-amber-600 font-medium">
-                                      {daysReady} days ago
+                                      {daysReady} {daysReady === 1 ? t('dayAgo') : t('daysAgo')}
                                     </span>
                                   )}
                                 </div>
@@ -233,7 +231,7 @@ export const InvoiceApprovalView: React.FC<InvoiceApprovalViewProps> = ({
                                   <div className="flex items-center gap-1 mt-0.5">
                                     <AlertTriangle className="w-3 h-3 text-amber-500" />
                                     <span className="text-xs text-amber-600 font-medium">
-                                      Shipping not set
+                                      {t('shippingNotSet')}
                                     </span>
                                   </div>
                                 )}

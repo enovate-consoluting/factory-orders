@@ -2,8 +2,9 @@
  * Invoices Page - /dashboard/invoices
  * Main invoice management page with tabs for approval, in-production, drafts, sent, paid
  * UPDATED: Added void invoice functionality and invoice gate for existing invoices
+ * MERGED: Gurri's responsive styling + Invoice gate functionality
  * Roles: Admin, Super Admin, Client (limited view)
- * Last Modified: December 1, 2025
+ * Last Modified: December 2025
  */
 
 'use client';
@@ -539,7 +540,7 @@ export default function InvoicesPage() {
     }
   };
 
-  // Handle Create Invoice click - check for existing invoices first
+  // Handle Create Invoice click - check for existing invoices first (INVOICE GATE)
   const handleCreateInvoiceClick = async (orderId: string, orderNumber: string) => {
     const result = await checkExistingInvoices(orderId);
     
@@ -718,11 +719,9 @@ export default function InvoicesPage() {
     const isProductionTab = tabType === 'inproduction';
     
     return (
-      <div className="bg-white rounded-lg shadow">
-        <div className={`p-3 border-b ${isProductionTab ? 'bg-purple-50' : 'bg-amber-50'}`}>
-          <h2 className="text-base font-semibold text-gray-900">
-            {isProductionTab ? 'Orders In Production' : 'Orders Ready for Invoicing'}
-          </h2>
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className={`p-3 sm:p-4 border-b ${isProductionTab ? 'bg-purple-50' : 'bg-amber-50'}`}>
+          <h2 className="text-sm sm:text-base font-semibold text-gray-900">{isProductionTab ? 'Orders In Production' : 'Orders Ready for Invoicing'}</h2>
           {isProductionTab && (
             <p className="text-xs text-gray-600 mt-1">
               Products approved for production or currently being manufactured
@@ -731,8 +730,8 @@ export default function InvoicesPage() {
         </div>
         
         {orders.length === 0 ? (
-          <div className="text-center py-12">
-            <CheckCircle className="mx-auto h-12 w-12 text-green-300" />
+          <div className="text-center py-8 sm:py-12 px-3">
+            <CheckCircle className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-green-300" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">
               {isProductionTab ? 'No orders in production' : 'All caught up!'}
             </h3>
@@ -757,36 +756,36 @@ export default function InvoicesPage() {
                 <div key={order.id} className="bg-white hover:bg-gray-50 transition-colors">
                   {/* Order Header */}
                   <div 
-                    className="p-3 cursor-pointer"
+                    className="p-3 sm:p-4 cursor-pointer"
                     onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0">
+                      <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleOrderExpansion(order.id);
                           }}
-                          className="p-0.5 hover:bg-gray-200 rounded"
+                          className="p-0.5 hover:bg-gray-200 rounded flex-shrink-0 mt-0.5 sm:mt-0"
                         >
                           {isExpanded ? (
-                            <ChevronDown className="w-4 h-4 text-gray-500" />
+                            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                           ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-500" />
+                            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                           )}
                         </button>
                         
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3">
-                                <h3 className="font-semibold text-gray-900 text-sm">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                                <h3 className="font-semibold text-gray-900 text-sm sm:text-base">
                                   {order.order_name}
                                 </h3>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs sm:text-sm text-gray-500">
                                   {order.order_number}
                                 </span>
-                                <span className="text-xs text-gray-500">
+                                <span className="text-xs sm:text-sm text-gray-500">
                                   {order.client?.name}
                                 </span>
                                 {isProductionTab && (
@@ -803,14 +802,14 @@ export default function InvoicesPage() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1 text-xs sm:text-sm text-gray-500">
                                 <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  Order Created: {new Date(order.created_at).toLocaleDateString()}
+                                  <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
+                                  <span className="truncate">Order Created: {new Date(order.created_at).toLocaleDateString()}</span>
                                 </span>
                                 {daysWaiting > 0 && (
                                   <span className={`flex items-center gap-1 font-medium ${isProductionTab ? 'text-purple-600' : 'text-amber-600'}`}>
-                                    <Clock className="w-3 h-3" />
+                                    <Clock className="w-3 h-3 flex-shrink-0" />
                                     {isProductionTab ? 'In Production' : 'Invoice Ready'}: {daysWaiting} {daysWaiting === 1 ? 'day' : 'days'} ago
                                   </span>
                                 )}
@@ -820,25 +819,27 @@ export default function InvoicesPage() {
                               </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            {/* Action Buttons - MERGED: Invoice gate + responsive styling */}
+                            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 sm:ml-2">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleCreateInvoiceClick(order.id, order.order_number);
                                 }}
-                                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
+                                className="px-2 sm:px-3 py-1.5 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
                               >
-                                <FileText className="w-3.5 h-3.5" />
-                                Create Invoice
+                                <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                <span className="hidden sm:inline">Create Invoice</span>
+                                <span className="sm:hidden">Invoice</span>
                               </button>
                               <Link
                                 href={`/dashboard/orders/${order.id}`}
                                 target="_blank"
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"
                                 title="View Order"
                               >
-                                <ExternalLink className="w-3.5 h-3.5" />
+                                <ExternalLink className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                               </Link>
                             </div>
                           </div>
@@ -849,8 +850,8 @@ export default function InvoicesPage() {
                   
                   {/* Expanded Products */}
                   {isExpanded && (
-                    <div className="px-3 pb-3">
-                      <div className="bg-gray-50 rounded-lg p-2 space-y-1">
+                    <div className="px-3 sm:px-4 pb-3 sm:pb-4">
+                      <div className="bg-gray-50 rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2">
                         {order.products.map((product) => {
                           const daysReady = daysSinceDate(product.routed_at);
                           const hasShipping = hasShippingSelected(product);
@@ -858,13 +859,13 @@ export default function InvoicesPage() {
                           return (
                             <div 
                               key={product.id} 
-                              className={`bg-white rounded p-2 flex items-center justify-between cursor-pointer hover:bg-gray-50 ${product.invoiced ? 'opacity-60' : ''}`}
+                              className={`bg-white rounded p-2 sm:p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-gray-50 ${product.invoiced ? 'opacity-60' : ''}`}
                               onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                                <Package className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-gray-400 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
                                     <p className={`font-medium text-gray-900 text-sm ${product.invoiced ? 'line-through' : ''}`}>
                                       {product.product_order_number}
                                     </p>
@@ -879,7 +880,7 @@ export default function InvoicesPage() {
                                       </span>
                                     )}
                                   </div>
-                                  <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
+                                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-0.5 text-xs text-gray-500">
                                     <span>Qty: {product.total_quantity}</span>
                                     {product.client_product_price > 0 && (
                                       <span>${formatCurrencyUtil(product.client_product_price)}/unit</span>
@@ -912,9 +913,9 @@ export default function InvoicesPage() {
                                 </div>
                               </div>
                               
-                              <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                                <div className="text-right">
-                                  <p className={`text-sm font-semibold text-gray-900 ${product.invoiced ? 'line-through' : ''}`}>
+                              <div className="flex items-center gap-2 sm:ml-2 flex-shrink-0">
+                                <div className="text-left sm:text-right">
+                                  <p className={`text-sm sm:text-base font-semibold text-gray-900 ${product.invoiced ? 'line-through' : ''}`}>
                                     ${formatCurrencyUtil(product.total_value)}
                                   </p>
                                   {!hasShipping && !product.invoiced && (
@@ -945,10 +946,10 @@ export default function InvoicesPage() {
   // Render Invoice List (Drafts, Sent, Paid, All)
   const renderInvoiceList = () => {
     return (
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg shadow overflow-hidden">
         {filteredInvoices.length === 0 ? (
-          <div className="text-center py-12">
-            <FileText className="mx-auto h-12 w-12 text-gray-300" />
+          <div className="text-center py-8 sm:py-12 px-3">
+            <FileText className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-gray-300" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">
               {isClient ? 'No invoices yet' : 'No invoices found'}
             </h3>
@@ -963,7 +964,9 @@ export default function InvoicesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -1087,44 +1090,148 @@ export default function InvoicesPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card View */}
+          <div className="lg:hidden divide-y divide-gray-200">
+            {filteredInvoices.map(invoice => (
+              <div key={invoice.id} className={`p-3 sm:p-4 hover:bg-gray-50 transition-colors ${invoice.voided ? 'opacity-60' : ''}`}>
+                <div className="space-y-2">
+                  {/* Invoice Number and Status */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <span className={`font-semibold text-sm text-gray-900 block ${invoice.voided ? 'line-through' : ''}`}>{invoice.invoice_number}</span>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {new Date(invoice.created_at).toLocaleDateString()}
+                      </p>
+                      {invoice.voided && invoice.void_reason && (
+                        <p className="text-xs text-red-500 mt-0.5 truncate" title={invoice.void_reason}>
+                          Reason: {invoice.void_reason}
+                        </p>
+                      )}
+                    </div>
+                    {getStatusBadge(invoice)}
+                  </div>
+
+                  {/* Order Info */}
+                  {invoice.order && (
+                    <div className="text-sm">
+                      <span className="text-gray-600">Order: </span>
+                      <span className="text-gray-900 font-medium">{invoice.order.order_name || invoice.order.order_number || '-'}</span>
+                    </div>
+                  )}
+
+                  {/* Client (if not client user) */}
+                  {!isClient && invoice.client && (
+                    <div className="text-sm">
+                      <span className="text-gray-600">Client: </span>
+                      <span className="text-gray-900">{invoice.client.name}</span>
+                    </div>
+                  )}
+
+                  {/* Amount */}
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                    <div>
+                      <span className={`text-lg font-bold text-gray-900 ${invoice.voided ? 'line-through' : ''}`}>
+                        ${formatCurrencyUtil(parseFloat(invoice.amount?.toString() || '0'))}
+                      </span>
+                      {invoice.status === 'paid' && invoice.paid_amount > 0 && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          Paid: ${formatCurrencyUtil(parseFloat(invoice.paid_amount?.toString() || '0'))}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      {invoice.due_date ? (
+                        <>
+                          <span className="text-xs text-gray-600 block">Due:</span>
+                          <span className="text-sm text-gray-900">
+                            {new Date(invoice.due_date).toLocaleDateString()}
+                          </span>
+                          {invoice.status === 'sent' && !invoice.voided && new Date(invoice.due_date) < new Date() && (
+                            <p className="text-xs text-red-600 font-medium mt-0.5">Overdue</p>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    {invoice.order?.id && (
+                      <Link
+                        href={`/dashboard/orders/${invoice.order.id}`}
+                        target="_blank"
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="View Order"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Link>
+                    )}
+                    {/* Void Button - Mobile */}
+                    {!isClient && canVoid(invoice) && (
+                      <button
+                        onClick={() => setVoidModal({ isOpen: true, invoice })}
+                        className="p-2 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Void Invoice"
+                      >
+                        <FileX className="w-4 h-4" />
+                      </button>
+                    )}
+                    {!isClient && canDelete(invoice) && !invoice.voided && (
+                      <button
+                        onClick={() => setShowDeleteConfirm(invoice.id)}
+                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                        title={user?.role === 'super_admin' ? 'Delete (Super Admin)' : 'Delete Draft'}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          </>
         )}
       </div>
     );
   };
 
   return (
-    <div className="p-4 md:p-6">
+    <div className="p-3 sm:p-4 md:p-6">
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-sm w-full shadow-xl">
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
               {user?.role === 'super_admin' && (
                 <div className="flex items-center gap-2 mb-3 text-amber-600">
                   <Shield className="w-4 h-4" />
-                  <span className="text-sm">Super Admin Override</span>
+                  <span className="text-xs sm:text-sm">Super Admin Override</span>
                 </div>
               )}
-              <p className="text-gray-600">
+              <p className="text-sm sm:text-base text-gray-600">
                 Are you sure you want to delete invoice{' '}
                 <strong>{invoices.find(i => i.id === showDeleteConfirm)?.invoice_number}</strong>?
               </p>
-              <p className="text-red-600 text-sm mt-2">
+              <p className="text-red-600 text-xs sm:text-sm mt-2">
                 This action cannot be undone.
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDeleteInvoice(showDeleteConfirm)}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
                 disabled={deleting}
               >
                 {deleting ? 'Deleting...' : 'Delete'}
@@ -1163,38 +1270,38 @@ export default function InvoicesPage() {
       )}
 
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">
+      <div className="mb-4 sm:mb-6">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             {isClient ? 'My Invoices' : 'Invoices'}
           </h1>
           {!isClient && (
             <button
               onClick={() => fetchData()}
-              className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              className="p-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"
               title="Refresh"
             >
-              <RefreshCw className="w-5 h-5" />
+              <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           )}
         </div>
 
         {/* Tabs - Hidden for clients */}
         {!isClient && (
-          <div className="border-b border-gray-200 mb-4">
-            <nav className="-mb-px flex flex-wrap gap-y-2">
+          <div className="border-b border-gray-200 mb-4 overflow-x-auto">
+            <nav className="-mb-px flex overflow-x-auto scrollbar-hide whitespace-nowrap gap-x-1">
               <button
                 onClick={() => setActiveTab('approval')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'approval'
                     ? 'border-amber-500 text-amber-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <AlertCircle className="w-4 h-4" />
-                <span>For Approval</span>
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">For Approval</span>
                 {stats.forApproval > 0 && (
-                  <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.forApproval}
                   </span>
                 )}
@@ -1203,16 +1310,16 @@ export default function InvoicesPage() {
               {/* In Production Tab */}
               <button
                 onClick={() => setActiveTab('inproduction')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'inproduction'
                     ? 'border-purple-500 text-purple-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <Play className="w-4 h-4" />
-                <span>In Production</span>
+                <Play className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">In Production</span>
                 {stats.inProduction > 0 && (
-                  <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.inProduction}
                   </span>
                 )}
@@ -1220,16 +1327,16 @@ export default function InvoicesPage() {
               
               <button
                 onClick={() => setActiveTab('drafts')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'drafts'
                     ? 'border-gray-500 text-gray-700'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <FileText className="w-4 h-4" />
-                <span>Drafts</span>
+                <FileText className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Drafts</span>
                 {stats.drafts > 0 && (
-                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.drafts}
                   </span>
                 )}
@@ -1237,16 +1344,16 @@ export default function InvoicesPage() {
               
               <button
                 onClick={() => setActiveTab('sent')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${
                   activeTab === 'sent'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>Sent</span>
                 {stats.sent > 0 && (
-                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="bg-blue-100 text-blue-600 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold">
                     {stats.sent}
                   </span>
                 )}
@@ -1254,16 +1361,16 @@ export default function InvoicesPage() {
               
               <button
                 onClick={() => setActiveTab('paid')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'paid'
                     ? 'border-green-500 text-green-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <CheckCircle className="w-4 h-4" />
-                <span>Paid</span>
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Paid</span>
                 {stats.paid > 0 && (
-                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold">
+                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.paid}
                   </span>
                 )}
@@ -1271,14 +1378,14 @@ export default function InvoicesPage() {
               
               <button
                 onClick={() => setActiveTab('all')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'all'
                     ? 'border-purple-500 text-purple-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <Inbox className="w-4 h-4" />
-                <span>All Invoices</span>
+                <Inbox className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">All Invoices</span>
               </button>
             </nav>
           </div>
@@ -1287,13 +1394,13 @@ export default function InvoicesPage() {
         {/* Search Bar */}
         <div className="flex-1 max-w-md">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
             <input
               type="text"
               placeholder={(activeTab === 'approval' || activeTab === 'inproduction') && !isClient ? "Search orders..." : "Search invoices..."}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
+              className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base text-gray-900 placeholder-gray-500"
             />
           </div>
         </div>

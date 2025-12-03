@@ -8,13 +8,13 @@
 import React from 'react';
 import { Shield } from 'lucide-react';
 import { Translations } from '../utils/orderListTranslations';
-
+import { TFunction } from 'i18next';
 interface DeleteOrderModalProps {
   isOpen: boolean;
   orderNumber: string;
   userRole: string | null;
   isDeleting: boolean;
-  translations: Translations;
+  t: TFunction;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -24,7 +24,7 @@ export const DeleteOrderModal: React.FC<DeleteOrderModalProps> = ({
   orderNumber,
   userRole,
   isDeleting,
-  translations: t,
+  t,
   onConfirm,
   onCancel
 }) => {
@@ -35,40 +35,40 @@ export const DeleteOrderModal: React.FC<DeleteOrderModalProps> = ({
       <div className="bg-white rounded-lg p-6 max-w-sm w-full">
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            {t.confirmDelete}
+            {t('confirmDelete')}
           </h3>
           
           {userRole === 'super_admin' && (
             <div className="flex items-center gap-2 mb-3 text-amber-600">
               <Shield className="w-4 h-4" />
-              <span className="text-sm">{t.superAdminOverride}</span>
+              <span className="text-sm">{t('superAdminOverride')}</span>
             </div>
           )}
           
           <p className="text-gray-600">
-            {t.areYouSure}{' '}
+            {t('areYouSure')  }{' '}
             <strong>{orderNumber}</strong>?
           </p>
           
           <p className="text-red-600 text-sm mt-2">
-            {t.permanentDelete}
+            {t('permanentDelete')}
           </p>
         </div>
         
         <div className="flex gap-3">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-black"
             disabled={isDeleting}
           >
-            {t.cancel}
+            {t('cancel')}
           </button>
           <button
             onClick={onConfirm}
             className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
             disabled={isDeleting}
           >
-            {isDeleting ? t.deleting : t.deleteOrder}
+            {isDeleting ? t('deleting') : t('deleteOrder')}
           </button>
         </div>
       </div>

@@ -51,11 +51,13 @@ interface ManufacturerProductCardProps {
   onExpand?: () => void;
   onDataChange?: (data: any) => void;
   allOrderProducts?: OrderProduct[]; // For shipping allocation dropdown
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
 }
 
 export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, ManufacturerProductCardProps>(
-  function ManufacturerProductCard({ 
-    product, 
+  function ManufacturerProductCard({
+    product,
     items = [],
     media = [],
     orderStatus,
@@ -69,7 +71,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     forceExpanded = false,
     onExpand,
     onDataChange,
-    allOrderProducts = []
+    allOrderProducts = [],
+    translate = (text) => text || '',
+    t = (key) => key
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = isSuperAdminView ? 'super_admin' : 'manufacturer';
@@ -896,6 +900,8 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           hasNewHistory={showNewHistoryDot}
           userRole={userRole}
           trackingNumber={(product as any).tracking_number}
+          translate={translate}
+          t={t}
         />
       );
     }
@@ -924,7 +930,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <h3 className="font-semibold text-lg text-gray-900">
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
-                  <ProductStatusBadge status={displayStatus} />
+                  <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
                   {/* MANUFACTURER TOTAL BADGE */}
                   {manufacturerTotal > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">
@@ -994,7 +1000,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           <div className="mt-3 bg-white rounded-lg border border-gray-300 p-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
               <Package className="w-4 h-4 mr-2" />
-              Bulk Order Information
+              {t ? t('bulkOrderInformation') : 'Bulk Order Information'}
             </h4>
 
             {/* Show if this product has linked shipping from another product */}
@@ -1002,18 +1008,18 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="mb-4 p-3 bg-blue-50 border border-blue-300 rounded-lg flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div className="text-sm text-blue-800">
-                  <span className="font-medium">Shipping Note:</span> {(product as any).shipping_link_note}
+                  <span className="font-medium">{t ? t('shippingNote') : 'Shipping Note:'}</span> {(product as any).shipping_link_note}
                 </div>
               </div>
             )}
 
             {/* Bulk Order Notes */}
             <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <h5 className="text-sm font-medium text-gray-700 mb-2">Bulk Order Notes</h5>
+              <h5 className="text-sm font-medium text-gray-700 mb-2">{t ? t('bulkOrderNotes') : 'Bulk Order Notes'}</h5>
               
               {manufacturerNotes && (
                 <div className="mb-2 p-2 bg-blue-50 rounded text-sm text-blue-700">
-                  <strong>Current notes:</strong>
+                  <strong>{t ? t('currentNotes') : 'Current notes:'}</strong>
                   <div className="whitespace-pre-wrap mt-1">{manufacturerNotes}</div>
                 </div>
               )}
@@ -1024,7 +1030,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   setTempBulkNotes(e.target.value);
                   setBulkSectionDirty(true);
                 }}
-                placeholder="Add bulk order specific instructions, shipping details, production notes..."
+                placeholder={t ? t('addBulkOrderInstructions') : 'Add bulk order specific instructions, shipping details, production notes...'}
                 rows={3}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
               />
@@ -1047,15 +1053,17 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               onDeleteFile={handleDeleteMedia}
               onRemovePending={removePendingBulkFile}
               onAddFiles={() => bulkFileInputRef.current?.click()}
-              title="Bulk Order Media"
+              title={t('bulkOrderMedia')}
               loading={uploadingBulkMedia}
+              translate={translate}
+              t={t}
             />
 
             {/* Product Price and Production Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Price (Your Cost)
+                  {t ? t('productPriceYourCost') : 'Product Price (Your Cost)'}
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1071,7 +1079,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         setBulkSectionDirty(true);
                       }
                     }}
-                    placeholder="Enter price"
+                    placeholder={t ? t('enterPrice') : 'Enter price'}
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
                   />
                 </div>
@@ -1079,7 +1087,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Production Time
+                  {t ? t('productionTime') : 'Production Time'}
                 </label>
                 <div className="relative">
                   <Clock className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1100,7 +1108,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             {/* Shipping Options & Pricing - WITH ALLOCATION FEATURE INSIDE */}
             <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg border-2 border-blue-300">
               <div className="flex items-center justify-between mb-3">
-                <h5 className="text-sm font-semibold text-gray-800">Shipping Options & Pricing</h5>
+                <h5 className="text-sm font-semibold text-gray-800">{t ? t('shippingOptionsAndPricing') : 'Shipping Options & Pricing'}</h5>
                 
                 {/* Shipping Allocation Checkbox - ALWAYS VISIBLE FOR MANUFACTURERS */}
                 {allOrderProducts && allOrderProducts.length > 1 && (
@@ -1118,7 +1126,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                       className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                     <Link2 className="w-4 h-4 text-yellow-600" />
-                    <span>Apply fee to multiple products</span>
+                    <span>{t ? t('applyFeeToMultipleProducts') : 'Apply fee to multiple products'}</span>
                   </label>
                 )}
               </div>
@@ -1127,7 +1135,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               {applyShippingToOthers && allOrderProducts && allOrderProducts.length > 1 && (
                 <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <p className="text-xs text-gray-600 mb-2">
-                    Select which products share this shipping fee:
+                    {t ? t('selectWhichProductsShareShippingFee') : 'Select which products share this shipping fee:'}
                   </p>
                   <div className="max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
                     {allOrderProducts
@@ -1152,7 +1160,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                               {(p as any).product_order_number}
                             </span>
                             <span className="text-xs text-gray-600 ml-2">
-                              - {(p as any).description || (p as any).product?.title || 'No description'}
+                              - {(p as any).description || (p as any).product?.title || (t ? t('noDescription') : 'No description')}
                             </span>
                           </div>
                         </label>
@@ -1161,7 +1169,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   {selectedProductsForShipping.length > 0 && (
                     <div className="flex items-center gap-1 text-xs text-green-600 font-medium mt-2">
                       <CheckCircle className="w-3 h-3" />
-                      Shipping will be linked with {selectedProductsForShipping.length} product{selectedProductsForShipping.length > 1 ? 's' : ''}
+                      {t ? `${t('shippingWillBeLinkedWith').replace('{count}', selectedProductsForShipping.length.toString())}${selectedProductsForShipping.length > 1 ? 's' : ''}` : `Shipping will be linked with ${selectedProductsForShipping.length} product${selectedProductsForShipping.length > 1 ? 's' : ''}`}
                     </div>
                   )}
                 </div>
@@ -1169,7 +1177,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               
               {(product as any).selected_shipping_method && (
                 <div className="mb-4 p-3 bg-white rounded-lg border-2 border-blue-400 shadow-sm">
-                  <p className="text-xs font-medium text-blue-700 mb-2">CLIENT SELECTED:</p>
+                  <p className="text-xs font-medium text-blue-700 mb-2">{t ? t('clientSelected') : 'CLIENT SELECTED:'}</p>
                   <div className="flex items-center gap-3">
                     {(product as any).selected_shipping_method === 'air' ? (
                       <>
@@ -1177,9 +1185,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                           <Plane className="w-5 h-5 text-blue-600" />
                         </div>
                         <div>
-                          <span className="text-base font-bold text-blue-800">AIR SHIPPING</span>
+                          <span className="text-base font-bold text-blue-800">{t ? t('airShipping').toUpperCase() : 'AIR SHIPPING'}</span>
                           {shippingAirPrice && (
-                            <p className="text-sm text-blue-600">Price: ${formatCurrency(parseFloat(shippingAirPrice))}</p>
+                            <p className="text-sm text-blue-600">{t ? t('price') : 'Price'}: ${formatCurrency(parseFloat(shippingAirPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1189,9 +1197,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                           <Ship className="w-5 h-5 text-cyan-600" />
                         </div>
                         <div>
-                          <span className="text-base font-bold text-cyan-800">BOAT SHIPPING</span>
+                          <span className="text-base font-bold text-cyan-800">{t ? t('boatShipping').toUpperCase() : 'BOAT SHIPPING'}</span>
                           {shippingBoatPrice && (
-                            <p className="text-sm text-cyan-600">Price: ${formatCurrency(parseFloat(shippingBoatPrice))}</p>
+                            <p className="text-sm text-cyan-600">{t ? t('price') : 'Price'}: ${formatCurrency(parseFloat(shippingBoatPrice))}</p>
                           )}
                         </div>
                       </>
@@ -1203,7 +1211,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Air Shipping Price (Your Cost)
+                    {t ? t('airShippingPriceYourCost') : 'Air Shipping Price (Your Cost)'}
                   </label>
                   <div className="relative">
                     <Plane className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1219,7 +1227,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                           setBulkSectionDirty(true);
                         }
                       }}
-                      placeholder="Enter air price"
+                      placeholder={t ? t('enterAirPrice') : 'Enter air price'}
                       disabled={(product as any).shipping_link_note ? true : false}
                       className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
@@ -1228,7 +1236,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Boat Shipping Price (Your Cost)
+                    {t ? t('boatShippingPriceYourCost') : 'Boat Shipping Price (Your Cost)'}
                   </label>
                   <div className="relative">
                     <Ship className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1244,7 +1252,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                           setBulkSectionDirty(true);
                         }
                       }}
-                      placeholder="Enter boat price"
+                      placeholder={t ? t('enterBoatPrice') : 'Enter boat price'}
                       disabled={(product as any).shipping_link_note ? true : false}
                       className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900 disabled:bg-gray-100 disabled:text-gray-500"
                     />
@@ -1257,13 +1265,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-300">
               <h5 className="text-sm font-semibold text-green-800 mb-3 flex items-center">
                 <Calculator className="w-4 h-4 mr-2" />
-                Manufacturing Cost Summary
+                {t ? t('manufacturingCostSummary') : 'Manufacturing Cost Summary'}
               </h5>
               <div className="space-y-2 text-sm">
                 {productPrice && totalQuantity > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">
-                      Product: ${formatCurrency(parseFloat(productPrice))} × {totalQuantity} units
+                      {t ? t('product') : 'Product'}: ${formatCurrency(parseFloat(productPrice))} × {totalQuantity} {t ? t('units') : 'units'}
                     </span>
                     <span className="font-semibold text-gray-900">
                       ${formatCurrency(parseFloat(productPrice) * totalQuantity)}
@@ -1273,10 +1281,10 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                 {(product as any).selected_shipping_method && !((product as any).shipping_link_note) && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">
-                      Shipping ({(product as any).selected_shipping_method === 'air' ? 'Air' : 'Boat'})
+                      {t ? t('shippingLabel') : 'Shipping'} ({(product as any).selected_shipping_method === 'air' ? (t ? t('air') : 'Air') : (t ? t('boat') : 'Boat')})
                       {applyShippingToOthers && selectedProductsForShipping.length > 0 && (
                         <span className="text-xs text-green-600 ml-1">
-                          (shared with {selectedProductsForShipping.length} products)
+                          ({t ? t('sharedWith') : 'shared with'} {selectedProductsForShipping.length} {t ? t('products') : 'products'})
                         </span>
                       )}
                     </span>
@@ -1294,7 +1302,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                 )}
                 <div className="pt-2 border-t border-green-300">
                   <div className="flex justify-between">
-                    <span className="font-semibold text-green-800">Total Manufacturing Cost</span>
+                    <span className="font-semibold text-green-800">{t ? t('totalManufacturingCost') : 'Total Manufacturing Cost'}</span>
                     <span className="font-bold text-green-800 text-base">
                       ${formatCurrency(manufacturerTotal)}
                     </span>
@@ -1324,7 +1332,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   disabled={savingBulkSection}
                   className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                 >
-                  Cancel
+                  {t ? t('cancel') : 'Cancel'}
                 </button>
                 <button
                   onClick={handleSaveBulkSection}
@@ -1334,12 +1342,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   {savingBulkSection ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin" />
-                      Saving...
+                      {t ? t('saving') : 'Saving...'}
                     </>
                   ) : (
                     <>
                       <Save className="w-3 h-3" />
-                      Save Bulk Section
+                      {t ? t('saveBulkSection') : 'Save Bulk Section'}
                     </>
                   )}
                 </button>
@@ -1350,10 +1358,10 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h5 className="text-sm font-medium text-gray-700">
-                  {getVariantTypeName()} Details
+                  {getVariantTypeName()} {t ? t('details') : 'Details'}
                   {!showAllVariants && hasHiddenVariants && !editingVariants && (
                     <span className="ml-2 text-xs text-gray-500">
-                      (Showing {visibleVariants.length} of {items.length})
+                      ({t ? t('showing') : 'Showing'} {visibleVariants.length} of {items.length})
                     </span>
                   )}
                 </h5>
@@ -1366,12 +1374,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                       {showAllVariants ? (
                         <>
                           <EyeOff className="w-3 h-3" />
-                          Hide Empty
+                          {t ? t('hideEmpty') : 'Hide Empty'}
                         </>
                       ) : (
                         <>
                           <Eye className="w-3 h-3" />
-                          Show All
+                          {t ? t('showAll') : 'Show All'}
                         </>
                       )}
                     </button>
@@ -1385,7 +1393,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                       className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
                     >
                       <Edit2 className="w-3 h-3" />
-                      Edit
+                      {t ? t('edit') : 'Edit'}
                     </button>
                   ) : null}
                 </div>
@@ -1405,7 +1413,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <tbody>
                     {visibleVariants.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{item.variant_combo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{translate(item.variant_combo)}</td>
                         <td className="py-2 px-1">
                           {editingVariants ? (
                             <input
@@ -1439,7 +1447,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                               setVariantsDirty(true);
                               if (!editingVariants) setEditingVariants(true);
                             }}
-                            placeholder="Add note..."
+                            placeholder={t ? t('addNote') : 'Add note...'}
                             disabled={!editingVariants}
                             className="w-full px-2 py-1 text-sm text-gray-900 font-medium border border-gray-300 rounded placeholder-gray-500 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-700"
                           />
@@ -1469,7 +1477,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     disabled={savingVariantNotes}
                     className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
                   >
-                    Cancel
+                    {t ? t('cancel') : 'Cancel'}
                   </button>
                   <button
                     onClick={handleSaveVariantNotes}
@@ -1479,12 +1487,12 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     {savingVariantNotes ? (
                       <>
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        Saving...
+                        {t ? t('saving') : 'Saving...'}
                       </>
                     ) : (
                       <>
                         <Save className="w-3 h-3" />
-                        Save Variant Details
+                        {t ? t('saveVariants') : 'Save Variant Details'}
                       </>
                     )}
                   </button>

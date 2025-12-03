@@ -345,29 +345,29 @@ export default function FinanceOrdersPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-4 md:p-6">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-2">
-          <h1 className="text-2xl font-bold text-gray-900">Order Margins Management</h1>
+      <div className="mb-4 sm:mb-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Order Margins Management</h1>
           <Link
             href="/dashboard/settings/finance"
-            className="text-blue-600 hover:text-blue-800 text-sm"
+            className="text-blue-600 hover:text-blue-800 text-xs sm:text-sm"
           >
             ← Back to Settings
           </Link>
         </div>
-        <p className="text-gray-600">
+        <p className="text-sm sm:text-base text-gray-600">
           View and override margin percentages for specific orders and products
         </p>
       </div>
 
       {/* Orders List */}
       <div className="bg-white rounded-lg shadow">
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-3 sm:p-4 border-b border-gray-200">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">All Orders</h2>
-            <div className="text-sm text-gray-500">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">All Orders</h2>
+            <div className="text-xs sm:text-sm text-gray-500">
               {orders.length} total orders
             </div>
           </div>
@@ -383,36 +383,36 @@ export default function FinanceOrdersPage() {
             return (
               <div key={order.id} className="hover:bg-gray-50">
                 {/* Order Row */}
-                <div className="p-4">
-                  <div className="flex items-center justify-between">
+                <div className="p-3 sm:p-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
                     {/* Left side - Order Info */}
-                    <div className="flex items-center gap-3 flex-1">
+                    <div className="flex items-start gap-2 sm:gap-3 flex-1">
                       <button
                         onClick={() => toggleOrderExpansion(order.id)}
-                        className="p-1 hover:bg-gray-200 rounded"
+                        className="p-1 hover:bg-gray-200 rounded flex-shrink-0 mt-0.5"
                       >
                         {isExpanded ? (
-                          <ChevronDown className="w-4 h-4 text-gray-500" />
+                          <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
                         ) : (
-                          <ChevronRight className="w-4 h-4 text-gray-500" />
+                          <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
                         )}
                       </button>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-col gap-1">
                           <div>
-                            <div className="font-medium text-gray-900">
+                            <div className="font-medium text-gray-900 text-sm sm:text-base">
                               {formatOrderNumber(order.order_number)}
                               {order.order_name && (
-                                <span className="text-sm text-gray-500 ml-2">
+                                <span className="text-xs sm:text-sm text-gray-500 ml-2">
                                   {order.order_name}
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-xs sm:text-sm text-gray-500">
                               {order.client?.name} • {totalProducts} products
                             </div>
                             {/* NEW: Detailed totals display */}
-                            <div className="text-xs text-gray-600 mt-1 flex items-center gap-3">
+                            <div className="text-xs text-gray-600 mt-1 flex flex-wrap items-center gap-1 sm:gap-3">
                               <span className="flex items-center gap-1">
                                 <span className="text-gray-500">Mfr Cost:</span>
                                 <span className="font-medium">${totals.mfrTotal.toFixed(2)}</span>
@@ -424,7 +424,7 @@ export default function FinanceOrdersPage() {
                               </span>
                               {totals.shippingTotal > 0 && (
                                 <>
-                                  <span className="text-gray-400">+</span>
+                                  <span className="text-gray-400 hidden sm:inline">+</span>
                                   <span className="flex items-center gap-1">
                                     <Truck className="w-3 h-3 text-gray-400" />
                                     <span className="text-gray-500">Ship:</span>
@@ -432,7 +432,7 @@ export default function FinanceOrdersPage() {
                                   </span>
                                 </>
                               )}
-                              <span className="text-gray-400">=</span>
+                              <span className="text-gray-400 hidden sm:inline">=</span>
                               <span className="flex items-center gap-1">
                                 <span className="text-gray-500">Total:</span>
                                 <span className="font-semibold text-green-600">
@@ -449,30 +449,32 @@ export default function FinanceOrdersPage() {
                     </div>
 
                     {/* Right side - Margin Controls */}
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 lg:ml-auto">
                       {!isEditingOrder ? (
                         <>
-                          <div className="text-sm">
-                            <span className="text-gray-500">Product Margin:</span>
-                            <span className="ml-2 font-semibold text-gray-900">
-                              {orderMargins[order.id]?.product || defaultProductMargin}%
-                            </span>
+                          <div className="flex items-center gap-2 sm:gap-4">
+                            <div className="text-xs sm:text-sm">
+                              <span className="text-gray-500">Product Margin:</span>
+                              <span className="ml-1 sm:ml-2 font-semibold text-gray-900">
+                                {orderMargins[order.id]?.product || defaultProductMargin}%
+                              </span>
+                            </div>
+                            <div className="text-xs sm:text-sm">
+                              <span className="text-gray-500">Shipping:</span>
+                              <span className="ml-1 sm:ml-2 font-semibold text-gray-900">
+                                {orderMargins[order.id]?.shipping || defaultShippingMargin}%
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setEditingOrder(order.id)}
+                              className="text-blue-600 hover:text-blue-800 p-1"
+                            >
+                              <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                            </button>
                           </div>
-                          <div className="text-sm">
-                            <span className="text-gray-500">Shipping:</span>
-                            <span className="ml-2 font-semibold text-gray-900">
-                              {orderMargins[order.id]?.shipping || defaultShippingMargin}%
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => setEditingOrder(order.id)}
-                            className="text-blue-600 hover:text-blue-800 p-1"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
                         </>
                       ) : (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                           <div className="flex items-center gap-1">
                             <label className="text-xs text-gray-500">Product:</label>
                             <div className="relative">
@@ -512,18 +514,18 @@ export default function FinanceOrdersPage() {
                           <button
                             onClick={() => handleSaveOrderMargin(order.id)}
                             disabled={saving === order.id}
-                            className="bg-blue-600 text-white px-3 py-1 text-sm rounded hover:bg-blue-700 disabled:bg-gray-400"
+                            className="bg-blue-600 text-white px-2 sm:px-3 py-1 text-xs sm:text-sm rounded hover:bg-blue-700 disabled:bg-gray-400"
                           >
                             {saving === order.id ? '...' : 'Save All'}
                           </button>
-                          
+
                           <button
                             onClick={() => setEditingOrder(null)}
-                            className="text-gray-600 hover:text-gray-800 px-2 py-1 text-sm"
+                            className="text-gray-600 hover:text-gray-800 px-2 py-1 text-xs sm:text-sm"
                           >
                             Cancel
                           </button>
-                          
+
                           {message[order.id] && (
                             <span className={`text-xs ${
                               message[order.id] === 'Saved!' ? 'text-green-600' : 'text-red-600'
@@ -539,8 +541,8 @@ export default function FinanceOrdersPage() {
 
                 {/* Expanded Products */}
                 {isExpanded && order.order_products && (
-                  <div className="bg-gray-50 px-4 pb-4">
-                    <div className="ml-8 space-y-2">
+                  <div className="bg-gray-50 pb-3 sm:pb-4">
+                    <div className="space-y-2 sm:px-4">
                       {order.order_products.map(product => {
                         const isEditingProduct = editingProduct === product.id;
                         const effectiveMargin = product.product_margin_override || 
@@ -548,28 +550,28 @@ export default function FinanceOrdersPage() {
                         const totalQuantity = product.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
                         
                         return (
-                          <div key={product.id} className="bg-white p-3 rounded border border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 flex-1">
-                                <Package className="w-4 h-4 text-gray-400" />
-                                <div>
-                                  <div className="text-sm font-medium text-gray-700">
+                          <div key={product.id} className="bg-white p-2 sm:p-3 rounded border border-gray-200">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                                <Package className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs sm:text-sm font-medium text-gray-700 truncate">
                                     {product.product_order_number}
                                   </div>
-                                  <div className="text-xs text-gray-500">
+                                  <div className="text-xs text-gray-500 truncate">
                                     {product.description || product.product?.title}
                                   </div>
                                 </div>
-                                
+
                                 {product.product_price && (
-                                  <div className="text-xs text-gray-500 ml-4">
-                                    <div>
+                                  <div className="text-xs text-gray-500">
+                                    <div className="whitespace-nowrap">
                                       Unit: ${product.product_price.toFixed(2)} → ${(product.client_product_price || 0).toFixed(2)}
                                     </div>
                                     {totalQuantity > 0 && (
-                                      <div className="text-gray-600">
-                                        Qty: {totalQuantity} | 
-                                        Total: ${(product.product_price * totalQuantity).toFixed(2)} → 
+                                      <div className="text-gray-600 whitespace-nowrap">
+                                        Qty: {totalQuantity} |
+                                        Total: ${(product.product_price * totalQuantity).toFixed(2)} →
                                         ${((product.client_product_price || 0) * totalQuantity).toFixed(2)}
                                       </div>
                                     )}
@@ -577,14 +579,14 @@ export default function FinanceOrdersPage() {
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 justify-end sm:justify-start">
                                 {!isEditingProduct ? (
                                   <>
-                                    <div className="text-sm">
+                                    <div className="text-xs sm:text-sm">
                                       <span className="text-gray-500">Margin:</span>
-                                      <span className={`ml-2 font-semibold ${
-                                        product.product_margin_override 
-                                          ? 'text-orange-600' 
+                                      <span className={`ml-1 sm:ml-2 font-semibold ${
+                                        product.product_margin_override
+                                          ? 'text-orange-600'
                                           : 'text-gray-900'
                                       }`}>
                                         {effectiveMargin}%
@@ -607,7 +609,7 @@ export default function FinanceOrdersPage() {
                                     </button>
                                   </>
                                 ) : (
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1 sm:gap-2">
                                     <div className="relative">
                                       <input
                                         type="number"
@@ -626,18 +628,18 @@ export default function FinanceOrdersPage() {
                                     <button
                                       onClick={() => handleSaveProductMargin(product.id, order.id)}
                                       disabled={saving === product.id}
-                                      className="bg-green-600 text-white px-2 py-1 text-xs rounded hover:bg-green-700 disabled:bg-gray-400"
+                                      className="bg-green-600 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs rounded hover:bg-green-700 disabled:bg-gray-400"
                                     >
                                       {saving === product.id ? '...' : 'Save'}
                                     </button>
-                                    
+
                                     <button
                                       onClick={() => setEditingProduct(null)}
-                                      className="text-gray-600 hover:text-gray-800 px-2 py-1 text-xs"
+                                      className="text-gray-600 hover:text-gray-800 px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs"
                                     >
                                       Cancel
                                     </button>
-                                    
+
                                     {message[product.id] && (
                                       <span className={`text-xs ${
                                         message[product.id] === 'Saved!' ? 'text-green-600' : 'text-red-600'
@@ -661,19 +663,19 @@ export default function FinanceOrdersPage() {
         </div>
 
         {orders.length === 0 && (
-          <div className="p-12 text-center text-gray-500">
+          <div className="p-8 sm:p-12 text-center text-gray-500 text-sm sm:text-base">
             No orders found
           </div>
         )}
       </div>
 
       {/* Info Box */}
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="mt-4 sm:mt-6 bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
         <div className="flex items-start gap-2">
-          <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-          <div className="text-sm text-blue-900">
+          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="text-xs sm:text-sm text-blue-900">
             <p className="font-semibold mb-1">Quick Guide:</p>
-            <ul className="list-disc ml-5 space-y-1">
+            <ul className="list-disc ml-4 sm:ml-5 space-y-1">
               <li><strong>Order-level margins:</strong> Click Edit on any order to set margins for ALL products in that order</li>
               <li><strong>Product-level margins:</strong> Expand an order and edit individual products for custom margins</li>
               <li><strong>Orange text:</strong> Indicates a custom product margin that overrides the order default</li>

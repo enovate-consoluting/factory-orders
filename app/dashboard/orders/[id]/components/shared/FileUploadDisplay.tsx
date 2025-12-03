@@ -18,6 +18,8 @@ interface FileUploadDisplayProps {
   fileCount?: boolean;
   loading?: boolean;
   onAddFiles?: () => void;
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
 }
 
 export function FileUploadDisplay({
@@ -29,7 +31,9 @@ export function FileUploadDisplay({
   title,
   fileCount = true,
   loading = false,
-  onAddFiles
+  onAddFiles,
+  translate = (text) => text || '',
+  t = (key) => key
 }: FileUploadDisplayProps) {
   return (
     <div className="mb-4">
@@ -48,7 +52,7 @@ export function FileUploadDisplay({
             ) : (
               <Upload className="w-3 h-3" />
             )}
-            Add Files
+            {t('addFiles')}
           </button>
         )}
       </div>
@@ -83,7 +87,7 @@ export function FileUploadDisplay({
       {/* Pending Files */}
       {pendingFiles.length > 0 && (
         <div className="mt-2">
-          <p className="text-xs text-gray-700 mb-1">Files to upload (will save with section):</p>
+          <p className="text-xs text-gray-700 mb-1">{t('filesToUpload')}:</p>
           <div className="flex flex-wrap gap-1">
             {pendingFiles.map((file, index) => (
               <div key={index} className="group relative inline-flex">
@@ -108,7 +112,7 @@ export function FileUploadDisplay({
       
       {/* Empty State */}
       {files.length === 0 && pendingFiles.length === 0 && (
-        <p className="text-xs text-gray-500">No {title.toLowerCase()} uploaded yet</p>
+        <p className="text-xs text-gray-500">{t('noMediaUploadedYet').replace('{title}', title.toLowerCase())}</p>
       )}
     </div>
   );

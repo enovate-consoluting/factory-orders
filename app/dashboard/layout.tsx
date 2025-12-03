@@ -24,6 +24,9 @@ import {
   Settings
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import '../i18n';
 
 interface User {
   id: string;
@@ -72,6 +75,8 @@ export default function DashboardLayout({
   const [notifications, setNotifications] = useState<any[]>([]);
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const { t } = useTranslation();
+  const { language, setLanguage } = useLanguage();
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -491,7 +496,7 @@ export default function DashboardLayout({
   const menuItems = [
     {
       type: 'section',
-      label: 'OPERATIONS',
+      label: 'Operations',
       roles: ['super_admin', 'admin', 'order_creator', 'order_approver', 'manufacturer', 'manufacturer_team_member', 'sub_manufacturer'],
     },
     {
@@ -510,7 +515,7 @@ export default function DashboardLayout({
     },
     {
       type: 'section',
-      label: 'PRODUCT CONFIG',
+      label: 'Product Configuration',
       roles: ['super_admin', 'admin'],
     },
     {
@@ -529,7 +534,7 @@ export default function DashboardLayout({
     },
     {
       type: 'section',
-      label: 'SYSTEM CONFIG',
+      label: 'System Configuration',
       roles: ['super_admin', 'admin', 'manufacturer'],
     },
     {
@@ -566,7 +571,7 @@ export default function DashboardLayout({
     },
     {
       type: 'section',
-      label: 'FINANCE',
+      label: 'Finance',
       roles: ['super_admin'],
     },
     {
@@ -574,7 +579,7 @@ export default function DashboardLayout({
       label: 'Finance Settings',
       icon: DollarSign,
       roles: ['super_admin'],
-      description: 'Configure margins',
+      description: 'Configure profit margins',
       notificationKey: null,
     }
   ];
@@ -595,7 +600,7 @@ export default function DashboardLayout({
       notificationKey: 'orders',
     },
     {
-      href: '/dashboard/invoices/client',  // ← FIXED: Was /dashboard/invoices
+      href: '/dashboard/invoices/client',
       label: 'Invoices',
       icon: FileText,
       roles: ['client'],
@@ -623,28 +628,29 @@ export default function DashboardLayout({
     return roleDisplay[role] || role.replace('_', ' ');
   };
 
+  // MERGED: Gurri's translations + your new client invoice route
   const getPageTitle = () => {
-    if (pathname === '/dashboard') return user?.role === 'client' ? 'My Dashboard' : 'Dashboard';
-    if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? 'Your Orders' : 'Orders Management';
-    if (pathname === '/dashboard/orders/client') return 'My Orders';
-    if (pathname.startsWith('/dashboard/orders/create')) return 'Create Order';
-    if (pathname.startsWith('/dashboard/orders/edit')) return 'Edit Order';
-    if (pathname === '/dashboard/invoices') return 'Invoices';
-    if (pathname === '/dashboard/invoices/client') return 'My Invoices';  // ← ADDED
-    if (pathname.startsWith('/dashboard/invoices/create')) return 'Create Invoice';
-    if (pathname === '/dashboard/products') return 'Products';
-    if (pathname === '/dashboard/variants') return 'Variants Configuration';
-    if (pathname === '/dashboard/activity') return 'Activity Log';
-    if (pathname === '/dashboard/clients') return 'Client Management';
-    if (pathname === '/dashboard/manufacturers') return 'Manufacturer Management';
-    if (pathname === '/dashboard/users') return 'User Management';
-    if (pathname === '/dashboard/review') return 'Review Orders';
-    if (pathname === '/dashboard/settings/finance') return 'Finance Settings';
-    if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
-    if (pathname === '/dashboard/settings/manufacturer') return 'Manufacturer Settings';
-    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return 'Order Details';
-    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create') && !pathname.includes('client')) return 'Invoice Details';
-    return 'Dashboard';
+    if (pathname === '/dashboard') return user?.role === 'client' ? t('myDashboard') : t('dashboard');
+    if (pathname === '/dashboard/orders') return user?.role === 'manufacturer' ? t('yourOrders') : t('ordersManagement');
+    if (pathname === '/dashboard/orders/client') return t('myOrders');
+    if (pathname.startsWith('/dashboard/orders/create')) return t('createNewOrder');
+    if (pathname.startsWith('/dashboard/orders/edit')) return t('editOrder');
+    if (pathname === '/dashboard/invoices') return t('invoices');
+    if (pathname === '/dashboard/invoices/client') return 'My Invoices';
+    if (pathname.startsWith('/dashboard/invoices/create')) return t('createInvoice');
+    if (pathname === '/dashboard/products') return t('products');
+    if (pathname === '/dashboard/variants') return t('variantsConfiguration');
+    if (pathname === '/dashboard/activity') return t('activityLog');
+    if (pathname === '/dashboard/clients') return t('clientManagement');
+    if (pathname === '/dashboard/manufacturers') return t('manufacturerManagement');
+    if (pathname === '/dashboard/users') return t('userManagement');
+    if (pathname === '/dashboard/review') return t('reviewOrders');
+    if (pathname === '/dashboard/settings/finance') return t('financeSettings');
+    if (pathname === '/dashboard/settings/finance/orders') return t('orderMargins');
+    if (pathname === '/dashboard/settings/manufacturer') return t('manufacturerSettings');
+    if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return t('orderDetails');
+    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create') && !pathname.includes('client')) return t('invoiceDetails');
+    return t('dashboard');
   };
 
   if (loading) {
@@ -711,8 +717,10 @@ export default function DashboardLayout({
               </h1>
             </div>
 
-            {/* Notification Bell - right side */}
-            <div className="relative flex-shrink-0">
+            {/* Top right controls: Notification Bell only */}
+            <div className="flex items-center gap-4">
+              {/* Notification Bell - right side */}
+              <div className="relative flex-shrink-0">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
                 className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors"
@@ -837,6 +845,7 @@ export default function DashboardLayout({
                   </div>
                 </>
               )}
+              </div>
             </div>
           </div>
         </header>

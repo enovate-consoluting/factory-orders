@@ -12,6 +12,7 @@ import {
   FileImage, FileText, X, Loader2, Calendar 
 } from 'lucide-react';
 import { SetShipDatesModal } from '../modals/SetShipDatesModal';
+import { useTranslation } from 'react-i18next';
 
 interface ManufacturerControlPanelProps {
   order: any;
@@ -28,6 +29,7 @@ export function ManufacturerControlPanel({
   onPrintAll,
   onUpdate
 }: ManufacturerControlPanelProps) {
+  const { t } = useTranslation();
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showShipDatesModal, setShowShipDatesModal] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -153,17 +155,17 @@ export function ManufacturerControlPanel({
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-6">
             <div>
-              <span className="text-xs text-gray-500">Order</span>
+              <span className="text-xs text-gray-500">{t('order')}</span>
               <p className="font-bold text-lg text-gray-900">{order.order_number}</p>
             </div>
             <div className="h-10 w-px bg-gray-300" />
             <div>
-              <span className="text-xs text-gray-500">Client</span>
+              <span className="text-xs text-gray-500">{t('client')}</span>
               <p className="font-semibold text-gray-900">{order.client?.name}</p>
             </div>
             <div className="h-10 w-px bg-gray-300" />
             <div>
-              <span className="text-xs text-gray-500">Products</span>
+              <span className="text-xs text-gray-500">{t('products')}</span>
               <p className="font-semibold text-gray-900">{visibleProducts.length}</p>
             </div>
           </div>
@@ -172,18 +174,18 @@ export function ManufacturerControlPanel({
           <div className="flex items-center gap-4">
             {totals.sample > 0 && (
               <div className="text-right">
-                <span className="text-xs text-gray-500">Samples</span>
+                <span className="text-xs text-gray-500">{t('samples')}</span>
                 <p className="font-semibold text-amber-600">${totals.sample.toFixed(2)}</p>
               </div>
             )}
             {totals.shipping > 0 && (
               <div className="text-right">
-                <span className="text-xs text-gray-500">Shipping</span>
+                <span className="text-xs text-gray-500">{t('shippingLabel')}</span>
                 <p className="font-semibold text-blue-600">${totals.shipping.toFixed(2)}</p>
               </div>
             )}
             <div className="text-right">
-              <span className="text-xs text-gray-500">Total</span>
+              <span className="text-xs text-gray-500">{t('total')}</span>
               <p className="font-bold text-xl text-green-600">${totals.total.toFixed(2)}</p>
             </div>
           </div>
@@ -197,7 +199,7 @@ export function ManufacturerControlPanel({
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
           >
             <Printer className="w-4 h-4" />
-            Print All
+            {t('printAll')}
           </button>
 
           {/* Download Samples - only show if there are sample files */}
@@ -208,7 +210,7 @@ export function ManufacturerControlPanel({
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
             >
               <Download className="w-4 h-4" />
-              {downloadingAll ? 'Downloading...' : `Download Samples (${allSampleFiles.length})`}
+              {downloadingAll ? t('downloading') : `${t('downloadSamples')} (${allSampleFiles.length})`}
             </button>
           )}
 
@@ -218,7 +220,7 @@ export function ManufacturerControlPanel({
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
           >
             <Calendar className="w-4 h-4" />
-            Set Ship Dates
+            {t('setShipDates')}
             {productsWithShipDates > 0 && (
               <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
                 {productsWithShipDates}/{visibleProducts.length}
@@ -232,7 +234,7 @@ export function ManufacturerControlPanel({
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium ml-auto"
           >
             <Save className="w-4 h-4" />
-            Save All & Route
+            {t('saveAllAndRoute')}
           </button>
         </div>
       </div>
@@ -251,7 +253,7 @@ export function ManufacturerControlPanel({
           <div className="bg-white rounded-lg p-4 max-w-lg w-full max-h-[70vh] flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-gray-900">
-                Select Sample Files
+                {t('selectSampleFiles')}
               </h3>
               <button
                 onClick={() => setShowDownloadModal(false)}
@@ -275,7 +277,7 @@ export function ManufacturerControlPanel({
                   }}
                   className="w-3.5 h-3.5 text-amber-600 border-gray-300 rounded"
                 />
-                <span>Select All</span>
+                <span>{t('selectAll')}</span>
               </label>
               <span className="text-xs text-gray-500">
                 {selectedFiles.size} of {allSampleFiles.length}
@@ -319,7 +321,7 @@ export function ManufacturerControlPanel({
                 onClick={() => setShowDownloadModal(false)}
                 className="px-3 py-1.5 text-xs border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
               >
-                Cancel
+                {t('cancel')}
               </button>
               <button
                 onClick={downloadSelectedFiles}
@@ -327,7 +329,7 @@ export function ManufacturerControlPanel({
                 className="px-3 py-1.5 text-xs bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1"
               >
                 <Download className="w-3 h-3" />
-                Download {selectedFiles.size}
+                {t('download')} {selectedFiles.size}
               </button>
             </div>
           </div>

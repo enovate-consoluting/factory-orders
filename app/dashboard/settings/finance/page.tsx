@@ -122,41 +122,41 @@ export default function FinanceSettingsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Finance Settings</h1>
-        <p className="text-gray-600">Configure default margin percentages for all new orders</p>
+    <div className="p-3 sm:p-4 md:p-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">Finance Settings</h1>
+        <p className="text-sm sm:text-base text-gray-600">Configure default margin percentages for all new orders</p>
       </div>
 
       <div className="bg-white rounded-lg shadow-md">
-        <div className="p-6 space-y-6">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Product & Sample Fee Margin */}
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Package className="w-5 h-5 text-blue-600" />
-              <label className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 flex-shrink-0" />
+              <label className="text-base sm:text-lg font-semibold text-gray-900">
                 Product & Sample Fee Margin
               </label>
             </div>
-            <div className="ml-7">
-              <p className="text-sm text-gray-600 mb-3">
+            <div className="ml-0 sm:ml-7">
+              <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
                 This margin will be applied to all product prices and sample fees from manufacturers
               </p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <div className="relative w-32">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                <div className="relative w-24 sm:w-32">
                   <input
                     type="number"
                     value={productMargin}
                     onChange={(e) => setProductMargin(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 text-lg font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-3 sm:pl-4 pr-8 sm:pr-10 py-2 sm:py-3 text-base sm:text-lg font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="80"
                     min="0"
                     max="500"
                     step="1"
                   />
-                  <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <Percent className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                 </div>
-                <div className="text-sm text-gray-600">
+                <div className="text-xs sm:text-sm text-gray-600">
                   Example: 80% on $100 = $180 to client
                 </div>
               </div>
@@ -164,32 +164,32 @@ export default function FinanceSettingsPage() {
           </div>
 
           {/* Shipping Margin */}
-          <div className="border-t pt-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Truck className="w-5 h-5 text-green-600" />
-              <label className="text-lg font-semibold text-gray-900">
+          <div className="border-t pt-4 sm:pt-6">
+            <div className="flex items-center gap-2 mb-2 sm:mb-3">
+              <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 flex-shrink-0" />
+              <label className="text-base sm:text-lg font-semibold text-gray-900">
                 Shipping Fee Margin
               </label>
             </div>
-            <div className="ml-7">
-              <p className="text-sm text-gray-600 mb-3">
+            <div className="ml-0 sm:ml-7">
+              <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3">
                 This margin will be applied to air and boat shipping fees from manufacturers
               </p>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <div className="relative w-32">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                <div className="relative w-24 sm:w-32">
                   <input
                     type="number"
                     value={shippingMargin}
                     onChange={(e) => setShippingMargin(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 text-lg font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-3 sm:pl-4 pr-8 sm:pr-10 py-2 sm:py-3 text-base sm:text-lg font-semibold text-gray-900 bg-white border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0"
                     min="0"
                     max="500"
                     step="1"
                   />
-                  <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  <Percent className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-500" />
                 </div>
-                <div className="text-sm text-gray-600">
+                <div className="text-xs sm:text-sm text-gray-600">
                   Example: 0% on $50 = $50 to client (no markup)
                 </div>
               </div>
@@ -197,40 +197,40 @@ export default function FinanceSettingsPage() {
           </div>
 
           {/* Save Button and Messages */}
-          <div className="border-t pt-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center sm:justify-between">
-              <div className="flex gap-3">
+          <div className="border-t pt-4 sm:pt-6">
+            <div className="flex flex-col gap-3 sm:gap-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={handleSaveMargins}
                   disabled={saving}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center gap-2"
+                  className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   {saving ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    <div className="animate-spin rounded-full w-3 h-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
                   ) : (
-                    <Save className="w-4 h-4" />
+                    <Save className="w-3 h-3 sm:w-4 sm:h-4" />
                   )}
                   Save Settings
                 </button>
-                
+
                 <Link
                   href="/dashboard/settings/finance/orders"
-                  className="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 flex items-center gap-2"
+                  className="bg-gray-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-gray-700 flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   View Order Margins
                 </Link>
               </div>
 
               {message && (
-                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg ${
-                  message.includes('success') 
-                    ? 'bg-green-100 text-green-700' 
+                <div className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm ${
+                  message.includes('success')
+                    ? 'bg-green-100 text-green-700'
                     : 'bg-red-100 text-red-700'
                 }`}>
                   {message.includes('success') ? (
-                    <CheckCircle className="w-4 h-4" />
+                    <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                   ) : (
-                    <AlertCircle className="w-4 h-4" />
+                    <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                   )}
                   {message}
                 </div>
@@ -239,12 +239,12 @@ export default function FinanceSettingsPage() {
           </div>
 
           {/* Info Box */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
             <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-blue-900">
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-xs sm:text-sm text-blue-900">
                 <p className="font-semibold mb-1">How it works:</p>
-                <ul className="list-disc ml-5 space-y-1">
+                <ul className="list-disc ml-4 sm:ml-5 space-y-1">
                   <li>These default margins apply to all NEW orders automatically</li>
                   <li>Existing orders keep their current margins unless manually updated</li>
                   <li>You can override margins for specific orders or products in the Order Margins page</li>
