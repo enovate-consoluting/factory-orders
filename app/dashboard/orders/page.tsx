@@ -890,14 +890,16 @@ export default function OrdersPage() {
             {userRole === 'manufacturer' ? t('yourOrders') : t('orders')}
           </h1>
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-            {/* <button
-              onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
-              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-lg text-sm sm:text-base"
-              title="Switch Language / 切换语言"
+            {/* Language Switcher - Only on Orders pages */}
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
+              style={{ minWidth: 90 }}
             >
-              <Globe className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-              <span className="font-medium whitespace-nowrap">{t('switchToChinese')}</span>
-            </button> */}
+              <option value="en">🇺🇸 EN</option>
+              <option value="zh">🇨🇳 中文</option>
+            </select>
 
             {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
               <Link

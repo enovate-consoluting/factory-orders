@@ -715,19 +715,8 @@ export default function DashboardLayout({
               </h1>
             </div>
 
-            {/* Top right controls: Language Switcher + Notification Bell */}
+            {/* Top right controls: Notification Bell only */}
             <div className="flex items-center gap-4">
-              {/* Language Switcher */}
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
-                style={{ minWidth: 90 }}
-              >
-                <option value="en">🇺🇸 EN</option>
-                <option value="zh">🇨🇳 中文</option>
-              </select>
-
               {/* Notification Bell - right side */}
               <div className="relative flex-shrink-0">
               <button

@@ -99,7 +99,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   // Translation hooks
   const { t, i18n } = useTranslation();
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const { translate, translateBatch } = useDynamicTranslation();
 
   const { order, loading, error, refetch } = useOrderData(id);
@@ -856,7 +856,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="bg-white border-b border-gray-200 shadow-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
+              <div className="flex-1">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
                     <Package className="w-6 h-6 text-blue-600" />
@@ -872,14 +872,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
               </div>
               
-              {totalAmount > 0 && (
-                <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
-                  <p className="text-sm text-gray-500">{t('orderTotal')}</p>
-                  <p className="text-3xl font-bold text-green-700">
-                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                {/* Language Switcher */}
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
+                  style={{ minWidth: 90 }}
+                >
+                  <option value="en">🇺🇸 EN</option>
+                  <option value="zh">🇨🇳 中文</option>
+                </select>
+
+                {totalAmount > 0 && (
+                  <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
+                    <p className="text-sm text-gray-500">{t('orderTotal')}</p>
+                    <p className="text-3xl font-bold text-green-700">
+                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -958,6 +971,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         onStatusChange={handleStatusChange}
         onTogglePaid={handleTogglePaid}
         allProductsPaid={allProductsPaid}
+        language={language}
+        setLanguage={setLanguage}
       />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">

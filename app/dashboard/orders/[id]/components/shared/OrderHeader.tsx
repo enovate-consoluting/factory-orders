@@ -23,6 +23,8 @@ interface OrderHeaderProps {
   onStatusChange?: (status: string) => void;
   onTogglePaid?: (isPaid: boolean) => void;
   allProductsPaid?: boolean;
+  language?: 'en' | 'zh';
+  setLanguage?: (lang: 'en' | 'zh') => void;
 }
 
 export function OrderHeader({
@@ -31,7 +33,9 @@ export function OrderHeader({
   onEditDraft,
   onStatusChange,
   onTogglePaid,
-  allProductsPaid = false
+  allProductsPaid = false,
+  language = 'en',
+  setLanguage
 }: OrderHeaderProps) {
   const { t } = useTranslation();
   const { translate } = useDynamicTranslation();
@@ -142,6 +146,19 @@ export function OrderHeader({
 
             {/* Right side - Total and actions - HIDE TOTAL FOR MANUFACTURERS */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+              {/* Language Switcher - On Order Detail pages */}
+              {setLanguage && (
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer self-center"
+                  style={{ minWidth: 90 }}
+                >
+                  <option value="en">🇺🇸 EN</option>
+                  <option value="zh">🇨🇳 中文</option>
+                </select>
+              )}
+
               {/* Order Total - ONLY SHOW FOR NON-MANUFACTURERS */}
               {!isManufacturer && (
                 <div className="flex flex-col gap-2">
