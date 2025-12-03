@@ -470,7 +470,34 @@
   "samples": "样品",
   "order": "订单",
   "client": "客户",
-  "download": "下载"
+  "download": "下载",
+  
+  "productPriceYourCost": "产品价格（您的成本）",
+  "enterPrice": "输入价格",
+  "shippingOptionsAndPricing": "运输选项和定价",
+  "applyFeeToMultipleProducts": "将费用应用于多个产品",
+  "selectWhichProductsShareShippingFee": "选择共享此运费的产品：",
+  "shippingWillBeLinkedWith": "运费将与 {count} 个产品关联",
+  "clientSelected": "客户已选择：",
+  "airShipping": "空运",
+  "boatShipping": "海运",
+  "price": "价格",
+  "airShippingPriceYourCost": "空运价格（您的成本）",
+  "enterAirPrice": "输入空运价格",
+  "boatShippingPriceYourCost": "海运价格（您的成本）",
+  "enterBoatPrice": "输入海运价格",
+  "manufacturingCostSummary": "制造成本摘要",
+  "product": "产品",
+  "units": "单位",
+  "shippingNote": "运输备注：",
+  "currentNotes": "当前备注：",
+  "air": "空运",
+  "boat": "海运",
+  "sharedWith": "共享",
+  "totalManufacturingCost": "总制造成本",
+  "noDescription": "无描述"
 }
+
+
 
 
