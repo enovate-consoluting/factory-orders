@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import i18n from '../app/i18n';
 
 type Language = 'en' | 'zh';
 
@@ -14,7 +14,6 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const { i18n } = useTranslation();
   const [language, setLanguageState] = useState<Language>('en');
   const [isTranslating, setIsTranslating] = useState(false);
 
@@ -25,7 +24,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       setLanguageState(savedLang);
       i18n.changeLanguage(savedLang);
     }
-  }, [i18n]);
+  }, []);
 
   const setLanguage = (lang: Language) => {
     setIsTranslating(true);
