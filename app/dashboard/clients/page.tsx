@@ -569,7 +569,7 @@ export default function ClientsPage() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4 sm:mb-6">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
@@ -736,14 +736,14 @@ export default function ClientsPage() {
                     setEditingClient(null)
                     setFormError(null)
                   }}
-                  className="px-4 py-2 text-sm sm:text-base text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  className="px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                   disabled={creating}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 text-sm sm:text-base bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
                   disabled={creating}
                 >
                   {creating ? 'Creating...' : (editingClient ? 'Update' : 'Create')} Client
@@ -756,7 +756,7 @@ export default function ClientsPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && clientToDelete && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl">
             <div className="flex items-start mb-4 sm:mb-6">
               <div className="flex-shrink-0">
@@ -782,14 +782,14 @@ export default function ClientsPage() {
                   setShowDeleteModal(false)
                   setClientToDelete(null)
                 }}
-                className="px-4 py-2 text-sm sm:text-base text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-sm sm:text-base text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
                 disabled={deleting}
               >
                 Cancel
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 text-sm sm:text-base bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm sm:text-base bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors"
                 disabled={deleting}
               >
                 {deleting ? 'Deleting...' : 'Delete Client'}
@@ -801,7 +801,7 @@ export default function ClientsPage() {
 
       {/* Success Modal with Credentials */}
       {showSuccessModal && (
-        <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl">
             <div className="flex items-center mb-4 sm:mb-6">
               <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 mr-2 sm:mr-3 flex-shrink-0" />
@@ -824,18 +824,18 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   copyToClipboard(`Email: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`)
                 }}
-                className="flex-1 px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                className="px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
               >
                 Copy Credentials
               </button>
               <button
                 onClick={() => setShowSuccessModal(false)}
-                className="flex-1 px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-4 py-2 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Done
               </button>
