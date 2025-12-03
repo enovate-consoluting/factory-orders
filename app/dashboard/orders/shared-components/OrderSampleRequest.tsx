@@ -1,7 +1,8 @@
 /**
  * Order Sample Request Component - FIXED VERSION
  * Order-level sample request with independent routing workflow
- * FIX: Now displays existing sample_notes from database
+ * FIX: Route notes to client now go to client_admin_notes table
+ * FIX: Displays existing sample_notes from database
  * FIX: Shows saved notes above the "Add Note" input
  * Last Modified: November 30, 2025
  */
@@ -13,6 +14,7 @@ import {
   Factory, Ban, MessageSquare
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
+import { supabase } from '@/lib/supabase';
 
 // Data to pass to save function
 interface SampleSaveData {
@@ -202,6 +204,31 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     setShowRouteModal(true);
   };
 
+  // Helper function to save note to client_admin_notes table
+  const saveNoteToClientAdminNotes = async (note: string) => {
+    if (!note.trim() || !orderId) return;
+    
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const role = user.role === 'super_admin' ? 'super_admin' : 
+                   user.role === 'manufacturer' ? 'admin' : // Manufacturer notes go as admin for now
+                   'admin';
+      
+      await supabase
+        .from('client_admin_notes')
+        .insert({
+          order_id: orderId,
+          note: note.trim(),
+          created_by: user.id,
+          created_by_name: user.name || user.email || 'Admin',
+          created_by_role: role,
+          created_at: new Date().toISOString()
+        });
+    } catch (error) {
+      console.error('Error saving note to client_admin_notes:', error);
+    }
+  };
+
   const handleRoute = async () => {
     if (!routeDestination) return;
     
@@ -216,6 +243,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       });
       setLocalNotes('');
       setLocalStatus(finalStatus);
+    }
+    
+    // If routing to CLIENT and there's a note, save it to client_admin_notes
+    if (routeDestination === 'client' && routeNotes.trim()) {
+      await saveNoteToClientAdminNotes(routeNotes);
     }
     
     // Then route
@@ -640,6 +672,9 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Add a note (optional)
+                {routeDestination === 'client' && (
+                  <span className="text-blue-600 font-normal ml-1">- Will appear in Client Notes</span>
+                )}
               </label>
               <textarea
                 value={routeNotes}
@@ -648,7 +683,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   routeDestination === 'manufacturer' 
                     ? "Instructions for manufacturer..." 
                     : routeDestination === 'client'
-                    ? "Message for client..."
+                    ? "Message for client (they will see this in their Notes)..."
                     : "Notes for admin..."
                 }
                 rows={3}

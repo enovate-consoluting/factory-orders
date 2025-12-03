@@ -579,7 +579,7 @@ export default function DashboardLayout({
     }
   ];
 
-  // CLIENT MENU - Simple navigation
+  // CLIENT MENU - FIXED: Invoices now goes to /dashboard/invoices/client
   const clientMenuItems = [
     {
       href: '/dashboard',
@@ -595,7 +595,7 @@ export default function DashboardLayout({
       notificationKey: 'orders',
     },
     {
-      href: '/dashboard/invoices',
+      href: '/dashboard/invoices/client',  // ← FIXED: Was /dashboard/invoices
       label: 'Invoices',
       icon: FileText,
       roles: ['client'],
@@ -630,6 +630,7 @@ export default function DashboardLayout({
     if (pathname.startsWith('/dashboard/orders/create')) return 'Create Order';
     if (pathname.startsWith('/dashboard/orders/edit')) return 'Edit Order';
     if (pathname === '/dashboard/invoices') return 'Invoices';
+    if (pathname === '/dashboard/invoices/client') return 'My Invoices';  // ← ADDED
     if (pathname.startsWith('/dashboard/invoices/create')) return 'Create Invoice';
     if (pathname === '/dashboard/products') return 'Products';
     if (pathname === '/dashboard/variants') return 'Variants Configuration';
@@ -642,7 +643,7 @@ export default function DashboardLayout({
     if (pathname === '/dashboard/settings/finance/orders') return 'Order Margins';
     if (pathname === '/dashboard/settings/manufacturer') return 'Manufacturer Settings';
     if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return 'Order Details';
-    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create')) return 'Invoice Details';
+    if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create') && !pathname.includes('client')) return 'Invoice Details';
     return 'Dashboard';
   };
 

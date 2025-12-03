@@ -1,5 +1,12 @@
 'use client';
 
+/**
+ * Create Invoice Page - /dashboard/invoices/create
+ * Creates invoices from orders, generates PDF, saves pay_link and pdf_url
+ * UPDATED: Now saves pay_link and pdf_url to database
+ * Last Modified: December 1, 2025
+ */
+
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
@@ -11,7 +18,6 @@ import {
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 import SendInvoiceModal from '../SendInvoiceModal';
-// Note: You'll need to install qrcode package: npm install qrcode @types/qrcode
 
 interface InvoiceData {
   order: any;
@@ -40,14 +46,12 @@ const QRCodeModal = ({
   
   useEffect(() => {
     if (isOpen && invoiceUrl) {
-      // Generate QR code when modal opens
       generateQRCode();
     }
   }, [isOpen, invoiceUrl]);
   
   const generateQRCode = async () => {
     try {
-      // Dynamically import QRCode to avoid build issues
       const QRCode = (await import('qrcode')).default;
       const dataUrl = await QRCode.toDataURL(invoiceUrl, {
         width: 300,
@@ -144,8 +148,6 @@ export default function CreateInvoicePage() {
   const [invoiceDownloadUrl, setInvoiceDownloadUrl] = useState('');
   const [generatedInvoiceNumber, setGeneratedInvoiceNumber] = useState('');
   const [invoiceReserved, setInvoiceReserved] = useState(false);
-  
-  // NEW: Track if we should navigate after success
   const [pendingNavigation, setPendingNavigation] = useState(false);
   
   useEffect(() => {
@@ -154,10 +156,8 @@ export default function CreateInvoicePage() {
     }
   }, [orderId]);
 
-  // Helper function to get next invoice number for a client
   const getNextInvoiceNumber = async (clientId: string, clientName: string) => {
     try {
-      // Get or create invoice sequence for this client
       let { data: sequence, error } = await supabase
         .from('invoice_sequences')
         .select('*')
@@ -165,7 +165,6 @@ export default function CreateInvoicePage() {
         .single();
       
       if (error || !sequence) {
-        // Create new sequence for this client
         const clientPrefix = clientName.substring(0, 3).toUpperCase();
         const { data: newSequence, error: createError } = await supabase
           .from('invoice_sequences')
@@ -179,17 +178,14 @@ export default function CreateInvoicePage() {
         
         if (createError) {
           console.error('Error creating invoice sequence:', createError);
-          // Fallback to simple numbering
           return `INV-${String(Date.now()).slice(-5)}`;
         }
         
         sequence = newSequence;
       }
       
-      // Increment the sequence
       const nextNumber = (sequence.last_number || 0) + 1;
       
-      // Update the sequence
       await supabase
         .from('invoice_sequences')
         .update({ 
@@ -198,13 +194,11 @@ export default function CreateInvoicePage() {
         })
         .eq('client_id', clientId);
       
-      // Format: CLIENT-00001 (5 digits)
       const invoiceNumber = `${sequence.prefix}-${String(nextNumber).padStart(5, '0')}`;
       
       return invoiceNumber;
     } catch (error) {
       console.error('Error generating invoice number:', error);
-      // Fallback
       return `INV-${String(Date.now()).slice(-5)}`;
     }
   };
@@ -220,6 +214,8 @@ export default function CreateInvoicePage() {
             *,
             product:products(*),
             routed_to,
+            invoiced,
+            invoice_id,
             order_items (
               quantity
             )
@@ -230,33 +226,31 @@ export default function CreateInvoicePage() {
 
       if (error) throw error;
 
-      // UPDATED LOGIC: Include products that are either:
-      // 1. Approved for production/in production/completed OR
-      // 2. Routed to admin with fees (sample fee or product price)
-      const invoiceableProducts = orderData.order_products.filter((p: any) => {
-        // Check if product has fees and is routed to admin
-        // Use CLIENT prices for checking if invoiceable
+      // Check if we should only show uninvoiced products
+      const uninvoicedOnly = searchParams.get('uninvoiced_only') === 'true';
+      
+      let invoiceableProducts = orderData.order_products.filter((p: any) => {
         const hasFeesAndRoutedToAdmin = 
           p.routed_to === 'admin' && 
           (parseFloat(p.client_product_price || p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
         
-        // Include if it meets either condition
         return hasFeesAndRoutedToAdmin ||
                p.product_status === 'approved_for_production' || 
                p.product_status === 'in_production' ||
                p.product_status === 'completed';
       });
+      
+      // If uninvoiced_only, filter out products that are already invoiced
+      if (uninvoicedOnly) {
+        invoiceableProducts = invoiceableProducts.filter((p: any) => !p.invoiced);
+      }
 
-      // Calculate subtotal for all invoiceable products using CLIENT PRICES
       let subtotal = 0;
       invoiceableProducts.forEach((product: any) => {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        // Include sample fee (this stays the same - it's what client pays)
         subtotal += (product.sample_fee || 0);
-        // Include production cost using CLIENT PRICE
         const clientPrice = product.client_product_price || product.product_price || 0;
         subtotal += (clientPrice * totalQty);
-        // Include CLIENT shipping prices
         if (product.selected_shipping_method === 'air') {
           const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
           subtotal += clientAirPrice;
@@ -266,15 +260,13 @@ export default function CreateInvoicePage() {
         }
       });
 
-      // Generate invoice number with client prefix
       const invoiceNumber = await getNextInvoiceNumber(
         orderData.client.id, 
         orderData.client.name
       );
       setGeneratedInvoiceNumber(invoiceNumber);
-      setInvoiceReserved(true); // Mark that we've reserved this number
+      setInvoiceReserved(true);
       
-      // Set default due date to 30 days from now
       const defaultDueDate = new Date();
       defaultDueDate.setDate(defaultDueDate.getDate() + 30);
       setDueDate(defaultDueDate.toISOString().split('T')[0]);
@@ -290,10 +282,7 @@ export default function CreateInvoicePage() {
         dueDate: defaultDueDate.toISOString().split('T')[0]
       });
 
-      // Pre-select all invoiceable products
       setSelectedProducts(invoiceableProducts.map((p: any) => p.id));
-      
-      // Set bill-to information
       setBillToName(orderData.client.name || '');
       setBillToEmail(orderData.client.email || '');
     } catch (error) {
@@ -313,14 +302,10 @@ export default function CreateInvoicePage() {
         const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
         let productSum = 0;
         
-        // Add sample fee (same for client)
         productSum += (product.sample_fee || 0);
-        
-        // Add production cost using CLIENT PRICE
         const clientPrice = product.client_product_price || product.product_price || 0;
         productSum += (clientPrice * totalQty);
         
-        // Add CLIENT shipping prices
         if (product.selected_shipping_method === 'air') {
           const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
           productSum += clientAirPrice;
@@ -337,55 +322,19 @@ export default function CreateInvoicePage() {
     return productTotal + customTotal;
   };
 
-  const handleShowQRCode = () => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
-      return;
-    }
-
-    // Generate a temporary URL that will serve the invoice
-    // In production, this would be your actual invoice URL
-    const baseUrl = window.location.origin;
-    const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${invoiceData?.invoiceNumber}&temp=true`;
-    
-    setInvoiceDownloadUrl(invoiceUrl);
-    setShowQRCode(true);
-  };
-
-  const handleDownloadInvoice = () => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
-      return;
-    }
-
-    // Create a hidden iframe for printing
-    const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'absolute';
-    printFrame.style.top = '-10000px';
-    printFrame.style.left = '-10000px';
-    document.body.appendChild(printFrame);
-
+  // Generate PDF HTML content
+  const generateInvoiceHTML = () => {
     const subtotal = calculateSelectedTotal();
     const taxAmount = applyTax ? (subtotal * taxRate) / 100 : 0;
     const total = subtotal + taxAmount;
 
-    // Build the invoice HTML for printing
-    const invoiceHTML = `
+    return `
       <!DOCTYPE html>
       <html>
       <head>
         <title>Invoice ${invoiceData?.invoiceNumber}</title>
         <style>
-          @page {
-            size: letter;
-            margin: 0.5in;
-          }
-          @media print {
-            body { 
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-          }
+          @page { size: letter; margin: 0.5in; }
           body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             color: #111827;
@@ -400,129 +349,26 @@ export default function CreateInvoicePage() {
             padding-bottom: 20px;
             border-bottom: 2px solid #e5e7eb;
           }
-          .company-info h1 {
-            margin: 0;
-            font-size: ${companyNameFontSize}px;
-            color: #111827;
-          }
-          .company-tagline {
-            color: #6b7280;
-            margin-top: 4px;
-          }
-          .invoice-title {
-            text-align: right;
-          }
-          .invoice-title h2 {
-            margin: 0;
-            font-size: 32px;
-            color: #111827;
-          }
-          .invoice-number {
-            color: #6b7280;
-            font-size: 14px;
-            margin-top: 4px;
-          }
-          .invoice-details {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 40px;
-          }
-          .bill-to h3 {
-            margin: 0 0 10px 0;
-            font-size: 14px;
-            text-transform: uppercase;
-            color: #6b7280;
-          }
-          .bill-to-content {
-            line-height: 1.5;
-          }
-          .invoice-meta {
-            text-align: right;
-          }
-          .invoice-meta-item {
-            margin-bottom: 8px;
-          }
-          .invoice-meta-label {
-            color: #6b7280;
-            font-weight: 500;
-          }
-          .invoice-meta-value {
-            color: #111827;
-            font-weight: 600;
-            margin-left: 8px;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 40px;
-          }
-          th {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 2px solid #e5e7eb;
-            font-weight: 600;
-            color: #374151;
-            font-size: 12px;
-            text-transform: uppercase;
-          }
-          td {
-            padding: 12px;
-            border-bottom: 1px solid #f3f4f6;
-            color: #111827;
-          }
-          .text-right {
-            text-align: right;
-          }
-          .totals {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 40px;
-          }
-          .totals-content {
-            width: 300px;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-          }
-          .total-row.grand-total {
-            border-top: 2px solid #e5e7eb;
-            padding-top: 12px;
-            margin-top: 8px;
-            font-size: 18px;
-            font-weight: bold;
-          }
-          .notes-section {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-          }
-          .notes-grid {
-            display: flex;
-            gap: 40px;
-          }
-          .notes-column {
-            flex: 1;
-          }
-          .notes-title {
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 8px;
-            font-size: 14px;
-          }
-          .notes-content {
-            color: #111827;
-            line-height: 1.5;
-          }
-          .footer {
-            margin-top: 60px;
-            padding-top: 20px;
-            border-top: 1px solid #e5e7eb;
-            text-align: center;
-            color: #6b7280;
-            font-size: 12px;
-          }
+          .company-info h1 { margin: 0; font-size: ${companyNameFontSize}px; color: #111827; }
+          .company-tagline { color: #6b7280; margin-top: 4px; }
+          .invoice-title { text-align: right; }
+          .invoice-title h2 { margin: 0; font-size: 32px; color: #111827; }
+          .invoice-number { color: #6b7280; font-size: 14px; margin-top: 4px; }
+          .invoice-details { display: flex; justify-content: space-between; margin-bottom: 40px; }
+          .bill-to h3 { margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; color: #6b7280; }
+          .invoice-meta { text-align: right; }
+          .invoice-meta-item { margin-bottom: 8px; }
+          .invoice-meta-label { color: #6b7280; font-weight: 500; }
+          .invoice-meta-value { color: #111827; font-weight: 600; margin-left: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 40px; }
+          th { text-align: left; padding: 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; color: #374151; font-size: 12px; text-transform: uppercase; }
+          td { padding: 12px; border-bottom: 1px solid #f3f4f6; color: #111827; }
+          .text-right { text-align: right; }
+          .totals { display: flex; justify-content: flex-end; margin-bottom: 40px; }
+          .totals-content { width: 300px; }
+          .total-row { display: flex; justify-content: space-between; padding: 8px 0; }
+          .total-row.grand-total { border-top: 2px solid #e5e7eb; padding-top: 12px; margin-top: 8px; font-size: 18px; font-weight: bold; }
+          .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -541,7 +387,7 @@ export default function CreateInvoicePage() {
         <div class="invoice-details">
           <div class="bill-to">
             <h3>Bill To</h3>
-            <div class="bill-to-content">
+            <div>
               <strong>${billToName}</strong><br>
               ${billToEmail}<br>
               ${billToAddress ? `${billToAddress}<br>` : ''}
@@ -581,7 +427,6 @@ export default function CreateInvoicePage() {
                 const clientUnitPrice = product.client_product_price || 0;
                 let rows = [];
                 
-                // Sample fee row
                 if (product.sample_fee > 0) {
                   rows.push(`
                     <tr>
@@ -593,7 +438,6 @@ export default function CreateInvoicePage() {
                   `);
                 }
                 
-                // Production row
                 if (clientUnitPrice > 0 && totalQty > 0) {
                   rows.push(`
                     <tr>
@@ -605,7 +449,6 @@ export default function CreateInvoicePage() {
                   `);
                 }
                 
-                // Shipping row
                 if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
                   rows.push(`
                     <tr>
@@ -660,21 +503,9 @@ export default function CreateInvoicePage() {
         </div>
 
         ${(notes || terms) ? `
-          <div class="notes-section">
-            <div class="notes-grid">
-              ${notes ? `
-                <div class="notes-column">
-                  <div class="notes-title">Notes</div>
-                  <div class="notes-content">${notes.replace(/\n/g, '<br>')}</div>
-                </div>
-              ` : ''}
-              ${terms ? `
-                <div class="notes-column">
-                  <div class="notes-title">Payment Terms</div>
-                  <div class="notes-content">${terms}</div>
-                </div>
-              ` : ''}
-            </div>
+          <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            ${notes ? `<div style="margin-bottom: 20px;"><strong>Notes:</strong><br>${notes.replace(/\n/g, '<br>')}</div>` : ''}
+            ${terms ? `<div><strong>Payment Terms:</strong><br>${terms}</div>` : ''}
           </div>
         ` : ''}
 
@@ -684,21 +515,78 @@ export default function CreateInvoicePage() {
       </body>
       </html>
     `;
+  };
 
-    // Write to iframe and print
+  // Generate and upload PDF to Supabase Storage
+  const generateAndUploadPDF = async (invoiceId: string): Promise<string | null> => {
+    try {
+      // Generate PDF via API endpoint
+      const response = await fetch('/api/invoices/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId,
+          invoiceNumber: generatedInvoiceNumber,
+          html: generateInvoiceHTML()
+        })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to generate PDF');
+        return null;
+      }
+
+      const result = await response.json();
+      
+      if (result.success && result.pdfUrl) {
+        return result.pdfUrl;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      return null;
+    }
+  };
+
+  const handleShowQRCode = () => {
+    if (selectedProducts.length === 0 && customItems.length === 0) {
+      notify.error('Please select at least one product or add a custom item');
+      return;
+    }
+
+    const baseUrl = window.location.origin;
+    const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${invoiceData?.invoiceNumber}&temp=true`;
+    
+    setInvoiceDownloadUrl(invoiceUrl);
+    setShowQRCode(true);
+  };
+
+  const handleDownloadInvoice = () => {
+    if (selectedProducts.length === 0 && customItems.length === 0) {
+      notify.error('Please select at least one product or add a custom item');
+      return;
+    }
+
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'absolute';
+    printFrame.style.top = '-10000px';
+    printFrame.style.left = '-10000px';
+    document.body.appendChild(printFrame);
+
+    const invoiceHTML = generateInvoiceHTML();
+
     const frameDoc = printFrame.contentWindow?.document;
     if (frameDoc) {
       frameDoc.open();
       frameDoc.write(invoiceHTML);
       frameDoc.close();
 
-      // Wait for content to load then print
       printFrame.onload = () => {
         if (printFrame.contentWindow) {
           printFrame.contentWindow.focus();
           printFrame.contentWindow.print();
           
-          // Remove iframe after printing
           setTimeout(() => {
             document.body.removeChild(printFrame);
           }, 1000);
@@ -708,13 +596,10 @@ export default function CreateInvoicePage() {
   };
 
   const handleCancel = () => {
-    // When user cancels, the invoice number is already reserved in the sequence
-    // We keep it reserved to maintain sequential numbering
-    // This prevents gaps and ensures consistency
     router.back();
   };
 
-  // FIXED handleCreateInvoice function for your database structure
+  // UPDATED: handleCreateInvoice now saves pay_link and generates PDF
   const handleCreateInvoice = async (status: 'draft' | 'sent', sendData?: any) => {
     if (selectedProducts.length === 0 && customItems.length === 0) {
       notify.error('Please select at least one product or add a custom item');
@@ -730,7 +615,7 @@ export default function CreateInvoicePage() {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const [prefix, seqNum] = generatedInvoiceNumber.split('-');
       
-      // Create invoice in database
+      // Create invoice in database - NOW WITH pay_link and sent_at
       const { data: invoice, error } = await supabase
         .from('invoices')
         .insert({
@@ -745,7 +630,11 @@ export default function CreateInvoicePage() {
           due_date: dueDate,
           notes: notes || null,
           payment_terms: terms || null,
-          created_by: user.id || null
+          created_by: user.id || null,
+          // Only save pay_link if "Include Payment Link" was checked in modal
+          pay_link: (sendData?.includePaymentLink && sendData?.paymentUrl) ? sendData.paymentUrl : null,
+          sent_at: status === 'sent' ? new Date().toISOString() : null,
+          sent_to: status === 'sent' ? billToEmail : null
         })
         .select()
         .single();
@@ -758,10 +647,23 @@ export default function CreateInvoicePage() {
 
       const invoiceId = invoice.id;
 
-      // Create invoice items - WITHOUT quantity field since it doesn't exist in your table
+      // Generate and upload PDF if sending
+      let pdfUrl: string | null = null;
+      if (status === 'sent') {
+        pdfUrl = await generateAndUploadPDF(invoiceId);
+        
+        // Update invoice with PDF URL if generated
+        if (pdfUrl) {
+          await supabase
+            .from('invoices')
+            .update({ pdf_url: pdfUrl })
+            .eq('id', invoiceId);
+        }
+      }
+
+      // Create invoice items
       const invoiceItems = [];
       
-      // Add selected products as invoice items
       for (const productId of selectedProducts) {
         const product = invoiceData?.products.find(p => p.id === productId);
         if (!product) continue;
@@ -769,7 +671,6 @@ export default function CreateInvoicePage() {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
         
-        // Add sample fee item if exists
         if (product.sample_fee > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -779,17 +680,15 @@ export default function CreateInvoicePage() {
           });
         }
         
-        // Add production item if exists (amount = price * quantity combined)
         if (clientPrice > 0 && totalQty > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
             description: `${product.description || product.product?.title || 'Product'} - Production (Qty: ${totalQty})`,
-            amount: clientPrice * totalQty  // Total amount, not unit price
+            amount: clientPrice * totalQty
           });
         }
         
-        // Add shipping item if exists
         if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -807,19 +706,17 @@ export default function CreateInvoicePage() {
         }
       }
       
-      // Add custom items (no order_product_id for these)
       for (const item of customItems) {
         if (item.description && item.price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
-            order_product_id: null,  // Custom items don't have a product ID
-            description: `${item.description} (Qty: ${item.quantity})`,  // Include quantity in description
-            amount: item.price * item.quantity  // Total amount
+            order_product_id: null,
+            description: `${item.description} (Qty: ${item.quantity})`,
+            amount: item.price * item.quantity
           });
         }
       }
       
-      // Insert all invoice items
       if (invoiceItems.length > 0) {
         const { error: itemsError } = await supabase
           .from('invoice_items')
@@ -827,7 +724,23 @@ export default function CreateInvoicePage() {
         
         if (itemsError) {
           console.error('Error creating invoice items:', itemsError);
-          // Don't fail the whole invoice if items fail
+        }
+      }
+
+      // Mark products as invoiced when invoice is SENT (not draft)
+      if (status === 'sent' && selectedProducts.length > 0) {
+        const { error: markError } = await supabase
+          .from('order_products')
+          .update({
+            invoiced: true,
+            invoiced_at: new Date().toISOString(),
+            invoice_id: invoiceId
+          })
+          .in('id', selectedProducts);
+        
+        if (markError) {
+          console.error('Error marking products as invoiced:', markError);
+          // Don't fail the whole operation, invoice is already created
         }
       }
 
@@ -841,6 +754,7 @@ export default function CreateInvoicePage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               invoiceId: invoiceId,
+              pdfUrl: pdfUrl,  // Include PDF URL in email
               ...sendData
             })
           });
@@ -861,17 +775,14 @@ export default function CreateInvoicePage() {
         }
       }
       
-      // For draft saves, show notification here
       if (status === 'draft') {
         notify.success(`Invoice ${generatedInvoiceNumber} saved as draft`);
       }
       
-      // Navigate back to invoices list
       router.push('/dashboard/invoices');
       
     } catch (error) {
       console.error('Error creating invoice:', error);
-      // Error already notified above
     } finally {
       setSaving(false);
     }
@@ -885,11 +796,8 @@ export default function CreateInvoicePage() {
     setShowEmailPreview(true);
   };
 
-  // NEW: Handler for successful send from modal
   const handleSendSuccess = (message: string) => {
-    // Show the success notification
     notify.success(message);
-    // Navigation will happen in handleCreateInvoice
   };
 
   if (loading) {
@@ -912,7 +820,7 @@ export default function CreateInvoicePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header - SMALLER BUTTONS & MOBILE RESPONSIVE */}
+      {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -971,7 +879,7 @@ export default function CreateInvoicePage() {
         </div>
       </div>
 
-      {/* Invoice Preview - MOBILE RESPONSIVE */}
+      {/* Invoice Preview */}
       <div className="max-w-4xl mx-auto p-3 sm:p-6">
         <div className="bg-white rounded-lg shadow-lg">
           {/* Invoice Header */}
@@ -1036,14 +944,12 @@ export default function CreateInvoicePage() {
                         <button
                           onClick={() => setCompanyNameFontSize(Math.min(companyNameFontSize + 2, 36))}
                           className="text-xs text-gray-600 hover:text-gray-900"
-                          title="Increase font size"
                         >
                           ▲
                         </button>
                         <button
                           onClick={() => setCompanyNameFontSize(Math.max(companyNameFontSize - 2, 14))}
                           className="text-xs text-gray-600 hover:text-gray-900"
-                          title="Decrease font size"
                         >
                           ▼
                         </button>
@@ -1088,7 +994,7 @@ export default function CreateInvoicePage() {
             </div>
           </div>
 
-          {/* Invoice Details - RESPONSIVE GRID */}
+          {/* Invoice Details */}
           <div className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 sm:grid-cols-2 gap-6">
             {/* Bill To */}
             <div>
@@ -1142,7 +1048,7 @@ export default function CreateInvoicePage() {
               )}
             </div>
 
-            {/* Invoice Info - FIXED DATE ALIGNMENT */}
+            {/* Invoice Info */}
             <div className="text-left sm:text-right">
               <div className="space-y-2">
                 <div className="flex justify-between sm:justify-end items-center gap-2">
@@ -1166,7 +1072,7 @@ export default function CreateInvoicePage() {
             </div>
           </div>
 
-          {/* Products Table - REMOVED STATUS COLUMN, ADDED SHIPPING SUBTITLE */}
+          {/* Products Table */}
           <div className="px-4 sm:px-6 lg:px-8">
             <h4 className="font-semibold text-gray-900 mb-3">Products</h4>
             
@@ -1187,15 +1093,10 @@ export default function CreateInvoicePage() {
                 <tbody>
                   {invoiceData.products.map((product) => {
                     const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-                    
-                    // ALWAYS USE CLIENT PRICES FOR INVOICES
                     const clientUnitPrice = product.client_product_price || 0;
-                    
-                    // Calculate product total using CLIENT prices
                     let productTotal = (product.sample_fee || 0) + (clientUnitPrice * totalQty);
                     let shippingAmount = 0;
                     
-                    // Use CLIENT shipping prices only
                     if (product.selected_shipping_method === 'air') {
                       shippingAmount = product.client_shipping_air_price || 0;
                     } else if (product.selected_shipping_method === 'boat') {
@@ -1203,7 +1104,6 @@ export default function CreateInvoicePage() {
                     }
                     
                     productTotal += shippingAmount;
-                    
                     const isSelected = selectedProducts.includes(product.id);
                     
                     return (
@@ -1226,36 +1126,23 @@ export default function CreateInvoicePage() {
                           <div>
                             <p className="font-medium text-gray-900">{product.description || product.product?.title || 'Product'}</p>
                             <p className="text-sm text-gray-600">{product.product_order_number}</p>
-                            {/* Show shipping info as subtitle */}
                             {product.selected_shipping_method && shippingAmount > 0 && (
                               <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                {product.selected_shipping_method === 'air' ? (
-                                  <Plane className="w-3 h-3" />
-                                ) : (
-                                  <Ship className="w-3 h-3" />
-                                )}
+                                {product.selected_shipping_method === 'air' ? <Plane className="w-3 h-3" /> : <Ship className="w-3 h-3" />}
                                 {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} shipping included
                               </p>
                             )}
                           </div>
                         </td>
                         <td className="py-3 px-2 text-right text-gray-900 font-medium">{totalQty}</td>
-                        <td className="py-3 px-2 text-right text-gray-900">
-                          ${clientUnitPrice.toFixed(2)}
-                        </td>
-                        <td className="py-3 px-2 text-right text-gray-900">
-                          ${(product.sample_fee || 0).toFixed(2)}
-                        </td>
+                        <td className="py-3 px-2 text-right text-gray-900">${clientUnitPrice.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-gray-900">${(product.sample_fee || 0).toFixed(2)}</td>
                         <td className="py-3 px-2 text-right text-gray-900">
                           {shippingAmount > 0 ? (
                             <div className="flex flex-col items-end">
                               <span className="font-medium">${shippingAmount.toFixed(2)}</span>
                               <span className="text-xs text-gray-500 flex items-center gap-1">
-                                {product.selected_shipping_method === 'air' ? (
-                                  <Plane className="w-3 h-3" />
-                                ) : (
-                                  <Ship className="w-3 h-3" />
-                                )}
+                                {product.selected_shipping_method === 'air' ? <Plane className="w-3 h-3" /> : <Ship className="w-3 h-3" />}
                                 {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'}
                               </span>
                             </div>
@@ -1263,14 +1150,12 @@ export default function CreateInvoicePage() {
                             <span className="text-gray-400">-</span>
                           )}
                         </td>
-                        <td className="py-3 px-2 text-right font-semibold text-gray-900">
-                          ${productTotal.toFixed(2)}
-                        </td>
+                        <td className="py-3 px-2 text-right font-semibold text-gray-900">${productTotal.toFixed(2)}</td>
                       </tr>
                     );
                   })}
                   
-                  {/* Custom Line Items */}
+                  {/* Custom Items */}
                   {customItems.map((item, index) => (
                     <tr key={item.id} className="border-b">
                       <td className="py-3 px-2">
@@ -1321,16 +1206,14 @@ export default function CreateInvoicePage() {
                       </td>
                       <td className="py-3 px-2 text-right text-gray-400">-</td>
                       <td className="py-3 px-2 text-right text-gray-400">-</td>
-                      <td className="py-3 px-2 text-right font-semibold text-gray-900">
-                        ${(item.quantity * item.price).toFixed(2)}
-                      </td>
+                      <td className="py-3 px-2 text-right font-semibold text-gray-900">${(item.quantity * item.price).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
             
-            {/* Mobile Cards View */}
+            {/* Mobile Cards */}
             <div className="lg:hidden space-y-3">
               {invoiceData.products.map((product) => {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
@@ -1365,16 +1248,6 @@ export default function CreateInvoicePage() {
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{product.description || product.product?.title}</p>
                         <p className="text-xs text-gray-600">{product.product_order_number}</p>
-                        {product.selected_shipping_method && shippingAmount > 0 && (
-                          <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                            {product.selected_shipping_method === 'air' ? (
-                              <Plane className="w-3 h-3" />
-                            ) : (
-                              <Ship className="w-3 h-3" />
-                            )}
-                            {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} shipping included
-                          </p>
-                        )}
                         
                         <div className="mt-2 space-y-1 text-sm">
                           <div className="flex justify-between">
@@ -1395,9 +1268,7 @@ export default function CreateInvoicePage() {
                           )}
                           {shippingAmount > 0 && (
                             <div className="flex justify-between">
-                              <span className="text-gray-600">
-                                {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} Shipping:
-                              </span>
+                              <span className="text-gray-600">{product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} Shipping:</span>
                               <span>${shippingAmount.toFixed(2)}</span>
                             </div>
                           )}
@@ -1428,7 +1299,7 @@ export default function CreateInvoicePage() {
             </button>
           </div>
 
-          {/* Totals - RESPONSIVE */}
+          {/* Totals */}
           <div className="p-4 sm:p-6 lg:p-8">
             <div className="flex justify-end">
               <div className="w-full sm:w-64">
@@ -1473,13 +1344,11 @@ export default function CreateInvoicePage() {
             </div>
           </div>
 
-          {/* Notes Section - RESPONSIVE */}
+          {/* Notes Section */}
           <div className="p-4 sm:p-6 lg:p-8 border-t">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -1489,9 +1358,7 @@ export default function CreateInvoicePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Terms
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Terms</label>
                 <input
                   type="text"
                   value={terms}
@@ -1520,13 +1387,11 @@ export default function CreateInvoicePage() {
         invoiceNumber={invoiceData?.invoiceNumber || ''}
       />
 
-      {/* Email Preview Modal - UPDATED WITH onSuccess HANDLER */}
+      {/* Send Invoice Modal */}
       <SendInvoiceModal
         isOpen={showEmailPreview}
         onClose={() => setShowEmailPreview(false)}
         onSend={async (sendData) => {
-          // Modal will close itself via onSuccess callback
-          // Pass all the send data to handleCreateInvoice
           await handleCreateInvoice('sent', sendData);
         }}
         onSuccess={handleSendSuccess}

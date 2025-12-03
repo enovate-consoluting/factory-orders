@@ -1,8 +1,9 @@
 /**
  * Invoices Page - /dashboard/invoices
  * Main invoice management page with tabs for approval, in-production, drafts, sent, paid
+ * UPDATED: Added void invoice functionality and invoice gate for existing invoices
  * Roles: Admin, Super Admin, Client (limited view)
- * Last Modified: November 2025
+ * Last Modified: December 1, 2025
  */
 
 'use client';
@@ -15,9 +16,14 @@ import {
   FileText, Calendar, Search, CheckCircle, Clock, Send, 
   AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
   ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
-  Package, Shield, Inbox, Play
+  Package, Shield, Inbox, Play, FileX, Ban
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
+
+// Import the new components
+import VoidInvoiceModal from './VoidInvoiceModal';
+import ExistingInvoicesModal from './ExistingInvoicesModal';
+import { useInvoiceCheck } from './useInvoiceCheck';
 
 // Format currency helper
 const formatCurrencyUtil = (amount: number): string => {
@@ -29,11 +35,14 @@ interface Invoice {
   invoice_number: string;
   amount: number;
   paid_amount: number;
-  status: 'draft' | 'sent' | 'paid' | 'cancelled';
+  status: 'draft' | 'sent' | 'paid' | 'cancelled' | 'voided';
   due_date: string;
   created_at: string;
   sent_at?: string;
   order_id?: string;
+  voided?: boolean;
+  voided_at?: string;
+  void_reason?: string;
   order?: {
     id: string;
     order_number: string;
@@ -73,6 +82,7 @@ interface ProductForApproval {
   total_value: number;
   routed_at: string;
   product_status?: string;
+  invoiced?: boolean;
 }
 
 type TabType = 'approval' | 'inproduction' | 'drafts' | 'sent' | 'paid' | 'all';
@@ -108,6 +118,29 @@ export default function InvoicesPage() {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  
+  // Void Invoice Modal
+  const [voidModal, setVoidModal] = useState<{
+    isOpen: boolean;
+    invoice: Invoice | null;
+  }>({
+    isOpen: false,
+    invoice: null
+  });
+
+  // Existing Invoices Modal (Invoice Gate)
+  const [existingInvoicesModal, setExistingInvoicesModal] = useState<{
+    isOpen: boolean;
+    orderId: string;
+    orderNumber: string;
+  }>({
+    isOpen: false,
+    orderId: '',
+    orderNumber: ''
+  });
+
+  // Invoice check hook
+  const { checkResult, checkExistingInvoices, clearCheck } = useInvoiceCheck();
   
   // Stats
   const [stats, setStats] = useState({
@@ -201,10 +234,11 @@ export default function InvoicesPage() {
         .or('client_product_price.gt.0,sample_fee.gt.0')
         .in('product_status', ['approved_for_production', 'in_production']);
       
-      // Count invoices by status
+      // Count invoices by status (exclude voided)
       const { data: invoiceData } = await supabase
         .from('invoices')
-        .select('id, status');
+        .select('id, status, voided')
+        .or('voided.is.null,voided.eq.false');
       
       setStats({
         forApproval: approvalData?.length || 0,
@@ -240,6 +274,7 @@ export default function InvoicesPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
+            invoiced,
             product:products(title),
             order_items(quantity)
           )
@@ -299,7 +334,8 @@ export default function InvoicesPage() {
             total_quantity: totalQty,
             total_value: productTotal,
             routed_at: p.routed_at,
-            product_status: p.product_status
+            product_status: p.product_status,
+            invoiced: p.invoiced
           };
         });
 
@@ -350,6 +386,7 @@ export default function InvoicesPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
+            invoiced,
             product:products(title),
             order_items(quantity)
           )
@@ -405,7 +442,8 @@ export default function InvoicesPage() {
             total_quantity: totalQty,
             total_value: productTotal,
             routed_at: p.routed_at,
-            product_status: p.product_status
+            product_status: p.product_status,
+            invoiced: p.invoiced
           };
         });
 
@@ -445,20 +483,22 @@ export default function InvoicesPage() {
         `)
         .order('created_at', { ascending: false });
 
-      // CLIENT FILTER - Only show sent invoices for their client_id
+      // CLIENT FILTER - Only show sent invoices for their client_id (exclude voided)
       if (isClient && clientId) {
         query = query
           .eq('client_id', clientId)
-          .eq('status', 'sent');
+          .eq('status', 'sent')
+          .or('voided.is.null,voided.eq.false');
       } else {
-        // Admin filters
+        // Admin filters - exclude voided from normal views
         if (activeTab === 'drafts') {
-          query = query.eq('status', 'draft');
+          query = query.eq('status', 'draft').or('voided.is.null,voided.eq.false');
         } else if (activeTab === 'sent') {
-          query = query.eq('status', 'sent');
+          query = query.eq('status', 'sent').or('voided.is.null,voided.eq.false');
         } else if (activeTab === 'paid') {
-          query = query.eq('status', 'paid');
+          query = query.eq('status', 'paid').or('voided.is.null,voided.eq.false');
         }
+        // 'all' tab shows everything including voided
       }
 
       const { data, error } = await query;
@@ -497,6 +537,42 @@ export default function InvoicesPage() {
     } finally {
       setDeleting(false);
     }
+  };
+
+  // Handle Create Invoice click - check for existing invoices first
+  const handleCreateInvoiceClick = async (orderId: string, orderNumber: string) => {
+    const result = await checkExistingInvoices(orderId);
+    
+    if (result.hasExistingInvoices) {
+      // Show the gate modal
+      setExistingInvoicesModal({
+        isOpen: true,
+        orderId,
+        orderNumber
+      });
+    } else {
+      // No existing invoices, proceed directly
+      router.push(`/dashboard/invoices/create?order=${orderId}`);
+    }
+  };
+
+  const handleCloseExistingInvoicesModal = () => {
+    setExistingInvoicesModal({ isOpen: false, orderId: '', orderNumber: '' });
+    clearCheck();
+  };
+
+  const handleProceedWithRemaining = () => {
+    // Navigate to create invoice with only uninvoiced products
+    router.push(`/dashboard/invoices/create?order=${existingInvoicesModal.orderId}&uninvoiced_only=true`);
+    handleCloseExistingInvoicesModal();
+  };
+
+  const handleRefreshAfterVoid = () => {
+    // Re-check invoices after voiding
+    if (existingInvoicesModal.orderId) {
+      checkExistingInvoices(existingInvoicesModal.orderId);
+    }
+    fetchData();
   };
 
   const toggleOrderExpansion = (orderId: string) => {
@@ -571,8 +647,18 @@ export default function InvoicesPage() {
     );
   });
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getStatusBadge = (invoice: Invoice) => {
+    // Check if voided first
+    if (invoice.voided) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-gray-200 text-gray-600 rounded-full line-through">
+          <FileX className="w-3 h-3" />
+          Voided
+        </span>
+      );
+    }
+    
+    switch (invoice.status) {
       case 'draft':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
@@ -595,9 +681,11 @@ export default function InvoicesPage() {
           </span>
         );
       case 'cancelled':
+      case 'voided':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-red-100 text-red-700 rounded-full">
-            Cancelled
+            <Ban className="w-3 h-3" />
+            {invoice.status === 'voided' ? 'Voided' : 'Cancelled'}
           </span>
         );
       default:
@@ -610,6 +698,18 @@ export default function InvoicesPage() {
     if (user?.role === 'super_admin') return true;
     // Admin can only delete drafts
     if (user?.role === 'admin' && invoice.status === 'draft') return true;
+    return false;
+  };
+
+  const canVoid = (invoice: Invoice): boolean => {
+    // Can't void if already voided
+    if (invoice.voided) return false;
+    // Can't void paid invoices (use refund instead)
+    if (invoice.status === 'paid') return false;
+    // Super Admin and Admin can void sent invoices
+    if (user?.role === 'super_admin' || user?.role === 'admin') {
+      return invoice.status === 'sent' || invoice.status === 'draft';
+    }
     return false;
   };
 
@@ -648,6 +748,10 @@ export default function InvoicesPage() {
             {orders.map((order) => {
               const isExpanded = expandedOrders.has(order.id);
               const daysWaiting = order.earliest_ready_date ? daysSinceDate(order.earliest_ready_date) : 0;
+              
+              // Count invoiced vs uninvoiced products
+              const invoicedCount = order.products.filter(p => p.invoiced).length;
+              const uninvoicedCount = order.products.length - invoicedCount;
 
               return (
                 <div key={order.id} className="bg-white hover:bg-gray-50 transition-colors">
@@ -691,6 +795,13 @@ export default function InvoicesPage() {
                                     In Production
                                   </span>
                                 )}
+                                {/* Show invoiced indicator */}
+                                {invoicedCount > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                    <CheckCircle className="w-3 h-3" />
+                                    {invoicedCount} Invoiced
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
                                 <span className="flex items-center gap-1">
@@ -710,14 +821,16 @@ export default function InvoicesPage() {
                             </div>
                             
                             <div className="flex items-center gap-2">
-                              <Link
-                                href={`/dashboard/invoices/create?order=${order.id}`}
-                                onClick={(e) => e.stopPropagation()}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCreateInvoiceClick(order.id, order.order_number);
+                                }}
                                 className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
                               >
                                 <FileText className="w-3.5 h-3.5" />
                                 Create Invoice
-                              </Link>
+                              </button>
                               <Link
                                 href={`/dashboard/orders/${order.id}`}
                                 target="_blank"
@@ -745,20 +858,26 @@ export default function InvoicesPage() {
                           return (
                             <div 
                               key={product.id} 
-                              className="bg-white rounded p-2 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                              className={`bg-white rounded p-2 flex items-center justify-between cursor-pointer hover:bg-gray-50 ${product.invoiced ? 'opacity-60' : ''}`}
                               onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <Package className="w-4 h-4 text-gray-400 flex-shrink-0" />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <p className="font-medium text-gray-900 text-sm">
+                                    <p className={`font-medium text-gray-900 text-sm ${product.invoiced ? 'line-through' : ''}`}>
                                       {product.product_order_number}
                                     </p>
                                     <span className="text-xs text-gray-600">
                                       {product.description}
                                     </span>
                                     {isProductionTab && getProductStatusBadge(product.product_status)}
+                                    {product.invoiced && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                        <CheckCircle className="w-3 h-3" />
+                                        Invoiced
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-3 mt-0.5 text-xs text-gray-500">
                                     <span>Qty: {product.total_quantity}</span>
@@ -795,10 +914,10 @@ export default function InvoicesPage() {
                               
                               <div className="flex items-center gap-2 ml-2 flex-shrink-0">
                                 <div className="text-right">
-                                  <p className="text-sm font-semibold text-gray-900">
+                                  <p className={`text-sm font-semibold text-gray-900 ${product.invoiced ? 'line-through' : ''}`}>
                                     ${formatCurrencyUtil(product.total_value)}
                                   </p>
-                                  {!hasShipping && (
+                                  {!hasShipping && !product.invoiced && (
                                     <div className="flex items-center gap-1 mt-0.5">
                                       <AlertTriangle className="w-3 h-3 text-amber-500" />
                                       <span className="text-xs text-amber-600 font-medium">
@@ -875,12 +994,19 @@ export default function InvoicesPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filteredInvoices.map(invoice => (
-                  <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={invoice.id} className={`hover:bg-gray-50 transition-colors ${invoice.voided ? 'bg-gray-50 opacity-60' : ''}`}>
                     <td className="py-3 px-4">
-                      <span className="font-semibold text-gray-900">{invoice.invoice_number}</span>
+                      <span className={`font-semibold text-gray-900 ${invoice.voided ? 'line-through' : ''}`}>
+                        {invoice.invoice_number}
+                      </span>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {new Date(invoice.created_at).toLocaleDateString()}
                       </p>
+                      {invoice.voided && invoice.void_reason && (
+                        <p className="text-xs text-red-500 mt-0.5 truncate max-w-[150px]" title={invoice.void_reason}>
+                          Reason: {invoice.void_reason}
+                        </p>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <div>
@@ -896,10 +1022,10 @@ export default function InvoicesPage() {
                       </td>
                     )}
                     <td className="py-3 px-4">
-                      {getStatusBadge(invoice.status)}
+                      {getStatusBadge(invoice)}
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <span className="font-semibold text-gray-900">
+                      <span className={`font-semibold text-gray-900 ${invoice.voided ? 'line-through' : ''}`}>
                         ${formatCurrencyUtil(parseFloat(invoice.amount?.toString() || '0'))}
                       </span>
                       {invoice.status === 'paid' && invoice.paid_amount > 0 && (
@@ -914,7 +1040,7 @@ export default function InvoicesPage() {
                           <span className="text-sm text-gray-700">
                             {new Date(invoice.due_date).toLocaleDateString()}
                           </span>
-                          {invoice.status === 'sent' && new Date(invoice.due_date) < new Date() && (
+                          {invoice.status === 'sent' && !invoice.voided && new Date(invoice.due_date) < new Date() && (
                             <p className="text-xs text-red-600 font-medium mt-0.5">Overdue</p>
                           )}
                         </div>
@@ -934,7 +1060,18 @@ export default function InvoicesPage() {
                             <Eye className="w-4 h-4" />
                           </Link>
                         )}
-                        {!isClient && canDelete(invoice) && (
+                        {/* Void Button */}
+                        {!isClient && canVoid(invoice) && (
+                          <button
+                            onClick={() => setVoidModal({ isOpen: true, invoice })}
+                            className="p-2 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="Void Invoice"
+                          >
+                            <FileX className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* Delete Button */}
+                        {!isClient && canDelete(invoice) && !invoice.voided && (
                           <button
                             onClick={() => setShowDeleteConfirm(invoice.id)}
                             className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
@@ -997,6 +1134,34 @@ export default function InvoicesPage() {
         </div>
       )}
 
+      {/* Void Invoice Modal */}
+      {voidModal.invoice && (
+        <VoidInvoiceModal
+          isOpen={voidModal.isOpen}
+          onClose={() => setVoidModal({ isOpen: false, invoice: null })}
+          invoice={voidModal.invoice}
+          onVoided={() => {
+            notify.success('Invoice voided successfully');
+            fetchData();
+          }}
+        />
+      )}
+
+      {/* Existing Invoices Modal (Invoice Gate) */}
+      {checkResult && (
+        <ExistingInvoicesModal
+          isOpen={existingInvoicesModal.isOpen}
+          onClose={handleCloseExistingInvoicesModal}
+          orderId={existingInvoicesModal.orderId}
+          orderNumber={existingInvoicesModal.orderNumber}
+          existingInvoices={checkResult.existingInvoices}
+          uninvoicedProductCount={checkResult.uninvoicedProductCount}
+          totalProductCount={checkResult.totalProductCount}
+          onProceedWithRemaining={handleProceedWithRemaining}
+          onRefresh={handleRefreshAfterVoid}
+        />
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
@@ -1035,7 +1200,7 @@ export default function InvoicesPage() {
                 )}
               </button>
               
-              {/* NEW: In Production Tab */}
+              {/* In Production Tab */}
               <button
                 onClick={() => setActiveTab('inproduction')}
                 className={`py-3 px-4 border-b-2 font-medium text-sm flex items-center gap-2 ${
