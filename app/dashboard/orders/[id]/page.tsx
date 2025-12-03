@@ -185,7 +185,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         // Variant combinations from order items
         if (product.order_items && Array.isArray(product.order_items)) {
           product.order_items.forEach((item: any) => {
-            if (item.variant_combination) textsToTranslate.push(item.variant_combination);
+            if (item.variant_combo) textsToTranslate.push(item.variant_combo);
             if (item.notes) textsToTranslate.push(item.notes);
           });
         }

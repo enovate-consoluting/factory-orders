@@ -1053,8 +1053,10 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               onDeleteFile={handleDeleteMedia}
               onRemovePending={removePendingBulkFile}
               onAddFiles={() => bulkFileInputRef.current?.click()}
-              title="Bulk Order Media"
+              title={t('bulkOrderMedia')}
               loading={uploadingBulkMedia}
+              translate={translate}
+              t={t}
             />
 
             {/* Product Price and Production Info */}
@@ -1411,7 +1413,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <tbody>
                     {visibleVariants.map((item, index) => (
                       <tr key={item.id} className={index % 2 === 0 ? 'bg-gray-50' : ''}>
-                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{item.variant_combo}</td>
+                        <td className="py-2 px-3 text-sm text-gray-900 font-medium">{translate(item.variant_combo)}</td>
                         <td className="py-2 px-1">
                           {editingVariants ? (
                             <input
