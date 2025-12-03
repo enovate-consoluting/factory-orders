@@ -48,16 +48,16 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
               }
             }}
           >
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+            <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-sm sm:text-base ${
               step.completed || step.active ? 'bg-blue-600 text-white' : 'bg-gray-300 text-white'
             }`}>
               {step.number}
             </div>
-            <span className="ml-2 font-medium">{step.label}</span>
+            <span className="ml-1 sm:ml-2 font-medium text-xs sm:text-sm md:text-base truncate">{step.label}</span>
           </div>
-          
+
           {index < steps.length - 1 && (
-            <div className="flex-1 h-0.5 bg-gray-300 mx-4" />
+            <div className="flex-1 h-0.5 bg-gray-300 mx-1 sm:mx-2 md:mx-4" />
           )}
         </React.Fragment>
       ))}

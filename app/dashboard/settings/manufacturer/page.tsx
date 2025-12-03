@@ -214,7 +214,7 @@ export default function ManufacturerSettingsPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-4xl">
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl">
       {/* Language Switcher */}
       {/* <div className="flex justify-end mb-4">
         <select
@@ -227,13 +227,13 @@ export default function ManufacturerSettingsPage() {
         </select>
       </div> */}
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <Settings className="w-8 h-8 text-gray-700" />
-          <h1 className="text-2xl font-bold text-gray-900">Manufacturer Settings</h1>
+      <div className="mb-4 sm:mb-6">
+        <div className="flex items-center gap-2 sm:gap-3 mb-2">
+          <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-gray-700" />
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Manufacturer Settings</h1>
         </div>
-        <p className="text-gray-600">
-          {userRole === 'super_admin' 
+        <p className="text-sm sm:text-base text-gray-600">
+          {userRole === 'super_admin'
             ? 'Configure workflow settings for manufacturers'
             : 'Configure your workflow preferences'
           }
@@ -242,10 +242,10 @@ export default function ManufacturerSettingsPage() {
 
       {/* Super Admin: Manufacturer Selector */}
       {userRole === 'super_admin' && manufacturers.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 p-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6 p-3 sm:p-4">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
             <div className="flex items-center gap-2">
-              <Building className="w-4 h-4 text-gray-500" />
+              <Building className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
               <span>Select Manufacturer</span>
             </div>
           </label>
@@ -253,7 +253,7 @@ export default function ManufacturerSettingsPage() {
             <select
               value={selectedManufacturerId || ''}
               onChange={(e) => handleManufacturerChange(e.target.value)}
-              className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 appearance-none bg-white pr-10"
+              className="w-full sm:max-w-md px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 appearance-none bg-white pr-10"
             >
               {manufacturers.map(m => (
                 <option key={m.id} value={m.id}>
@@ -261,7 +261,7 @@ export default function ManufacturerSettingsPage() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400 pointer-events-none" />
           </div>
           <p className="text-xs text-gray-500 mt-1">
             Editing settings for: <strong>{currentManufacturer?.name}</strong>
@@ -271,46 +271,46 @@ export default function ManufacturerSettingsPage() {
 
       {/* Manufacturer name display (for manufacturer role) */}
       {userRole === 'manufacturer' && currentManufacturer && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
           <div className="flex items-center gap-2">
-            <Building className="w-5 h-5 text-blue-600" />
-            <span className="font-medium text-blue-900">{currentManufacturer.name}</span>
+            <Building className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+            <span className="text-sm sm:text-base font-medium text-blue-900">{currentManufacturer.name}</span>
           </div>
         </div>
       )}
 
       {/* Save Message */}
       {saveMessage && (
-        <div className={`mb-6 p-4 rounded-lg flex items-center gap-2 ${
-          saveMessage.type === 'success' 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
+        <div className={`mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg flex items-center gap-2 ${
+          saveMessage.type === 'success'
+            ? 'bg-green-50 text-green-700 border border-green-200'
             : 'bg-red-50 text-red-700 border border-red-200'
         }`}>
           {saveMessage.type === 'success' ? (
-            <CheckCircle className="w-5 h-5" />
+            <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5" />
+            <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
           )}
-          <span>{saveMessage.text}</span>
+          <span className="text-xs sm:text-sm">{saveMessage.text}</span>
         </div>
       )}
 
       {/* Ship Queue Settings Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6">
+        <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gray-50 rounded-t-lg">
           <div className="flex items-center gap-2">
-            <Truck className="w-5 h-5 text-orange-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Shipping Queue Settings</h2>
+            <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600" />
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Shipping Queue Settings</h2>
           </div>
-          <p className="text-sm text-gray-600 mt-1">
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
             Configure the shipping queue tab that shows products approaching their ship date
           </p>
         </div>
-        
-        <div className="p-6 space-y-6">
+
+        <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
           {/* Tab Name - English */}
           <div>
-            <label htmlFor="shipQueueName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="shipQueueName" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
                 <span>{t('tabName')}</span>
               </div>
@@ -322,7 +322,7 @@ export default function ManufacturerSettingsPage() {
               onChange={(e) => setShipQueueName(e.target.value)}
               placeholder={t('readyToShip')}
               maxLength={30}
-              className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
+              className="w-full sm:max-w-md px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
             />
             <p className="text-xs text-gray-500 mt-1">
               {t('readyToShipChinese')} (max 30 characters)
@@ -331,9 +331,9 @@ export default function ManufacturerSettingsPage() {
 
           {/* Tab Name - Chinese */}
           <div>
-            <label htmlFor="shipQueueNameZh" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="shipQueueNameZh" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-gray-500" />
+                <Globe className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
                 <span>{t('tabNameChinese')}</span>
               </div>
             </label>
@@ -344,7 +344,7 @@ export default function ManufacturerSettingsPage() {
               onChange={(e) => setShipQueueNameZh(e.target.value)}
               placeholder={t('readyToShipChinese')}
               maxLength={30}
-              className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
+              className="w-full sm:max-w-md px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder-gray-500"
             />
             <p className="text-xs text-gray-500 mt-1">
               {t('readyToShip')} (max 30 characters)
@@ -353,13 +353,13 @@ export default function ManufacturerSettingsPage() {
 
           {/* Days Threshold */}
           <div>
-            <label htmlFor="shipQueueDays" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="shipQueueDays" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-500" />
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
                 <span>{t('daysBeforeShip')}</span>
               </div>
             </label>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <input
                 type="number"
                 id="shipQueueDays"
@@ -367,16 +367,16 @@ export default function ManufacturerSettingsPage() {
                 onChange={(e) => setShipQueueDays(e.target.value)}
                 min="1"
                 max="30"
-                className="w-24 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                className="w-20 sm:w-24 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
               />
-              <span className="text-gray-600">{i18n.language === 'zh' ? '天' : 'days'}</span>
+              <span className="text-sm sm:text-base text-gray-600">{i18n.language === 'zh' ? '天' : 'days'}</span>
             </div>
             <p className="text-xs text-gray-500 mt-1">
               {t('daysBeforeShipChinese')}
             </p>
             {/* Visual Example */}
-            <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-              <p className="text-sm text-orange-800">
+            <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-orange-50 border border-orange-200 rounded-lg">
+              <p className="text-xs sm:text-sm text-orange-800">
                 <strong>Example:</strong> If set to {shipQueueDays} {i18n.language === 'zh' ? '天' : 'days'}, a product with ship date of{' '}
                 <strong>
                   {new Date(Date.now() + parseInt(shipQueueDays || '3', 10) * 24 * 60 * 60 * 1000).toLocaleDateString()}
@@ -389,26 +389,26 @@ export default function ManufacturerSettingsPage() {
       </div>
 
       {/* Future Settings Placeholder */}
-      <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-6 text-center">
-        <Settings className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-        <p className="text-gray-500 text-sm">More settings coming soon...</p>
+      <div className="bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 p-4 sm:p-6 text-center">
+        <Settings className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400 mx-auto mb-2" />
+        <p className="text-gray-500 text-xs sm:text-sm">More settings coming soon...</p>
       </div>
 
       {/* Save Button */}
-      <div className="mt-6 flex justify-end">
+      <div className="mt-4 sm:mt-6 flex justify-end">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors font-medium"
+          className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors font-medium"
         >
           {saving ? (
             <>
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
               <span>{i18n.language === 'zh' ? '保存中...' : 'Saving...'}</span>
             </>
           ) : (
             <>
-              <Save className="w-5 h-5" />
+              <Save className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>{t('saveSettings')}</span>
             </>
           )}

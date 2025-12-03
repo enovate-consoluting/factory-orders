@@ -76,6 +76,19 @@ export default function UsersPage() {
     }
   }, [notification])
 
+  // Prevent background scroll when any modal is open
+  useEffect(() => {
+    if (showModal || showDeleteModal || showSuccessModal) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [showModal, showDeleteModal, showSuccessModal])
+
   const showNotification = (type: 'success' | 'error' | 'info', title: string, message: string) => {
     const id = Date.now().toString()
     setNotification({ id, type, title, message })

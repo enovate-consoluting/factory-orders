@@ -77,6 +77,19 @@ export default function VariantsPage() {
     translateBatch(textsToTranslate, 'variants');
   }, [variantTypes, variantOptions, translateBatch]);
 
+  // Prevent background scroll when any modal is open
+  useEffect(() => {
+    if (showTypeModal || deleteConfirm) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showTypeModal, deleteConfirm]);
+
   const fetchVariants = async () => {
     try {
       // Fetch variant types
@@ -480,7 +493,7 @@ export default function VariantsPage() {
 
       {/* Create/Edit Type Modal with Options - Mobile Responsive */}
       {showTypeModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-scale-in">
             <div className="flex justify-between items-start mb-4 sm:mb-6">
               <div>
@@ -517,7 +530,7 @@ export default function VariantsPage() {
                   type="text"
                   value={newTypeName}
                   onChange={(e) => setNewTypeName(e.target.value)}
-                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-base"
+                  className="w-full px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm sm:text-base"
                   placeholder={t('e.gSizeColorMaterial')}
                   required
                   autoFocus
@@ -545,16 +558,16 @@ export default function VariantsPage() {
 
                 <div className="space-y-2 max-h-48 sm:max-h-64 overflow-y-auto">
                   {optionsList.map((option, index) => (
-                    <div key={index} className="flex gap-2">
+                    <div key={index} className="flex gap-2 sm:gap-3">
                       <input
                         type="text"
                         value={option}
                         onChange={(e) => updateOption(index, e.target.value)}
-                        className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-base"
+                        className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors text-sm sm:text-base"
                         placeholder={
-                          existingOptionIds[index] 
-                            ? `Current: ${option}` 
-                            : newTypeName.toLowerCase() === 'size' 
+                          existingOptionIds[index]
+                            ? `Current: ${option}`
+                            : newTypeName.toLowerCase() === 'size'
                               ? index === 0 ? t('e.gSmall') : index === 1 ? t('e.gMedium') : index === 2 ? t('e.gLarge') : t('enterOption')
                             : newTypeName.toLowerCase() === 'color'
                               ? index === 0 ? t('e.gRed') : index === 1 ? t('e.gBlue') : index === 2 ? t('e.gGreen') : t('enterOption')
@@ -565,10 +578,10 @@ export default function VariantsPage() {
                         <button
                           type="button"
                           onClick={() => removeOptionField(index)}
-                          className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                           title={existingOptionIds[index] ? t("removeThisOptionWillBeDeleted") : t("removeThisField")}
                         >
-                          <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         </button>
                       )}
                     </div>
@@ -583,7 +596,7 @@ export default function VariantsPage() {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 border-t">
                 <button
                   type="button"
                   onClick={() => {
@@ -622,7 +635,7 @@ export default function VariantsPage() {
 
       {/* Delete Confirmation Modal - Mobile Responsive */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <div className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-md animate-scale-in">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -649,7 +662,7 @@ export default function VariantsPage() {
               )}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => setDeleteConfirm(null)}
                 className="flex-1 px-3 sm:px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm sm:text-base"

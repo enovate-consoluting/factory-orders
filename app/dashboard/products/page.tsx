@@ -549,10 +549,10 @@ export default function ProductsPage() {
       {(showCreateForm || editingProduct) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
           <div className="bg-white rounded-lg max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto my-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                  <Package className="w-6 h-6 mr-2 text-blue-600" />
+            <div className="p-4 sm:p-6">
+              <div className="flex justify-between items-center mb-4 sm:mb-6">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-900 flex items-center">
+                  <Package className="w-5 h-5 sm:w-6 sm:h-6 mr-2 text-blue-600" />
                   {editingProduct ? 'Edit Product' : 'Create New Product'}
                 </h2>
                 <button
@@ -564,31 +564,31 @@ export default function ProductsPage() {
                   }}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
 
               <form onSubmit={editingProduct ? (e) => { e.preventDefault(); updateProduct(); } : createProduct}>
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                       Product Title *
                     </label>
                     <input
                       type="text"
                       value={editingProduct ? editingProduct.title : newProductTitle}
-                      onChange={(e) => editingProduct 
+                      onChange={(e) => editingProduct
                         ? setEditingProduct({...editingProduct, title: e.target.value})
                         : setNewProductTitle(e.target.value)
                       }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-medium placeholder-gray-400"
+                      className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 font-medium placeholder-gray-400"
                       placeholder="Enter product title"
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                       Variants
                     </label>
                     {variantTypes.map(type => {
@@ -598,13 +598,13 @@ export default function ProductsPage() {
                       const someSelected = typeOptions.some(opt => selectedOptions.includes(opt.id))
                       
                       return (
-                        <div key={type.id} className="mb-4 p-3 bg-gray-50 rounded-lg">
+                        <div key={type.id} className="mb-3 sm:mb-4 p-2 sm:p-3 bg-gray-50 rounded-lg">
                           <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-medium text-gray-700">{type.name}</h4>
+                            <h4 className="text-sm sm:text-base font-medium text-gray-700">{type.name}</h4>
                             <button
                               type="button"
                               onClick={() => toggleVariantType(type.id)}
-                              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                              className={`px-2 sm:px-3 py-1 rounded text-xs sm:text-sm font-medium transition-colors ${
                                 allSelected
                                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                                   : someSelected
@@ -615,7 +615,7 @@ export default function ProductsPage() {
                               {allSelected ? 'Deselect All' : 'Select All'}
                             </button>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5 sm:gap-2">
                             {typeOptions.map(option => {
                               const isSelected = selectedOptions.includes(option.id)
                               
@@ -638,7 +638,7 @@ export default function ProductsPage() {
                                       )
                                     }
                                   }}
-                                  className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+                                  className={`px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                                     isSelected
                                       ? 'bg-blue-600 text-white shadow-md'
                                       : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -656,7 +656,7 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-3 mt-6">
+                <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 mt-4 sm:mt-6">
                   <button
                     type="button"
                     onClick={() => {
@@ -665,13 +665,13 @@ export default function ProductsPage() {
                       resetForm()
                       setSelectedVariants([])
                     }}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
+                    className="px-4 py-2 text-sm sm:text-base bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all duration-200 shadow-md hover:shadow-lg"
                   >
                     {editingProduct ? 'Update Product' : 'Create Product'}
                   </button>
@@ -687,47 +687,47 @@ export default function ProductsPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 my-auto">
             <div className="mb-4">
-              <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
-                <Trash2 className="w-6 h-6 text-red-600" />
+              <div className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-full mx-auto mb-3 sm:mb-4">
+                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900 text-center mb-2">
                 Delete Product
               </h3>
-              <p className="text-sm text-gray-600 text-center">
+              <p className="text-xs sm:text-sm text-gray-600 text-center">
                 Are you sure you want to delete "{productToDelete.title}"? This action cannot be undone.
               </p>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
-              <p className="text-sm text-amber-800">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 sm:p-3 mb-4 sm:mb-6">
+              <p className="text-xs sm:text-sm text-amber-800">
                 <strong>Warning:</strong> This will also remove this product from any existing orders.
               </p>
             </div>
 
-            <div className="flex space-x-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => {
                   setDeleteModalOpen(false)
                   setProductToDelete(null)
                 }}
                 disabled={deleting}
-                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 text-sm sm:text-base bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={deleteProduct}
                 disabled={deleting}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
+                className="flex-1 px-4 py-2 text-sm sm:text-base bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center"
               >
                 {deleting ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 mr-2 animate-spin" />
                     Deleting...
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-4 h-4 mr-2" />
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
                     Delete Product
                   </>
                 )}

@@ -1166,7 +1166,7 @@ export default function CreateOrderPage() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
       {/* Smart Loading Overlay */}
       <LoadingOverlay
         isVisible={showLoadingOverlay}
@@ -1179,51 +1179,51 @@ export default function CreateOrderPage() {
       {/* Notification Toast */}
       {notification.show && (
         <div className={`
-          fixed top-4 right-4 z-50 min-w-[300px] transform transition-all duration-500 ease-out
+          fixed top-4 right-4 z-50 min-w-[280px] sm:min-w-[300px] max-w-[90vw] sm:max-w-none transform transition-all duration-500 ease-out
           ${notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'}
         `}>
           <div className={`
-            p-4 rounded-xl shadow-2xl backdrop-blur-lg border
-            ${notification.type === 'success' 
-              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white' 
+            p-3 sm:p-4 rounded-xl shadow-2xl backdrop-blur-lg border
+            ${notification.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-500/90 to-green-600/90 border-emerald-400/50 text-white'
               : notification.type === 'error'
               ? 'bg-gradient-to-r from-red-500/90 to-rose-600/90 border-red-400/50 text-white'
               : 'bg-gradient-to-r from-blue-500/90 to-indigo-600/90 border-blue-400/50 text-white'
             }
           `}>
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 sm:space-x-3">
               {notification.type === 'success' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
               {notification.type === 'error' && (
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 sm:w-6 sm:h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               )}
-              <p className="font-semibold text-white">{notification.message}</p>
+              <p className="font-semibold text-white text-sm sm:text-base">{notification.message}</p>
             </div>
           </div>
         </div>
       )}
-      
+
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4 sm:mb-6">
         <button
           onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          className="flex items-center text-gray-600 hover:text-gray-900 mb-3 sm:mb-4 text-sm sm:text-base"
         >
-          <ArrowLeft className="w-4 h-4 mr-2" />
+          <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
           {t('backToOrders')}
         </button>
 
-        <h1 className="text-2xl font-bold text-gray-900">{t('createNewOrder')}</h1>
-        
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{t('createNewOrder')}</h1>
+
         {/* Progress Steps using new component */}
-        <div className="mt-6">
-          <StepIndicator 
-            currentStep={currentStep} 
+        <div className="mt-4 sm:mt-6">
+          <StepIndicator
+            currentStep={currentStep}
             onStepClick={(step) => {
               if (step < currentStep) {
                 setCurrentStep(step)
@@ -1235,11 +1235,11 @@ export default function CreateOrderPage() {
 
       {/* Step 1: Basic Info */}
       {currentStep === 1 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('basicInfo')}</h2>
+        <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">{t('basicInfo')}</h2>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="mb-4 sm:mb-6">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
               {t('orderName')}
             </label>
             <input
@@ -1252,10 +1252,10 @@ export default function CreateOrderPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* Client Autocomplete */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 {t('selectClient')}
               </label>
               <div className="relative">
@@ -1333,7 +1333,7 @@ export default function CreateOrderPage() {
 
             {/* Manufacturer Autocomplete */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                 {t('selectManufacturer')}
                 {manufacturers.length === 1 && (
                   <span className="ml-2 text-xs text-green-600">(Auto-selected)</span>
@@ -1413,13 +1413,13 @@ export default function CreateOrderPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex justify-end">
+          <div className="mt-4 sm:mt-6 flex justify-end">
             <button
               onClick={nextStep}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+              className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm sm:text-base"
             >
               {t('next')}
-              <ArrowRight className="w-4 h-4 ml-2" />
+              <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
             </button>
           </div>
         </div>
@@ -1439,20 +1439,20 @@ export default function CreateOrderPage() {
           onProductsRefresh={fetchInitialData}
         />
         
-        <div className="mt-6 flex justify-between">
+        <div className="mt-4 sm:mt-6 flex justify-between">
           <button
             onClick={prevStep}
-            className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+            className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center text-sm sm:text-base"
           >
-            <ArrowLeft className="w-4 h-4 mr-2" />
+            <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             {t('previous')}
           </button>
           <button
             onClick={nextStep}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+            className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center text-sm sm:text-base"
           >
             {t('next')}
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 ml-1 sm:ml-2" />
           </button>
         </div>
       </>
@@ -1523,33 +1523,33 @@ export default function CreateOrderPage() {
           })}
 
           {/* Action Buttons */}
-          <div className="flex justify-between">
+          <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0">
             <button
               onClick={prevStep}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center"
+              className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center text-sm sm:text-base"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               Previous
             </button>
-            
-            <div className="flex gap-3">
+
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <button
                 onClick={() => handleSubmit(true)}
                 disabled={saving}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 sm:px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                 )}
                 {saving ? 'Saving...' : 'Save as Draft'}
               </button>
               <button
                 onClick={() => handleSubmit(false)}
                 disabled={saving}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {saving && (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                 )}
                 {saving ? 'Submitting...' : 'Submit Order'}
               </button>
