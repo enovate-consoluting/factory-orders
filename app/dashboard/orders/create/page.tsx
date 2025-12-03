@@ -73,8 +73,8 @@ interface OrderProduct {
 }
 
 // Consistent dark text for all inputs
-const inputClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
-const selectClassName = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
+const inputClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+const selectClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
 
 // Sleek loading overlay component
 function LoadingOverlay({
@@ -105,27 +105,27 @@ function LoadingOverlay({
         <div className="absolute -inset-4 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-3xl opacity-20 blur-xl animate-pulse" />
 
         {/* Main card - compact and sleek */}
-        <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-8 py-6 min-w-[320px]">
+        <div className="relative bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl px-4 sm:px-8 py-4 sm:py-6 min-w-[280px] sm:min-w-[320px]">
           {/* Header with spinner or checkmark */}
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
             {isComplete ? (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
-                <CheckCircle2 className="w-7 h-7 text-white" />
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-emerald-400 to-green-500 flex items-center justify-center shadow-lg">
+                <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
             ) : (
-              <div className="relative w-12 h-12">
+              <div className="relative w-10 h-10 sm:w-12 sm:h-12">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 animate-pulse" />
                 <div className="absolute inset-1 rounded-full bg-white flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+                  <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 animate-spin" />
                 </div>
               </div>
             )}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
                 {isComplete ? t('complete') : t('processing')}
               </h3>
               {orderNumber && (
-                <p className="text-sm font-mono text-blue-600">{orderNumber}</p>
+                <p className="text-xs sm:text-sm font-mono text-blue-600">{orderNumber}</p>
               )}
             </div>
           </div>
@@ -1155,7 +1155,7 @@ export default function CreateOrderPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-sm sm:text-base text-gray-500">Loading...</div>
       </div>
     )
   }

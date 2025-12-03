@@ -79,13 +79,19 @@ export default function UsersPage() {
   // Prevent background scroll when any modal is open
   useEffect(() => {
     if (showModal || showDeleteModal || showSuccessModal) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = 'unset'
-    }
+      // Store original styles
+      const originalStyle = window.getComputedStyle(document.body).overflow
+      const originalPosition = window.getComputedStyle(document.body).position
 
-    return () => {
-      document.body.style.overflow = 'unset'
+      // Prevent scroll
+      document.body.style.overflow = 'hidden'
+      document.body.style.paddingRight = window.innerWidth - document.documentElement.clientWidth + 'px'
+
+      return () => {
+        // Restore original styles
+        document.body.style.overflow = originalStyle
+        document.body.style.paddingRight = ''
+      }
     }
   }, [showModal, showDeleteModal, showSuccessModal])
 
