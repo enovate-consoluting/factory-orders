@@ -930,7 +930,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   <h3 className="font-semibold text-lg text-gray-900">
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
-                  <ProductStatusBadge status={displayStatus} />
+                  <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
                   {/* MANUFACTURER TOTAL BADGE */}
                   {manufacturerTotal > 0 && (
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full flex items-center gap-1">

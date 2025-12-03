@@ -261,7 +261,7 @@
   "rejected": "已拒绝",
   "inTransit": "运输中",
   "history": "历史记录",
-  "route": "路由",
+  "route": "转发",
   "unlock": "解锁",
   "lock": "锁定",
   "bulkOrderInformation": "批量订单信息",

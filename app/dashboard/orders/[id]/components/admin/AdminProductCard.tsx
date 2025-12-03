@@ -562,8 +562,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   <h3 className="font-semibold text-base sm:text-lg text-gray-900 truncate flex-1 min-w-0">
                     {(product as any).description || (product as any).product?.title || 'Product'}
                   </h3>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <ProductStatusBadge status={displayStatus} />
+                  <div className="">
+                    <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
                     {(product as any).payment_status === 'paid' && (
                       <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" />

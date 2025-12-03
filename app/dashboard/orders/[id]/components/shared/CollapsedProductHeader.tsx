@@ -75,7 +75,7 @@ export function CollapsedProductHeader({
                 <h3 className="font-semibold text-lg text-gray-900">
                   {translate(product.description || product.product?.title) || t('product')}
                 </h3>
-                <ProductStatusBadge status={displayStatus} />
+                <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
 
                 {/* Payment status for admin view */}
                 {!isManufacturerView && product.payment_status === 'paid' && (
@@ -176,7 +176,7 @@ export function CollapsedProductHeader({
                 onClick={onRoute}
                 className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
               >
-                Route
+                {t('route')}
               </button>
             )}
             

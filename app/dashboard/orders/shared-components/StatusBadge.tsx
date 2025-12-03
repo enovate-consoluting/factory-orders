@@ -85,8 +85,15 @@ export function PaidBadge({ isPaid }: { isPaid: boolean }) {
 }
 
 // Product status badge matching original
-export function ProductStatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation();
+export function ProductStatusBadge({ 
+  status, 
+  translate = (text) => text || '',
+  t = (key) => key 
+}: { 
+  status: string;
+  translate?: (text: string | null | undefined) => string;
+  t?: (key: string) => string;
+}) {
   const normalizedStatus = status || 'pending';
   
   const statusColors: Record<string, string> = {

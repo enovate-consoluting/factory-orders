@@ -1049,7 +1049,7 @@ export default function OrdersPage() {
                                 )}
                               </button>
                             )}
-                            <div>
+                            <div>s
                               <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
                                 {order.order_name ? translate(order.order_name) : t('untitledOrder')}
                                 {hasUnreadNotification && (
