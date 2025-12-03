@@ -93,6 +93,19 @@ export interface Translations {
   sampleFee: string;
   air: string;
   boat: string;
+  ordersReadyForInvoicing: string;
+  noOrdersReadyForInvoicing: string;
+  withClient: string;
+  invoiceReady: string;
+  dayAgo: string;
+  daysAgo: string;
+  total: string;
+  createInvoice: string;
+  viewOrder: string;
+  qty: string;
+  unit: string;
+  sample: string;
+  shippingNotSet: string;
 }
 
 export const translations: Record<Language, Translations> = {
@@ -181,6 +194,19 @@ export const translations: Record<Language, Translations> = {
     sampleFee: 'Sample Fee',
     air: 'Air',
     boat: 'Boat',
+    ordersReadyForInvoicing: 'Orders Ready for Invoicing',
+    noOrdersReadyForInvoicing: 'No orders ready for invoicing.',
+    withClient: 'With Client',
+    invoiceReady: 'Invoice Ready',
+    dayAgo: 'day ago',
+    daysAgo: 'days ago',
+    total: 'Total',
+    createInvoice: 'Create Invoice',
+    viewOrder: 'View Order',
+    qty: 'Qty',
+    unit: 'unit',
+    sample: 'Sample',
+    shippingNotSet: 'Shipping not set',
   },
   zh: {
     // Page titles
@@ -267,5 +293,18 @@ export const translations: Record<Language, Translations> = {
     sampleFee: '样品费',
     air: '空运',
     boat: '海运',
+    ordersReadyForInvoicing: '待开发票订单',
+    noOrdersReadyForInvoicing: '没有待开发票的订单。',
+    withClient: '在客户处',
+    invoiceReady: '发票已准备',
+    dayAgo: '天前',
+    daysAgo: '天前',
+    total: '总计',
+    createInvoice: '创建发票',
+    viewOrder: '查看订单',
+    qty: '数量',
+    unit: '单位',
+    sample: '样品',
+    shippingNotSet: '未设置运费',
   }
 };
