@@ -604,29 +604,59 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
             </div>
 
             {/* Status Dropdown - Super Admin Only */}
-            {userRole === 'super_admin' && (
-              <select
-                value={displayStatus}
-                onChange={(e) => handleProductStatusChange(e.target.value)}
-                className="w-full px-2 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="pending">{t('pending')}</option>
-                <option value="sample_requested">{t('sampleRequested')}</option>
-                <option value="sent_to_manufacturer">{t('sentToManufacturer')}</option>
-                <option value="pending_admin">{t('pendingAdmin')}</option>
-                <option value="approved_for_production">{t('approvedForProduction')}</option>
-                <option value="in_production">{t('inProduction')}</option>
-                <option value="pending_client_approval">{t('pendingClient')}</option>
-                <option value="revision_requested">{t('revisionRequested')}</option>
-                <option value="completed">{t('completed')}</option>
-                <option value="rejected">{t('rejected')}</option>
-                <option value="shipped">{t('shipped')}</option>
-                <option value="in_transit">{t('inTransit')}</option>
-              </select>
-            )}
+            <div className="flex flex-col sm:flex-row gap-2">
+              {userRole === 'super_admin' && (
+                <select
+                  value={displayStatus}
+                  onChange={(e) => handleProductStatusChange(e.target.value)}
+                  className="flex-1 px-2 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="pending">{t('pending')}</option>
+                  <option value="sample_requested">{t('sampleRequested')}</option>
+                  <option value="sent_to_manufacturer">{t('sentToManufacturer')}</option>
+                  <option value="pending_admin">{t('pendingAdmin')}</option>
+                  <option value="approved_for_production">{t('approvedForProduction')}</option>
+                  <option value="in_production">{t('inProduction')}</option>
+                  <option value="pending_client_approval">{t('pendingClient')}</option>
+                  <option value="revision_requested">{t('revisionRequested')}</option>
+                  <option value="completed">{t('completed')}</option>
+                  <option value="rejected">{t('rejected')}</option>
+                  <option value="shipped">{t('shipped')}</option>
+                  <option value="in_transit">{t('inTransit')}</option>
+                </select>
+              )}
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              {/* Lock/Unlock button aligned with status dropdown */}
+              {canLockProducts && (
+                <button
+                  onClick={handleToggleLock}
+                  disabled={processingProduct}
+                  className={`px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                    (product as any).is_locked
+                      ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
+                      : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
+                  } disabled:opacity-50 whitespace-nowrap`}
+                  title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
+                >
+                  {processingProduct ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (product as any).is_locked ? (
+                    <>
+                      <Lock className="w-4 h-4" />
+                      <span className="text-sm font-medium">{t('unlock')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-4 h-4" />
+                      <span className="text-sm font-medium">{t('lock')}</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Action Buttons - Half width on mobile */}
+            <div className="grid grid-cols-2 sm:flex gap-2">
               {onViewHistory && (
                 <button
                   onClick={handleViewHistory}
@@ -645,35 +675,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   onClick={() => onRoute(product)}
                   className="px-3 py-2 sm:py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
                 >
-                  <Send className="w-4 h-4 sm:hidden" />
+                  <Send className="w-4 h-4" />
                   <span>{t('route')}</span>
-                </button>
-              )}
-
-              {canLockProducts && (
-                <button
-                  onClick={handleToggleLock}
-                  disabled={processingProduct}
-                  className={`px-3 py-2 sm:py-1.5 sm:px-2 rounded-lg transition-colors flex items-center justify-center gap-2 sm:gap-0 ${
-                    (product as any).is_locked
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                      : 'bg-green-50 text-green-600 hover:bg-green-100'
-                  } disabled:opacity-50`}
-                  title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
-                >
-                  {processingProduct ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (product as any).is_locked ? (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span className="sm:hidden text-sm font-medium">{t('unlock')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Unlock className="w-4 h-4" />
-                      <span className="sm:hidden text-sm font-medium">{t('lock')}</span>
-                    </>
-                  )}
                 </button>
               )}
             </div>
@@ -955,13 +958,13 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
             )}
 
-            {/* Variant Details Table */}
+            {/* Variant Details */}
             <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h5 className="text-sm font-medium text-gray-700">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <h5 className="text-sm font-semibold text-gray-800">
                   {getVariantTypeName()} {t('details')}
                   {!showAllVariants && hasHiddenVariants && !editingVariants && (
-                    <span className="ml-2 text-xs text-gray-500">
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
                       ({t('showing')} {visibleVariants.length} {t('of')} {items.length})
                     </span>
                   )}
@@ -970,17 +973,17 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                   {!editingVariants && hasHiddenVariants && (
                     <button
                       onClick={() => setShowAllVariants(!showAllVariants)}
-                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded flex items-center gap-1"
+                      className="flex-1 sm:flex-initial px-3 py-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                     >
                       {showAllVariants ? (
                         <>
-                          <EyeOff className="w-3 h-3" />
-                          {t('hideEmpty')}
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>{t('hideEmpty')}</span>
                         </>
                       ) : (
                         <>
-                          <Eye className="w-3 h-3" />
-                          {t('showAll')}
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{t('showAll')}</span>
                         </>
                       )}
                     </button>
@@ -991,16 +994,70 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                         setEditingVariants(true);
                         setShowAllVariants(true);
                       }}
-                      className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded flex items-center gap-1"
+                      className="flex-1 sm:flex-initial px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 border border-blue-600 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                     >
-                      <Edit2 className="w-3 h-3" />
-                      {t('edit')}
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>{t('edit')}</span>
                     </button>
                   ) : null}
                 </div>
               </div>
               
-              <div className="overflow-x-auto">
+              {/* Mobile Card Layout */}
+              <div className="sm:hidden space-y-2">
+                {visibleVariants.map((item, index) => (
+                  <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 mb-0.5">{getVariantTypeName()}</p>
+                        <p className="text-sm font-semibold text-gray-900 break-words">
+                          {translate(item.variant_combo)}
+                        </p>
+                      </div>
+                      <div className="ml-2 text-right flex-shrink-0">
+                        <p className="text-xs text-gray-500 mb-0.5">{t('qty')}</p>
+                        {editingVariants ? (
+                          <input
+                            type="number"
+                            value={variantQuantities[item.id] || 0}
+                            onChange={(e) => {
+                              setVariantQuantities(prev => ({
+                                ...prev,
+                                [item.id]: parseInt(e.target.value) || 0
+                              }));
+                            }}
+                            className="w-20 px-2 py-1 text-sm text-gray-900 font-semibold text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            min="0"
+                            max="999999"
+                          />
+                        ) : (
+                          <span className="text-sm font-semibold text-gray-900">{item.quantity}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('notes')}</label>
+                      <textarea
+                        value={variantNotes[item.id] || ''}
+                        onChange={(e) => {
+                          setVariantNotes(prev => ({
+                            ...prev,
+                            [item.id]: e.target.value
+                          }));
+                          if (!editingVariants) setEditingVariants(true);
+                        }}
+                        placeholder={t('addNote')}
+                        disabled={!editingVariants}
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-600 resize-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Desktop Table Layout */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
@@ -1063,7 +1120,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               </div>
               
               {editingVariants && (
-                <div className="mt-3 flex justify-end gap-2">
+                <div className="mt-3 grid grid-cols-2 sm:flex sm:justify-end gap-2">
                   <button
                     onClick={() => {
                       // Reset to original values
@@ -1079,24 +1136,25 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                       setShowAllVariants(false);
                     }}
                     disabled={savingVariants}
-                    className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2.5 sm:py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                   >
-                    {t('cancel')}
+                    <X className="w-4 h-4" />
+                    <span>{t('cancel')}</span>
                   </button>
                   <button
                     onClick={handleSaveVariants}
                     disabled={savingVariants}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-1 disabled:opacity-50"
+                    className="px-4 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                   >
                     {savingVariants ? (
                       <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {t('saving')}
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{t('saving')}</span>
                       </>
                     ) : (
                       <>
-                        <Save className="w-3 h-3" />
-                        {t('saveVariants')}
+                        <Save className="w-4 h-4" />
+                        <span>{t('saveVariants')}</span>
                       </>
                     )}
                   </button>

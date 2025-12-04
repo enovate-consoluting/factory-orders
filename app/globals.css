@@ -183,3 +183,55 @@ html::-webkit-scrollbar {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Touch-friendly mobile enhancements */
+@media (max-width: 768px) {
+  /* Improve tap target sizes */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 44px; /* Apple's recommended minimum */
+  }
+
+  /* Better scrolling on mobile */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text selection on tap */
+  .no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* Smooth scrolling for tab containers */
+.snap-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+.snap-start {
+  scroll-snap-align: start;
+}
+
+/* Better focus states for accessibility */
+@media (prefers-reduced-motion: no-preference) {
+  *:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+    transition: outline-offset 0.2s ease;
+  }
+}
+
+/* Optimize rendering for mobile */
+@media (max-width: 640px) {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

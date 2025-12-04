@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { 
+import {
   LayoutGrid,
-  ShoppingCart, 
+  ShoppingCart,
   Package,
   Layers,
   Activity,
@@ -21,7 +21,8 @@ import {
   FileText,
   AlertCircle,
   DollarSign,
-  Settings
+  Settings,
+  Globe
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from 'react-i18next';
@@ -717,8 +718,24 @@ export default function DashboardLayout({
               </h1>
             </div>
 
-            {/* Top right controls: Notification Bell only */}
-            <div className="flex items-center gap-4">
+            {/* Top right controls: Language Selector (conditional) + Notification Bell */}
+            <div className="flex items-center gap-2 sm:gap-4">
+              {/* Language Selector - Only show on order listing and order detail pages */}
+              {(pathname === '/dashboard/orders' ||
+                (pathname.startsWith('/dashboard/orders/') &&
+                 !pathname.includes('/create') &&
+                 !pathname.includes('/edit') &&
+                 !pathname.includes('/client'))) && (
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
+                  className="px-2 sm:px-3 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-[11px] sm:text-xs md:text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer flex-shrink-0"
+                >
+                  <option value="en">🇺🇸 EN</option>
+                  <option value="zh">🇨🇳 中文</option>
+                </select>
+              )}
+
               {/* Notification Bell - right side */}
               <div className="relative flex-shrink-0">
               <button
@@ -888,10 +905,14 @@ function SidebarContent({
     <div className="flex flex-col h-full">
       {/* Logo Section */}
       <div className="h-16 px-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex-1">
+        <Link
+          href="/dashboard"
+          onClick={onLinkClick}
+          className="flex-1 text-center lg:text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
           <h1 className="text-xl font-bold text-gray-900">BirdHaus</h1>
           <p className="text-xs text-gray-500">Order Management</p>
-        </div>
+        </Link>
         {onClose && (
           <button
             onClick={onClose}

@@ -188,77 +188,69 @@ export function AdminControlPanel({
   return (
     <>
       <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-        {/* Header Row - Control Panel Title and Order Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-          {/* Control Panel Header */}
-          <div className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
-            <Settings className="w-4 h-4 text-white flex-shrink-0" />
-            <h3 className="text-sm font-semibold text-white">{t('controlPanel')}</h3>
-          </div>
-
-          {/* Order Info Summary */}
-          <div className="px-4 py-2 bg-gray-50 flex flex-wrap items-center gap-3 sm:gap-4">
-            <div>
-              <span className="text-xs text-gray-500">{t('order')}</span>
-              <p className="font-bold text-sm sm:text-base text-gray-900">{order.order_number}</p>
-            </div>
-            <div className="hidden sm:block h-8 w-px bg-gray-300" />
-            <div>
-              <span className="text-xs text-gray-500">{t('client')}</span>
-              <p className="font-semibold text-xs sm:text-sm text-gray-900 truncate max-w-[150px]">{order.client?.name}</p>
-            </div>
-            <div className="hidden sm:block h-8 w-px bg-gray-300" />
-            <div>
-              <span className="text-xs text-gray-500">{t('products')}</span>
-              <p className="font-semibold text-sm text-gray-900">{visibleProducts.length}</p>
-            </div>
-          </div>
+        {/* Header */}
+        <div className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+          <Settings className="w-4 h-4 text-white flex-shrink-0" />
+          <h3 className="text-sm font-semibold text-white">{t('controlPanel')}</h3>
         </div>
 
         <div className="p-3 sm:p-4">
-          {/* Product Distribution and Totals */}
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4 mb-4">
-            {/* Product Distribution */}
-            {productCounts.total > 0 && (
-              <div className="flex flex-wrap items-center gap-2">
-                {productCounts.withAdmin > 0 && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withAdmin} {t('withAdmin')}
-                  </span>
-                )}
-                {productCounts.withManufacturer > 0 && (
-                  <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withManufacturer} {t('withMfr')}
-                  </span>
-                )}
-                {productCounts.withClient > 0 && (
-                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded whitespace-nowrap">
-                    {productCounts.withClient} {t('withClient')}
-                  </span>
-                )}
+          {/* Order Info Summary - Stacked on mobile */}
+          <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3 sm:mb-4">
+            <div className="text-center sm:text-left">
+              <span className="block text-xs text-gray-500">{t('order')}</span>
+              <p className="font-bold text-sm text-gray-900 truncate">{order.order_number}</p>
+            </div>
+            <div className="text-center sm:text-left">
+              <span className="block text-xs text-gray-500">{t('client')}</span>
+              <p className="font-semibold text-xs sm:text-sm text-gray-900 truncate">{order.client?.name}</p>
+            </div>
+            <div className="text-center sm:text-left">
+              <span className="block text-xs text-gray-500">{t('products')}</span>
+              <p className="font-semibold text-sm text-gray-900">{visibleProducts.length}</p>
+            </div>
+          </div>
+
+          {/* Product Distribution - Wrap on mobile */}
+          {productCounts.total > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3">
+              {productCounts.withAdmin > 0 && (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
+                  {productCounts.withAdmin} {t('withAdmin')}
+                </span>
+              )}
+              {productCounts.withManufacturer > 0 && (
+                <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded whitespace-nowrap">
+                  {productCounts.withManufacturer} {t('withMfr')}
+                </span>
+              )}
+              {productCounts.withClient > 0 && (
+                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded whitespace-nowrap">
+                  {productCounts.withClient} {t('withClient')}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Totals - Side by side on mobile */}
+          <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-gray-200">
+            {totals.shipping > 0 && (
+              <div>
+                <span className="block text-xs text-gray-500">{t('shipping')}</span>
+                <p className="font-semibold text-sm sm:text-base text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
               </div>
             )}
-
-            {/* Totals */}
-            <div className="flex items-center gap-3 sm:gap-4 justify-end sm:justify-start lg:justify-end">
-              {totals.shipping > 0 && (
-                <div className="text-right">
-                  <span className="text-xs text-gray-500">{t('shipping')}</span>
-                  <p className="font-semibold text-sm sm:text-base text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-                </div>
-              )}
-              <div className="text-right">
-                <span className="text-xs text-gray-500">{t('clientTotal')}</span>
-                <p className="font-bold text-lg sm:text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              </div>
+            <div className="text-right">
+              <span className="block text-xs text-gray-500">{t('clientTotal')}</span>
+              <p className="font-bold text-lg sm:text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
             </div>
           </div>
 
           {/* Warnings Row */}
           {(productsNeedingPricing > 0 || productsWithoutShipping > 0) && (
-            <div className="flex flex-wrap gap-2 mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
-              <div className="flex-1 text-sm text-amber-800">
+            <div className="flex gap-2 mb-3 p-2 sm:p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 text-xs sm:text-sm text-amber-800">
                 {productsNeedingPricing > 0 && (
                   <span>{productsNeedingPricing} {t('productsNeedPricing')}. </span>
                 )}
@@ -269,41 +261,77 @@ export function AdminControlPanel({
             </div>
           )}
 
-          {/* Action Buttons Row */}
-          <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3 pt-3 border-t">
-            {/* Print All */}
-            <button
-              onClick={onPrintAll}
-              className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm sm:text-base"
-            >
-              <Printer className="w-4 h-4" />
-              <span>{t('printAll')}</span>
-            </button>
-
-            {/* Client Notes */}
-            <button
-              onClick={openNotesModal}
-              className="px-3 sm:px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium relative text-sm sm:text-base"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>{t('clientNotes')}</span>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {/* Save All & Route - Only show if there are products with admin */}
-            {productCounts.withAdmin > 0 && (
+          {/* Action Buttons - Mobile: 1 full + 2 half | Desktop: All in one row */}
+          <div className="space-y-2 sm:space-y-0">
+            {/* Desktop: All buttons in one row */}
+            <div className="hidden lg:flex sm:grid sm:grid-cols-3 sm:gap-2">
               <button
-                onClick={onSaveAndRoute}
-                className="px-3 sm:px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium sm:ml-auto text-sm sm:text-base"
+                onClick={onPrintAll}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
               >
-                <Save className="w-4 h-4" />
-                <span className="whitespace-nowrap">{t('saveAllAndRoute')} ({productCounts.withAdmin})</span>
+                <Printer className="w-4 h-4" />
+                <span>{t('printAll')}</span>
               </button>
-            )}
+
+              <button
+                onClick={openNotesModal}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium relative text-sm"
+              >
+                <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                <span>{t('clientNotes')}</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {productCounts.withAdmin > 0 && (
+                <button
+                  onClick={onSaveAndRoute}
+                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                >
+                  <Save className="w-4 h-4 flex-shrink-0" />
+                  <span className="whitespace-nowrap">{t('saveAllAndRoute')} ({productCounts.withAdmin})</span>
+                </button>
+              )}
+            </div>
+
+            {/* Mobile: Print All full width, then 2 buttons in grid */}
+            <div className="sm:hidden space-y-2">
+              <button
+                onClick={onPrintAll}
+                className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+              >
+                <Printer className="w-4 h-4" />
+                <span>{t('printAll')}</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={openNotesModal}
+                  className="px-2 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-1.5 font-medium relative text-sm"
+                >
+                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                  <span>{t('notes')}</span>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {productCounts.withAdmin > 0 && (
+                  <button
+                    onClick={onSaveAndRoute}
+                    className="px-2 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5 font-medium text-sm"
+                  >
+                    <Save className="w-4 h-4 flex-shrink-0" />
+                    <span>{t('save')} ({productCounts.withAdmin})</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

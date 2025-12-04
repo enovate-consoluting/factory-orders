@@ -721,7 +721,7 @@ export default function InvoicesPage() {
     return (
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className={`p-3 sm:p-4 border-b ${isProductionTab ? 'bg-purple-50' : 'bg-amber-50'}`}>
-          <h2 className="text-sm sm:text-base font-semibold text-gray-900">{isProductionTab ? 'Orders In Production' : 'Orders Ready for Invoicing'}</h2>
+          <h2 className="text-sm sm:text-base font-semibold text-gray-900">{isProductionTab ? 'Orders In Production' : 'bg-white hover:bg-gray-50 transition-colorscing'}</h2>
           {isProductionTab && (
             <p className="text-xs text-gray-600 mt-1">
               Products approved for production or currently being manufactured

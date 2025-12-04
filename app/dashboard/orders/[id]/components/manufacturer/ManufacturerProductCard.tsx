@@ -952,11 +952,11 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="grid grid-cols-[auto_auto_auto] gap-2 w-fit">
               {onViewHistory && (
                 <button
                   onClick={handleViewHistory}
-                  className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center gap-2 relative"
+                  className="px-3 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium inline-flex items-center gap-2 relative"
                 >
                   <Clock className="w-4 h-4" />
                   <span className="hidden sm:inline">History</span>
@@ -969,16 +969,17 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               {onRoute && (
                 <button
                   onClick={() => onRoute(product)}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium inline-flex items-center gap-2"
                 >
-                  Route
+                  <Send className="w-4 h-4" />
+                  <span>Route</span>
                 </button>
               )}
               
               <button
                 onClick={handleToggleLock}
                 disabled={processingProduct}
-                className={`p-2 rounded-lg transition-colors ${
+                className={`px-3 py-1.5 rounded-lg transition-colors inline-flex items-center gap-2 text-sm font-medium ${
                   (product as any).is_locked 
                     ? 'bg-red-50 text-red-600 hover:bg-red-100' 
                     : 'bg-green-50 text-green-600 hover:bg-green-100'
@@ -992,6 +993,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                 ) : (
                   <Unlock className="w-4 h-4" />
                 )}
+                <span className="hidden sm:inline">{(product as any).is_locked ? 'Unlock' : 'Lock'}</span>
               </button>
             </div>
           </div>
@@ -1354,13 +1356,13 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
             )}
 
-            {/* Variant Details Table */}
+            {/* Variant Details */}
             <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <h5 className="text-sm font-medium text-gray-700">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <h5 className="text-sm font-semibold text-gray-800">
                   {getVariantTypeName()} {t ? t('details') : 'Details'}
                   {!showAllVariants && hasHiddenVariants && !editingVariants && (
-                    <span className="ml-2 text-xs text-gray-500">
+                    <span className="ml-2 text-xs text-gray-500 font-normal">
                       ({t ? t('showing') : 'Showing'} {visibleVariants.length} of {items.length})
                     </span>
                   )}
@@ -1369,17 +1371,17 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   {!editingVariants && hasHiddenVariants && (
                     <button
                       onClick={() => setShowAllVariants(!showAllVariants)}
-                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                      className="flex-1 sm:flex-initial px-3 py-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                     >
                       {showAllVariants ? (
                         <>
-                          <EyeOff className="w-3 h-3" />
-                          {t ? t('hideEmpty') : 'Hide Empty'}
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>{t ? t('hideEmpty') : 'Hide Empty'}</span>
                         </>
                       ) : (
                         <>
-                          <Eye className="w-3 h-3" />
-                          {t ? t('showAll') : 'Show All'}
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{t ? t('showAll') : 'Show All'}</span>
                         </>
                       )}
                     </button>
@@ -1390,16 +1392,73 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                         setEditingVariants(true);
                         setShowAllVariants(true);
                       }}
-                      className="px-3 py-1 text-xs text-blue-600 hover:text-blue-700 border border-blue-300 rounded-lg flex items-center gap-1.5 transition-colors"
+                      className="flex-1 sm:flex-initial px-3 py-2 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 border border-blue-600 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
                     >
-                      <Edit2 className="w-3 h-3" />
-                      {t ? t('edit') : 'Edit'}
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>{t ? t('edit') : 'Edit'}</span>
                     </button>
                   ) : null}
                 </div>
               </div>
               
-              <div className="overflow-x-auto">
+              {/* Mobile Card Layout */}
+              <div className="sm:hidden space-y-2">
+                {visibleVariants.map((item, index) => (
+                  <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 mb-0.5">{getVariantTypeName()}</p>
+                        <p className="text-sm font-semibold text-gray-900 break-words">
+                          {translate(item.variant_combo)}
+                        </p>
+                      </div>
+                      <div className="ml-2 text-right flex-shrink-0">
+                        <p className="text-xs text-gray-500 mb-0.5">Qty</p>
+                        {editingVariants ? (
+                          <input
+                            type="number"
+                            min="0"
+                            value={itemQuantities[item.id] || '0'}
+                            onChange={(e) => {
+                              setItemQuantities(prev => ({
+                                ...prev,
+                                [item.id]: e.target.value
+                              }));
+                              setVariantsDirty(true);
+                            }}
+                            className="w-20 px-2 py-1 text-sm text-gray-900 font-semibold text-center border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        ) : (
+                          <span className="text-sm font-semibold text-gray-900">
+                            {itemQuantities[item.id] || '0'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Notes</label>
+                      <textarea
+                        value={variantNotes[item.id] || ''}
+                        onChange={(e) => {
+                          setVariantNotes(prev => ({
+                            ...prev,
+                            [item.id]: e.target.value
+                          }));
+                          setVariantsDirty(true);
+                          if (!editingVariants) setEditingVariants(true);
+                        }}
+                        placeholder={t ? t('addNote') : 'Add note...'}
+                        disabled={!editingVariants}
+                        rows={2}
+                        className="w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded-lg placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-600 resize-none"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Desktop Table Layout */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
@@ -1459,7 +1518,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
               </div>
               
               {editingVariants && (
-                <div className="mt-3 flex justify-end gap-3">
+                <div className="mt-3 grid grid-cols-2 sm:flex sm:justify-end gap-2">
                   <button
                     onClick={() => {
                       const originalNotes: {[key: string]: string} = {};
@@ -1475,24 +1534,26 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                       setShowAllVariants(false);
                     }}
                     disabled={savingVariantNotes}
-                    className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                    className="px-4 py-2.5 sm:py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
                   >
-                    {t ? t('cancel') : 'Cancel'}
+                    <X className="w-4 h-4" />
+                    <span>{t ? t('cancel') : 'Cancel'}</span>
                   </button>
                   <button
                     onClick={handleSaveVariantNotes}
                     disabled={savingVariantNotes}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors font-medium"
+                    className="px-4 py-2.5 sm:py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                   >
                     {savingVariantNotes ? (
                       <>
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        {t ? t('saving') : 'Saving...'}
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{t ? t('saving') : 'Saving...'}</span>
                       </>
                     ) : (
                       <>
-                        <Save className="w-3 h-3" />
-                        {t ? t('saveVariants') : 'Save Variant Details'}
+                        <Save className="w-4 h-4" />
+                        <span className="hidden sm:inline">{t ? t('saveVariants') : 'Save Variant Details'}</span>
+                        <span className="sm:hidden">{t ? t('save') : 'Save'}</span>
                       </>
                     )}
                   </button>

@@ -854,65 +854,63 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
         <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                    <Package className="w-6 h-6 text-blue-600" />
+          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
                   </div>
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900">
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words">
                       {t('order')} {order.order_number}
                     </h1>
                     {order.order_name && (
-                      <p className="text-gray-500">{translate(order.order_name)}</p>
+                      <p className="text-xs sm:text-sm text-gray-500 truncate">{translate(order.order_name)}</p>
                     )}
                   </div>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                {/* Language Switcher */}
+                
+                {/* Language Switcher - Client View Header */}
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
-                  style={{ minWidth: 90 }}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer flex-shrink-0"
                 >
                   <option value="en">🇺🇸 EN</option>
                   <option value="zh">🇨🇳 中文</option>
                 </select>
-
-                {totalAmount > 0 && (
-                  <div className="text-right bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 rounded-xl border border-green-200">
-                    <p className="text-sm text-gray-500">{t('orderTotal')}</p>
-                    <p className="text-3xl font-bold text-green-700">
-                      ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                )}
               </div>
+              
+              {/* Order Total - Full width on mobile */}
+              {totalAmount > 0 && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 rounded-lg border border-green-200">
+                  <p className="text-xs sm:text-sm text-gray-500">{t('orderTotal')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-green-700">
+                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-20">
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Package className="w-5 h-5 text-gray-400" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 pb-20">
+          <div className="space-y-4 sm:space-y-6">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
               {t('productsForYourReview')}
             </h2>
 
             {clientProducts.length === 0 ? (
-              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-gray-400" />
+              <div className="bg-white rounded-lg sm:rounded-xl shadow border border-gray-200 p-6 sm:p-8 text-center">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                  <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                   {t('noProductsPendingReview')}
                 </h3>
-                <p className="text-gray-500">
+                <p className="text-sm sm:text-base text-gray-500">
                   {t('allProductsReviewedOrProcessing')}
                 </p>
               </div>
@@ -978,26 +976,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
         {/* Client & Manufacturer Info Cards */}
         {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
             {/* Client Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow relative">
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-3 sm:p-4 hover:shadow-md transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
                   onClick={() => {
                     setIsEditingClient(true);
                     setSelectedClientId(order.client?.id || '');
                   }}
-                  className="absolute top-4 right-4 p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                  className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
                   title="Edit Client"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Edit2 className="w-3.5 h-3.5" />
                 </button>
               )}
               
               {isEditingClient ? (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-500">{t('selectNewClient')}</p>
+                    <p className="text-xs sm:text-sm text-gray-500">{t('selectNewClient')}</p>
                     <button
                       onClick={() => {
                         setIsEditingClient(false);
@@ -1011,7 +1009,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   <select
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                     disabled={savingClient}
                   >
                     <option value="">{t('selectClient')}</option>
@@ -1028,23 +1026,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                         setSelectedClientId(order.client?.id || '');
                       }}
                       disabled={savingClient}
-                      className="flex-1 px-3 py-1 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
                     >
                       {t('cancel')}
                     </button>
                     <button
                       onClick={handleClientChange}
                       disabled={!selectedClientId || selectedClientId === order.client?.id || savingClient}
-                      className="flex-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {savingClient ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
                           {t('saving')}
                         </>
                       ) : (
                         <>
-                          <Check className="w-4 h-4" />
+                          <Check className="w-3.5 h-3.5" />
                           {t('save')}
                         </>
                       )}
@@ -1058,17 +1056,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building className="w-5 h-5 text-blue-600" />
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm text-gray-500">{t('client')}</p>
-                      <p className="font-semibold text-gray-900 truncate">{translate(order.client?.name)}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm text-gray-500">{t('client')}</p>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{translate(order.client?.name)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Mail className="w-4 h-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                     <span className="truncate">{order.client?.email}</span>
                   </div>
                 </>
@@ -1076,18 +1074,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4 hover:shadow-xl transition-shadow">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Building className="w-5 h-5 text-green-600" />
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-3 sm:p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-500">{t('manufacturer')}</p>
-                  <p className="font-semibold text-gray-900 truncate">{translate(order.manufacturer?.name)}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs sm:text-sm text-gray-500">{t('manufacturer')}</p>
+                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{translate(order.manufacturer?.name)}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail className="w-4 h-4 flex-shrink-0" />
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span className="truncate">{order.manufacturer?.email}</span>
               </div>
             </div>
@@ -1175,15 +1173,16 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Products Section */}
-          <div className="space-y-4 sm:space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
+          <div className="space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
               {selectedProductId !== 'all' ? t('productDetail') : t('orderProducts')}
-            </h2>            <div className="flex items-center gap-3">
+            </h2>
+            <div className="flex items-center gap-2">
               {isSuperAdmin && productCounts.withManufacturer > 0 && (
                 <button
                   onClick={() => setShowAllProducts(!showAllProducts)}
-                  className={`px-4 py-2 rounded-lg shadow-lg transition-all flex items-center gap-2 font-medium ${
+                  className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow transition-all flex items-center gap-1.5 sm:gap-2 font-medium text-sm ${
                     showAllProducts 
                       ? 'bg-amber-600 text-white hover:bg-amber-700' 
                       : 'bg-purple-600 text-white hover:bg-purple-700'
@@ -1192,13 +1191,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 >
                   {showAllProducts ? (
                     <>
-                      <EyeOff className="w-4 h-4" />
+                      <EyeOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span className="hidden sm:inline">{t('hideManufacturerProducts')}</span>
                       <span className="sm:hidden">{t('hide')}</span>
                     </>
                   ) : (
                     <>
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       <span className="hidden sm:inline">{t('showAllProducts')}</span>
                       <span className="sm:hidden">{t('showAll')}</span>
                     </>
@@ -1209,9 +1208,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           </div>
 
           {visibleProducts.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-lg border border-gray-300 p-8 text-center">
-              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 sm:p-8 text-center">
+              <Package className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
+              <p className="text-sm sm:text-base text-gray-500">
                 {selectedProductId !== 'all' 
                   ? t('productNotFound')
                   : isManufacturer
