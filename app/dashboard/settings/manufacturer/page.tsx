@@ -2,8 +2,8 @@
  * Manufacturer Settings Page - /dashboard/settings/manufacturer
  * Per-manufacturer configurable settings for workflow
  * Roles: Manufacturer (own settings), Super Admin (any manufacturer)
- * UPDATED: Added Chinese translation field for tab name
- * Last Modified: Nov 28 2025
+ * UPDATED: Added Shipping Days configuration for ETA calculation
+ * Last Modified: December 4, 2025
  */
 
 'use client';
@@ -22,7 +22,10 @@ import {
   Loader2,
   Building,
   ChevronDown,
-  Globe
+  Globe,
+  Plane,
+  Ship,
+  Calendar
 } from 'lucide-react';
 
 interface Manufacturer {
@@ -32,6 +35,8 @@ interface Manufacturer {
   ship_queue_name: string | null;
   ship_queue_name_zh: string | null;
   ship_queue_days: number | null;
+  air_shipping_days: number | null;
+  boat_shipping_days: number | null;
 }
 
 export default function ManufacturerSettingsPage() {
@@ -50,10 +55,14 @@ export default function ManufacturerSettingsPage() {
   // Current manufacturer being edited
   const [currentManufacturer, setCurrentManufacturer] = useState<Manufacturer | null>(null);
 
-  // Settings fields
+  // Settings fields - Ship Queue
   const [shipQueueName, setShipQueueName] = useState('Ready to Ship');
   const [shipQueueNameZh, setShipQueueNameZh] = useState('准备发货');
   const [shipQueueDays, setShipQueueDays] = useState('3');
+
+  // NEW: Settings fields - Shipping Days for ETA
+  const [airShippingDays, setAirShippingDays] = useState('15');
+  const [boatShippingDays, setBoatShippingDays] = useState('34');
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -85,7 +94,7 @@ export default function ManufacturerSettingsPage() {
       
       const { data, error } = await supabase
         .from('manufacturers')
-        .select('id, name, email, ship_queue_name, ship_queue_name_zh, ship_queue_days')
+        .select('id, name, email, ship_queue_name, ship_queue_name_zh, ship_queue_days, air_shipping_days, boat_shipping_days')
         .order('name');
       
       if (error) throw error;
@@ -111,7 +120,7 @@ export default function ManufacturerSettingsPage() {
       
       const { data, error } = await supabase
         .from('manufacturers')
-        .select('id, name, email, ship_queue_name, ship_queue_name_zh, ship_queue_days')
+        .select('id, name, email, ship_queue_name, ship_queue_name_zh, ship_queue_days, air_shipping_days, boat_shipping_days')
         .eq('email', email)
         .single();
       
@@ -135,6 +144,9 @@ export default function ManufacturerSettingsPage() {
     setShipQueueName(manufacturer.ship_queue_name || 'Ready to Ship');
     setShipQueueNameZh(manufacturer.ship_queue_name_zh || '准备发货');
     setShipQueueDays(String(manufacturer.ship_queue_days || 3));
+    // NEW: Load shipping days
+    setAirShippingDays(String(manufacturer.air_shipping_days || 15));
+    setBoatShippingDays(String(manufacturer.boat_shipping_days || 34));
   };
 
   // When super_admin selects a different manufacturer
@@ -161,7 +173,21 @@ export default function ManufacturerSettingsPage() {
       // Validate days is a positive number
       const daysNum = parseInt(shipQueueDays, 10);
       if (isNaN(daysNum) || daysNum < 1 || daysNum > 30) {
-        setSaveMessage({ type: 'error', text: 'Days must be a number between 1 and 30' });
+        setSaveMessage({ type: 'error', text: 'Ship queue days must be a number between 1 and 30' });
+        return;
+      }
+
+      // Validate shipping days
+      const airDaysNum = parseInt(airShippingDays, 10);
+      const boatDaysNum = parseInt(boatShippingDays, 10);
+      
+      if (isNaN(airDaysNum) || airDaysNum < 1 || airDaysNum > 60) {
+        setSaveMessage({ type: 'error', text: 'Air shipping days must be a number between 1 and 60' });
+        return;
+      }
+      
+      if (isNaN(boatDaysNum) || boatDaysNum < 1 || boatDaysNum > 90) {
+        setSaveMessage({ type: 'error', text: 'Boat shipping days must be a number between 1 and 90' });
         return;
       }
 
@@ -177,7 +203,9 @@ export default function ManufacturerSettingsPage() {
         .update({ 
           ship_queue_name: shipQueueName.trim(),
           ship_queue_name_zh: shipQueueNameZh.trim() || null,
-          ship_queue_days: daysNum
+          ship_queue_days: daysNum,
+          air_shipping_days: airDaysNum,
+          boat_shipping_days: boatDaysNum
         })
         .eq('id', selectedManufacturerId);
 
@@ -187,7 +215,14 @@ export default function ManufacturerSettingsPage() {
       if (userRole === 'super_admin') {
         setManufacturers(prev => prev.map(m => 
           m.id === selectedManufacturerId 
-            ? { ...m, ship_queue_name: shipQueueName.trim(), ship_queue_name_zh: shipQueueNameZh.trim() || null, ship_queue_days: daysNum }
+            ? { 
+                ...m, 
+                ship_queue_name: shipQueueName.trim(), 
+                ship_queue_name_zh: shipQueueNameZh.trim() || null, 
+                ship_queue_days: daysNum,
+                air_shipping_days: airDaysNum,
+                boat_shipping_days: boatDaysNum
+              }
             : m
         ));
       }
@@ -215,17 +250,6 @@ export default function ManufacturerSettingsPage() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-4xl">
-      {/* Language Switcher */}
-      {/* <div className="flex justify-end mb-4">
-        <select
-          value={i18n.language}
-          onChange={e => i18n.changeLanguage(e.target.value)}
-          className="px-3 py-1 border border-gray-300 rounded-lg text-sm"
-        >
-          <option value="en">English</option>
-          <option value="zh">中文</option>
-        </select>
-      </div> */}
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <div className="flex items-center gap-2 sm:gap-3 mb-2">
@@ -383,6 +407,108 @@ export default function ManufacturerSettingsPage() {
                 </strong>{' '}
                 will appear in the "{i18n.language === 'zh' ? shipQueueNameZh : shipQueueName}" tab starting today.
               </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NEW: Shipping Days for ETA Calculation Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 sm:mb-6">
+        <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-t-lg">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Shipping Duration Settings</h2>
+          </div>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+            Configure shipping transit times for estimated delivery (ETA) calculations
+          </p>
+        </div>
+
+        <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+          {/* Air Shipping Days */}
+          <div>
+            <label htmlFor="airShippingDays" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              <div className="flex items-center gap-2">
+                <Plane className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                <span>Air Shipping Duration</span>
+              </div>
+            </label>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <input
+                type="number"
+                id="airShippingDays"
+                value={airShippingDays}
+                onChange={(e) => setAirShippingDays(e.target.value)}
+                min="1"
+                max="60"
+                className="w-20 sm:w-24 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              />
+              <span className="text-sm sm:text-base text-gray-600">{i18n.language === 'zh' ? '天' : 'days'}</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Average transit time for air freight shipments (typically 10-20 days)
+            </p>
+          </div>
+
+          {/* Boat Shipping Days */}
+          <div>
+            <label htmlFor="boatShippingDays" className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+              <div className="flex items-center gap-2">
+                <Ship className="w-3 h-3 sm:w-4 sm:h-4 text-cyan-600" />
+                <span>Boat/Sea Shipping Duration</span>
+              </div>
+            </label>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <input
+                type="number"
+                id="boatShippingDays"
+                value={boatShippingDays}
+                onChange={(e) => setBoatShippingDays(e.target.value)}
+                min="1"
+                max="90"
+                className="w-20 sm:w-24 px-3 sm:px-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              />
+              <span className="text-sm sm:text-base text-gray-600">{i18n.language === 'zh' ? '天' : 'days'}</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Average transit time for sea freight shipments (typically 30-45 days)
+            </p>
+          </div>
+
+          {/* ETA Calculation Example */}
+          <div className="mt-2 sm:mt-3 p-3 sm:p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+            <h4 className="text-sm font-medium text-indigo-900 mb-2 flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              How ETA is Calculated
+            </h4>
+            <p className="text-xs sm:text-sm text-indigo-800 mb-2">
+              <strong>Estimated Delivery Date</strong> = Production Start Date + Production Days + Shipping Days
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div className="p-2 bg-white rounded border border-indigo-200">
+                <div className="flex items-center gap-2 text-blue-700 font-medium text-sm">
+                  <Plane className="w-4 h-4" />
+                  Air Example
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  If production starts today with 25 production days:
+                </p>
+                <p className="text-xs font-medium text-gray-900 mt-1">
+                  ETA: {new Date(Date.now() + (25 + parseInt(airShippingDays || '15')) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                </p>
+              </div>
+              <div className="p-2 bg-white rounded border border-indigo-200">
+                <div className="flex items-center gap-2 text-cyan-700 font-medium text-sm">
+                  <Ship className="w-4 h-4" />
+                  Boat Example
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  If production starts today with 25 production days:
+                </p>
+                <p className="text-xs font-medium text-gray-900 mt-1">
+                  ETA: {new Date(Date.now() + (25 + parseInt(boatShippingDays || '34')) * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                </p>
+              </div>
             </div>
           </div>
         </div>

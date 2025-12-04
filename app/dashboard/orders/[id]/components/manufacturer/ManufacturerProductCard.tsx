@@ -9,7 +9,8 @@
  * - Uses new database fields (shipping_linked_products, shipping_link_note)
  * - CLEANUP: Now imports formatCurrency from shared utils (removed duplicate)
  * - FIX: client_notes now saved in saveAll function (was missing!)
- * Last Modified: Nov 30 2025
+ * - NEW: Added production_days field for ETA calculation
+ * Last Modified: December 4, 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
@@ -17,7 +18,7 @@ import {
   Package, Clock, Lock, Unlock, Send, CheckCircle, 
   Loader2, Save, DollarSign, Plane, Ship, 
   Upload, X, ChevronDown, Calculator, Edit2, Eye, EyeOff,
-  Link2, AlertCircle
+  Link2, AlertCircle, Calendar
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
@@ -129,6 +130,9 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     const [productPrice, setProductPrice] = useState((product as any).product_price?.toString() || '');
     const [productionTime, setProductionTime] = useState((product as any).production_time || '');
     
+    // NEW: State for production days (numeric for ETA calculation)
+    const [productionDays, setProductionDays] = useState<string>((product as any).production_days?.toString() || '');
+    
     // State for shipping prices - convert to strings for inputs
     const [shippingAirPrice, setShippingAirPrice] = useState((product as any).shipping_air_price?.toString() || '');
     const [shippingBoatPrice, setShippingBoatPrice] = useState((product as any).shipping_boat_price?.toString() || '');
@@ -167,6 +171,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     const [originalValues, setOriginalValues] = useState({
       productPrice: (product as any).product_price?.toString() || '',
       productionTime: (product as any).production_time || '',
+      productionDays: (product as any).production_days?.toString() || '',
       bulkNotes: (product as any).client_notes || '',
       shippingAirPrice: (product as any).shipping_air_price?.toString() || '',
       shippingBoatPrice: (product as any).shipping_boat_price?.toString() || '',
@@ -262,6 +267,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       setOriginalValues({
         productPrice: (product as any).product_price?.toString() || '',
         productionTime: (product as any).production_time || '',
+        productionDays: (product as any).production_days?.toString() || '',
         bulkNotes: (product as any).client_notes || '',
         shippingAirPrice: (product as any).shipping_air_price?.toString() || '',
         shippingBoatPrice: (product as any).shipping_boat_price?.toString() || '',
@@ -271,6 +277,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
       });
       setProductPrice((product as any).product_price?.toString() || '');
       setProductionTime((product as any).production_time || '');
+      setProductionDays((product as any).production_days?.toString() || '');
       setShippingAirPrice((product as any).shipping_air_price?.toString() || '');
       setShippingBoatPrice((product as any).shipping_boat_price?.toString() || '');
       setSampleFee((product as any).sample_fee?.toString() || '');
@@ -361,6 +368,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             
             // Other fields
             production_time: productionTime || null,
+            production_days: productionDays ? parseInt(productionDays) : null,
             sample_eta: sampleETA || null,
             manufacturer_notes: finalManufacturerNotes || null,
             internal_notes: finalInternalNotes || null,
@@ -515,6 +523,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
         return {
           productPrice,
           productionTime,
+          productionDays,
           shippingAir: shippingAirPrice,
           shippingBoat: shippingBoatPrice,
           selectedShippingMethod,
@@ -531,6 +540,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
     }), [
       productPrice,
       productionTime,
+      productionDays,
       shippingAirPrice,
       shippingBoatPrice,
       selectedShippingMethod,
@@ -681,6 +691,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           
           // Other fields
           production_time: productionTime || null,
+          production_days: productionDays ? parseInt(productionDays) : null,
           sample_eta: sampleETA || null,
           manufacturer_notes: finalManufacturerNotes || null,
           
@@ -768,6 +779,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
           ...prev,
           productPrice,
           productionTime,
+          productionDays,
           shippingAirPrice,
           shippingBoatPrice,
           sampleFee,
@@ -1062,7 +1074,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
             />
 
             {/* Product Price and Production Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t ? t('productPriceYourCost') : 'Product Price (Your Cost)'}
@@ -1104,6 +1116,32 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                     className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
                   />
                 </div>
+              </div>
+
+              {/* NEW: Production Days for ETA Calculation */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t ? t('productionDays') : 'Production Days'}
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="number"
+                    min="1"
+                    value={productionDays}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '' || parseInt(val) >= 0) {
+                        setProductionDays(val);
+                        setBulkSectionDirty(true);
+                      }
+                    }}
+                    placeholder="e.g., 25"
+                    className="w-full pl-8 pr-12 py-2 border border-gray-200 rounded-lg bg-white text-gray-900"
+                  />
+                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-400">days</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">{t ? t('usedForETACalculation') : 'Used for ETA calculation'}</p>
               </div>
             </div>
 
@@ -1320,6 +1358,7 @@ export const ManufacturerProductCard = forwardRef<ManufacturerProductCardRef, Ma
                   onClick={() => {
                     setProductPrice(originalValues.productPrice);
                     setProductionTime(originalValues.productionTime);
+                    setProductionDays(originalValues.productionDays);
                     setShippingAirPrice(originalValues.shippingAirPrice);
                     setShippingBoatPrice(originalValues.shippingBoatPrice);
                     setSampleFee(originalValues.sampleFee);

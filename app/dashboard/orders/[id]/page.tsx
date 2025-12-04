@@ -1,10 +1,12 @@
 /**
  * Order Detail Page - /dashboard/orders/[id]
+ * UPDATED: Products now visible to both Admin and Manufacturer regardless of routing
  * UPDATED: Control Panel and Product Distribution moved ABOVE Sample Request
  * UPDATED: Passes sample data to useBulkRouting for save & route
  * UPDATED: Admin redirects to orders list after routing
  * FIXED: Sample section saves and routes with products
- * Last Modified: November 30, 2025
+ * FIXED: Products no longer disappear when routed - routing is now just a queue indicator
+ * Last Modified: December 4, 2025
  */
 
 'use client';
@@ -215,32 +217,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return order.order_products;
   };
 
+  /**
+   * UPDATED: Products are now visible to both Admin and Manufacturer regardless of routing
+   * Routing indicates "who needs to work on this" (appears in their queue/tab)
+   * Both parties can still see and edit products at any time
+   */
   const getVisibleProducts = () => {
     const allProducts = getAllProducts();
     
+    // Client still only sees products routed to them (for approval)
     if (isClient) {
       return allProducts.filter((product: any) => product.routed_to === 'client');
     }
     
+    // If a specific product is selected from distribution bar, show only that one
     if (selectedProductId !== 'all') {
       return allProducts.filter((product: any) => product.id === selectedProductId);
     }
     
-    if (isManufacturer) {
-      return allProducts.filter((product: any) => product.routed_to === 'manufacturer');
-    }
-    
-    if (showAllProducts) {
-      return allProducts;
-    }
-    
-    return allProducts.filter((product: any) => product.routed_to === 'admin');
+    // For Admin and Manufacturer - show ALL products
+    // Routing now indicates "who needs to work on this" not visibility
+    // Products no longer disappear when routed to the other party
+    return allProducts;
   };
   
   // Get products with admin (for AdminControlPanel)
   const getAdminProducts = () => {
     const allProducts = getAllProducts();
     return allProducts.filter((product: any) => product.routed_to === 'admin');
+  };
+  
+  // Get products with manufacturer (for ManufacturerControlPanel)
+  const getManufacturerProducts = () => {
+    const allProducts = getAllProducts();
+    return allProducts.filter((product: any) => product.routed_to === 'manufacturer');
   };
 
   // Sample Routing Hook
@@ -819,6 +829,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const visibleProducts = getVisibleProducts();
   const clientProducts = getClientProducts();
   const adminProducts = getAdminProducts();
+  const manufacturerProducts = getManufacturerProducts();
 
   // Find sample files
   const existingSampleMedia = (() => {
@@ -1104,10 +1115,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* CONTROL PANEL - Manufacturer (moved ABOVE sample request) */}
-        {userRole === 'manufacturer' && visibleProducts.length > 0 && (
+        {userRole === 'manufacturer' && manufacturerProducts.length > 0 && (
           <ManufacturerControlPanel
             order={order}
-            visibleProducts={visibleProducts}
+            visibleProducts={manufacturerProducts}
             onSaveAndRoute={handleSaveAllAndRoute}
             onPrintAll={handlePrintAll}
             onUpdate={refetch}
@@ -1213,9 +1224,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <p className="text-sm sm:text-base text-gray-500">
                 {selectedProductId !== 'all' 
                   ? t('productNotFound')
-                  : isManufacturer
-                  ? t('noProductsAssigned')
-                  : t('noProductsWithAdmin')}
+                  : t('noProductsInOrder')}
               </p>
               {productCounts.total > 0 && (
                 <p className="text-xs text-gray-400 mt-2">
@@ -1254,6 +1263,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               
               const shouldAutoCollapse = visibleProducts.length >= 2;
               
+              // Determine if this product is "with me" or "with the other party"
+              const isWithMe = (isManufacturer && product.routed_to === 'manufacturer') ||
+                              (!isManufacturer && product.routed_to === 'admin');
+              
               if (isManufacturer) {
                 return (
                   <ManufacturerProductCard
@@ -1276,7 +1289,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     allOrderProducts={allProducts}
                     translate={translate}
                     t={t}
-                  />
+                    />
                 );
               }
               
@@ -1299,7 +1312,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   autoCollapse={shouldAutoCollapse}
                   translate={translate}
                   t={t}
-                />
+                 />
               );
             })
           )}

@@ -1,18 +1,20 @@
 /**
  * ManufacturerControlPanel - Control panel for manufacturer order actions
  * Shows order summary, totals, and action buttons
- * UPDATED: Added Download All Media button
+ * UPDATED: Changed Download All Media button to blue, renamed to "All Media"
+ * UPDATED: Added Set Production Days button for production timeline
  * Roles: Manufacturer
- * Last Modified: December 2025
+ * Last Modified: December 4, 2025
  */
 
 import React, { useState, useMemo } from 'react';
 import { 
   Package, Download, Printer, Save, Send, DollarSign, 
   FileImage, FileText, X, Loader2, Calendar, FolderDown,
-  File, Image, FileVideo, FileArchive
+  File, Image, FileVideo, FileArchive, Clock
 } from 'lucide-react';
 import { SetShipDatesModal } from '../modals/SetShipDatesModal';
+import { SetProductionDaysModal } from '../modals/SetProductionDaysModal';
 
 interface ManufacturerControlPanelProps {
   order: any;
@@ -57,6 +59,7 @@ export function ManufacturerControlPanel({
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showAllMediaModal, setShowAllMediaModal] = useState(false);
   const [showShipDatesModal, setShowShipDatesModal] = useState(false);
+  const [showProductionDaysModal, setShowProductionDaysModal] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingMedia, setDownloadingMedia] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
@@ -96,6 +99,9 @@ export function ManufacturerControlPanel({
 
   // Count products with ship dates set
   const productsWithShipDates = visibleProducts.filter(p => p.estimated_ship_date).length;
+  
+  // Count products with production days set
+  const productsWithProductionDays = visibleProducts.filter(p => p.production_days).length;
 
   // Collect all sample media (existing functionality)
   const allSampleFiles = useMemo(() => {
@@ -247,8 +253,8 @@ export function ManufacturerControlPanel({
     setDownloadProgress({ current: 0, total: 0 });
   };
 
-  // Handle ship dates modal close with refresh
-  const handleShipDatesUpdate = () => {
+  // Handle modal close with refresh
+  const handleModalUpdate = () => {
     if (onUpdate) {
       onUpdate();
     }
@@ -309,26 +315,40 @@ export function ManufacturerControlPanel({
             Print All
           </button>
 
-          {/* Download All Media - NEW */}
+          {/* All Media Download - Changed from purple to blue */}
           {allMediaFiles.length > 0 && (
             <button
               onClick={openAllMediaModal}
               disabled={downloadingMedia}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
             >
               {downloadingMedia ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Downloading {downloadProgress.current}/{downloadProgress.total}...
+                  {downloadProgress.current}/{downloadProgress.total}
                 </>
               ) : (
                 <>
                   <FolderDown className="w-4 h-4" />
-                  Download All Media ({allMediaFiles.length})
+                  All Media ({allMediaFiles.length})
                 </>
               )}
             </button>
           )}
+
+          {/* Set Production Days - NEW */}
+          <button
+            onClick={() => setShowProductionDaysModal(true)}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 font-medium"
+          >
+            <Clock className="w-4 h-4" />
+            Production Days
+            {productsWithProductionDays > 0 && (
+              <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
+                {productsWithProductionDays}/{visibleProducts.length}
+              </span>
+            )}
+          </button>
 
           {/* Set Ship Dates */}
           <button
@@ -336,7 +356,7 @@ export function ManufacturerControlPanel({
             className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
           >
             <Calendar className="w-4 h-4" />
-            Set Ship Dates
+            Ship Dates
             {productsWithShipDates > 0 && (
               <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
                 {productsWithShipDates}/{visibleProducts.length}
@@ -360,16 +380,24 @@ export function ManufacturerControlPanel({
         isOpen={showShipDatesModal}
         onClose={() => setShowShipDatesModal(false)}
         products={visibleProducts}
-        onUpdate={handleShipDatesUpdate}
+        onUpdate={handleModalUpdate}
       />
 
-      {/* Download All Media Modal - NEW */}
+      {/* Set Production Days Modal - NEW */}
+      <SetProductionDaysModal
+        isOpen={showProductionDaysModal}
+        onClose={() => setShowProductionDaysModal(false)}
+        products={visibleProducts}
+        onUpdate={handleModalUpdate}
+      />
+
+      {/* Download All Media Modal */}
       {showAllMediaModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-4 max-w-2xl w-full max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <FolderDown className="w-5 h-5 text-purple-600" />
+                <FolderDown className="w-5 h-5 text-blue-600" />
                 Download All Media
               </h3>
               <button
@@ -396,7 +424,7 @@ export function ManufacturerControlPanel({
                       setSelectedMediaFiles(new Set(allMediaFiles.map(f => f.id)));
                     }
                   }}
-                  className="w-4 h-4 text-purple-600 border-gray-300 rounded"
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                 />
                 <span className="font-medium">Select All</span>
               </label>
@@ -421,7 +449,7 @@ export function ManufacturerControlPanel({
                     <tr 
                       key={file.id} 
                       className={`hover:bg-gray-50 cursor-pointer ${
-                        selectedMediaFiles.has(file.id) ? 'bg-purple-50' : ''
+                        selectedMediaFiles.has(file.id) ? 'bg-blue-50' : ''
                       }`}
                       onClick={() => toggleMediaFileSelection(file.id)}
                     >
@@ -431,7 +459,7 @@ export function ManufacturerControlPanel({
                           checked={selectedMediaFiles.has(file.id)}
                           onChange={() => toggleMediaFileSelection(file.id)}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 text-purple-600 border-gray-300 rounded"
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded"
                         />
                       </td>
                       <td className="p-2 text-center">
@@ -478,7 +506,7 @@ export function ManufacturerControlPanel({
                 <button
                   onClick={downloadSelectedMediaFiles}
                   disabled={selectedMediaFiles.size === 0}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
                 >
                   <Download className="w-4 h-4" />
                   Download Selected
