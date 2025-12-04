@@ -1,13 +1,13 @@
 /**
  * Order List Tabs Component
- * Main tab navigation for orders listing (My Orders, Invoice Approval, Sent To, Production, Ready to Ship, Shipped)
+ * Main tab navigation for orders listing
  * Location: app/dashboard/orders/components/OrderListTabs.tsx
- * UPDATED: Added Ready to Ship tab (amber) between Production and Shipped
- * Last Modified: Nov 28 2025
+ * UPDATED: Added Client Requests tab (teal) for Admin/Super Admin
+ * Last Modified: Dec 4 2025
  */
 
 import React from 'react';
-import { Inbox, FileText, SendHorizontal, Layers, Truck, Clock } from 'lucide-react';
+import { Inbox, FileText, SendHorizontal, Layers, Truck, Clock, UserPlus } from 'lucide-react';
 import { TabType, TabCounts } from '../types/orderList.types';
 import { TFunction } from 'i18next';
 
@@ -18,7 +18,7 @@ interface OrderListTabsProps {
   t: TFunction;
   onTabChange: (tab: TabType) => void;
   onProductionTabClick: () => void;
-  readyToShipLabel?: string;  // NEW: Configurable label from system_config
+  readyToShipLabel?: string;
 }
 
 export const OrderListTabs: React.FC<OrderListTabsProps> = ({
@@ -61,6 +61,26 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
             </span>
           )}
         </button>
+
+        {/* NEW: Client Requests Tab - Admin/Super Admin only */}
+        {isAdminOrSuperAdmin && (
+          <button
+            onClick={() => onTabChange('client_requests')}
+            className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+              activeTab === 'client_requests'
+                ? 'border-teal-500 text-teal-600 bg-teal-50/30'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
+            <span className="whitespace-nowrap">{t('clientRequests') || 'Client Requests'}</span>
+            {tabCounts.client_requests > 0 && (
+              <span className="bg-teal-100 text-teal-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center animate-pulse">
+                {tabCounts.client_requests}
+              </span>
+            )}
+          </button>
+        )}
         
         {/* Invoice Approval Tab - Admin, Super Admin, Client only */}
         {(isAdminOrSuperAdmin || isClient) && (
@@ -118,7 +138,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           )}
         </button>
 
-        {/* NEW: Ready to Ship Tab - Amber, between Production and Shipped */}
+        {/* Ready to Ship Tab - Manufacturer only */}
         {isManufacturer && (
           <button
             onClick={() => onTabChange('ready_to_ship')}
@@ -140,7 +160,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           </button>
         )}
 
-        {/* Shipped Tab - Parent Level */}
+        {/* Shipped Tab */}
         <button
           onClick={() => onTabChange('shipped')}
           className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${

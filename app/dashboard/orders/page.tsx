@@ -5,7 +5,8 @@
  * REFACTORED: Extracted translations, calculations, types, modals, tabs, and views
  * UPDATED: Ready to Ship tab reads from per-manufacturer settings with Chinese support
  * FIXED: handleDeleteOrder now deletes all related records (invoices, email_history, etc.)
- * Last Modified: Dec 3 2025
+ * ADDED: Client Requests tab for admin to review client-submitted order requests
+ * Last Modified: Dec 4 2025
  */
 
 'use client';
@@ -342,6 +343,9 @@ export default function OrdersPage() {
       case 'my_orders':
         if (isAdminUser) {
           filtered = ordersToFilter.filter(order => {
+            // Exclude client requests from my_orders
+            if (order.status === 'client_request') return false;
+            
             const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
             const hasProductsWithAdmin = order.order_products && order.order_products.some(p => 
               p.routed_to === 'admin' && 
@@ -368,10 +372,19 @@ export default function OrdersPage() {
         }
         break;
 
+      // NEW: Client Requests tab - shows orders with status = 'client_request'
+      case 'client_requests':
+        if (isAdminUser) {
+          filtered = ordersToFilter.filter(order => order.status === 'client_request');
+        }
+        break;
+
       case 'invoice_approval':
         if (isAdminUser || isClientUser) {
           filtered = ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
             return order.order_products.some(p => 
               p.routed_to === 'admin' && 
               productHasFees(p) &&
@@ -388,6 +401,9 @@ export default function OrdersPage() {
       case 'sent_to_other':
         if (isAdminUser) {
           filtered = ordersToFilter.filter(order => {
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
+            
             const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
             const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
             const hasProductsRoutedToManufacturer = order.order_products && order.order_products.some(p => 
@@ -434,6 +450,9 @@ export default function OrdersPage() {
       case 'production_status':
         if (productionSubTab === 'sample_approved') {
           filtered = ordersToFilter.filter(order => {
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
+            
             if (order.sample_status === 'sample_approved' || order.sample_status === 'approved') {
               return true;
             }
@@ -444,9 +463,27 @@ export default function OrdersPage() {
             }
             return false;
           });
+        } else if (productionSubTab === 'sample_in_production') {
+          // NEW: Filter for samples in production
+          filtered = ordersToFilter.filter(order => {
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
+            
+            if (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') {
+              return true;
+            }
+            if (order.order_products && order.order_products.some(p => 
+              p.sample_status === 'in_production' || p.sample_status === 'sample_in_production'
+            )) {
+              return true;
+            }
+            return false;
+          });
         } else if (productionSubTab === 'approved_for_production') {
           filtered = ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
             return order.order_products.some(p => 
               p.product_status === 'approved_for_production' || 
               p.product_status === 'ready_for_production'
@@ -455,6 +492,8 @@ export default function OrdersPage() {
         } else if (productionSubTab === 'in_production') {
           filtered = ordersToFilter.filter(order => {
             if (!order.order_products || order.order_products.length === 0) return false;
+            // Exclude client requests
+            if (order.status === 'client_request') return false;
             return order.order_products.some(p => p.product_status === 'in_production');
           });
         }
@@ -464,6 +503,8 @@ export default function OrdersPage() {
       case 'ready_to_ship':
         filtered = ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
+          // Exclude client requests
+          if (order.status === 'client_request') return false;
           return order.order_products.some(p => 
             p.product_status === 'in_production' &&
             isWithinShipThreshold(p.estimated_ship_date, readyToShipDays)
@@ -474,6 +515,8 @@ export default function OrdersPage() {
       case 'shipped':
         filtered = ordersToFilter.filter(order => {
           if (!order.order_products || order.order_products.length === 0) return false;
+          // Exclude client requests
+          if (order.status === 'client_request') return false;
           return order.order_products.some(p => 
             p.product_status === 'shipped' || p.product_status === 'completed'
           );
@@ -511,9 +554,11 @@ export default function OrdersPage() {
     if (!isAdminUser && !isManufacturerUser && !isClientUser) {
       return {
         my_orders: 0,
+        client_requests: 0,
         invoice_approval: 0,
         sent_to_other: 0,
         sample_approved: 0,
+        sample_in_production: 0,
         approved_for_production: 0,
         in_production: 0,
         ready_to_ship: 0,
@@ -524,9 +569,11 @@ export default function OrdersPage() {
     
     let productCounts: TabCounts = {
       my_orders: 0,
+      client_requests: 0,
       invoice_approval: 0,
       sent_to_other: 0,
       sample_approved: 0,
+      sample_in_production: 0,
       approved_for_production: 0,
       in_production: 0,
       ready_to_ship: 0,
@@ -534,7 +581,19 @@ export default function OrdersPage() {
       production_total: 0
     };
 
+    // Count client requests (orders with status = 'client_request') - Admin only
+    if (isAdminUser) {
+      orders.forEach(order => {
+        if (order.status === 'client_request') {
+          productCounts.client_requests++;
+        }
+      });
+    }
+
     orders.forEach(order => {
+      // Skip client requests for other tab counts
+      if (order.status === 'client_request') return;
+      
       // Count order-level sample routing ONLY if sample is active
       if (isSampleActive(order) && order.sample_routed_to) {
         if (isAdminUser) {
@@ -555,6 +614,11 @@ export default function OrdersPage() {
       // Count ORDER-level sample approved
       if (order.sample_status === 'sample_approved' || order.sample_status === 'approved') {
         productCounts.sample_approved++;
+      }
+      
+      // Count ORDER-level sample in production
+      if (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') {
+        productCounts.sample_in_production++;
       }
       
       if (!order.order_products) return;
@@ -626,6 +690,7 @@ export default function OrdersPage() {
     });
 
     productCounts.production_total = productCounts.sample_approved +
+                                     productCounts.sample_in_production +
                                      productCounts.approved_for_production + 
                                      productCounts.in_production;
 
@@ -651,6 +716,8 @@ export default function OrdersPage() {
   const canDeleteOrder = (order: Order): boolean => {
     if (userRole === 'super_admin') return true;
     if (userRole === 'admin' && order.status === 'draft') return true;
+    // Admin can also delete client requests
+    if (userRole === 'admin' && order.status === 'client_request') return true;
     return false;
   };
 
@@ -900,6 +967,9 @@ export default function OrdersPage() {
         const totalWithManufacturer = withManufacturer + sampleCount;
         return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('needAction')}`, color: 'indigo' };
       }
+    } else if (activeTab === 'client_requests') {
+      // Client requests tab - show pending review status
+      return { status: 'client_request', label: t('pendingReview') || 'Pending Review', color: 'teal' };
     } else if (activeTab === 'sent_to_other') {
       if (isAdminUser) {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
@@ -915,6 +985,10 @@ export default function OrdersPage() {
     } else if (activeTab === 'production_status') {
       if (productionSubTab === 'sample_approved') {
         return { status: 'sample_approved', label: `${sampleApproved} ${t('sampleApproved')}`, color: 'amber' };
+      } else if (productionSubTab === 'sample_in_production') {
+        // Count samples in production for this order
+        const sampleInProdCount = (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') ? 1 : 0;
+        return { status: 'sample_in_production', label: `${sampleInProdCount} ${t('sampleInProduction') || 'Sample In Production'}`, color: 'purple' };
       } else if (productionSubTab === 'approved_for_production') {
         return { status: 'approved', label: `${approvedForProduction} ${t('approvedForProd')}`, color: 'green' };
       } else if (productionSubTab === 'in_production') {
@@ -1134,13 +1208,14 @@ export default function OrdersPage() {
                   const orderTotal = calculateOrderTotal(order, userRole);
                   const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
                   const visibleProducts = order.order_products;
+                  const isClientRequest = order.status === 'client_request';
 
                   return (
                     <React.Fragment key={order.id}>
                       <tr
                         className={`hover:bg-gray-50 cursor-pointer transition-all ${
                           hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
-                        }`}
+                        } ${isClientRequest ? 'bg-teal-50/30' : ''}`}
                         onDoubleClick={() => navigateToOrder(order.id)}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1160,11 +1235,16 @@ export default function OrdersPage() {
                                 )}
                               </button>
                             )}
-                            <div>s
-                              <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            <div>
+                              <div className="text-sm font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                                 {order.order_name ? translate(order.order_name) : t('untitledOrder')}
                                 {hasUnreadNotification && (
                                   <span className="inline-flex items-center justify-center w-2 h-2 bg-blue-600 rounded-full animate-pulse" title="New notification"></span>
+                                )}
+                                {isClientRequest && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-700 rounded">
+                                    {t('clientRequest') || 'Client Request'}
+                                  </span>
                                 )}
                               </div>
                               <div className="text-xs text-gray-500">
@@ -1299,19 +1379,25 @@ export default function OrdersPage() {
               const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
               const canDelete = canDeleteOrder(order);
               const visibleProducts = order.order_products;
+              const isClientRequest = order.status === 'client_request';
 
               return (
                 <div
                   key={order.id}
-                  className={`p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors ${hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                  className={`p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors ${hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''} ${isClientRequest ? 'bg-teal-50/30' : ''}`}
                 >
                   {/* Header Row */}
                   <div className="flex justify-between items-start gap-2 mb-2 sm:mb-3">
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigateToOrder(order.id)}>
-                      <div className="font-semibold text-sm sm:text-base text-gray-900 flex items-center gap-1.5 sm:gap-2 mb-1">
+                      <div className="font-semibold text-sm sm:text-base text-gray-900 flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
                         <span className="truncate">{order.order_name ? translate(order.order_name) : t('untitledOrder')}</span>
                         {hasUnreadNotification && (
                           <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-blue-600 rounded-full animate-pulse flex-shrink-0"></span>
+                        )}
+                        {isClientRequest && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium bg-teal-100 text-teal-700 rounded flex-shrink-0">
+                            {t('clientRequest') || 'Client Request'}
+                          </span>
                         )}
                       </div>
                       <div className="text-[11px] sm:text-xs text-gray-500 mb-0.5">
@@ -1403,7 +1489,9 @@ export default function OrdersPage() {
               <Package className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-gray-300" />
               <h3 className="mt-2 text-xs sm:text-sm font-medium text-gray-900">{t('noOrders')}</h3>
               <p className="mt-1 text-xs sm:text-sm text-gray-500 max-w-md mx-auto">
-                {activeTab === 'production_status'
+                {activeTab === 'client_requests'
+                  ? t('noClientRequests') || 'No pending client requests.'
+                  : activeTab === 'production_status'
                   ? t('noProductionOrders')
                   : activeTab === 'ready_to_ship'
                   ? `No products ${getReadyToShipDisplayLabel().toLowerCase()} yet.`

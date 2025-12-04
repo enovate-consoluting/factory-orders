@@ -2,12 +2,12 @@
  * Production Sub-Tabs Component
  * Sub-navigation for production status filtering on Orders List page
  * Location: app/dashboard/orders/components/ProductionSubTabs.tsx
- * UPDATED: Removed Shipped (now a parent-level tab)
- * Last Modified: Nov 27 2025
+ * UPDATED: Added Sample In Production tab
+ * Last Modified: Dec 4 2025
  */
 
 import React from 'react';
-import { CheckCircle, Wrench, Award } from 'lucide-react';
+import { CheckCircle, Wrench, Award, FlaskConical } from 'lucide-react';
 import { ProductionSubTab, TabCounts } from '../types/orderList.types';
 import { TFunction } from 'i18next';
 
@@ -24,25 +24,32 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   t,
   onSubTabChange
 }) => {
-  // UPDATED: Removed 'shipped' - now at parent level
+  // UPDATED: Added 'sample_in_production' tab
   const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
     {
       key: 'sample_approved',
-      label: t('sampleApproved'),
+      label: t('sampleApproved') || 'Sample Approved',
       count: tabCounts.sample_approved,
       icon: <Award className="w-4 h-4" />,
       color: 'amber'
     },
     {
+      key: 'sample_in_production',
+      label: t('sampleInProduction') || 'Sample In Production',
+      count: tabCounts.sample_in_production,
+      icon: <FlaskConical className="w-4 h-4" />,
+      color: 'purple'
+    },
+    {
       key: 'approved_for_production',
-      label: t('approvedForProd'),
+      label: t('approvedForProd') || 'Approved for Production',
       count: tabCounts.approved_for_production,
       icon: <CheckCircle className="w-4 h-4" />,
       color: 'green'
     },
     {
       key: 'in_production',
-      label: t('inProduction'),
+      label: t('inProduction') || 'In Production',
       count: tabCounts.in_production,
       icon: <Wrench className="w-4 h-4" />,
       color: 'blue'
@@ -54,6 +61,8 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
       switch (tab.color) {
         case 'amber':
           return 'bg-amber-100 text-amber-700 border-amber-300';
+        case 'purple':
+          return 'bg-purple-100 text-purple-700 border-purple-300';
         case 'green':
           return 'bg-green-100 text-green-700 border-green-300';
         case 'blue':
@@ -70,6 +79,8 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
       switch (tab.color) {
         case 'amber':
           return 'bg-amber-200 text-amber-800';
+        case 'purple':
+          return 'bg-purple-200 text-purple-800';
         case 'green':
           return 'bg-green-200 text-green-800';
         case 'blue':

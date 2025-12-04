@@ -2,9 +2,11 @@
  * Order List Types
  * TypeScript interfaces for Orders Listing page
  * Location: app/dashboard/orders/types/orderList.types.ts
+ * UPDATED: Added 'client_requests' tab for client order requests
  * UPDATED: Added 'ready_to_ship' as parent-level TabType
  * UPDATED: Added estimated_ship_date to OrderProduct
- * Last Modified: Nov 28 2025
+ * UPDATED: Added 'sample_in_production' sub-tab
+ * Last Modified: Dec 4 2025
  */
 
 export interface OrderProduct {
@@ -23,7 +25,7 @@ export interface OrderProduct {
   shipping_air_price?: number;
   shipping_boat_price?: number;
   selected_shipping_method?: string;
-  estimated_ship_date?: string;  // NEW: For ready to ship queue
+  estimated_ship_date?: string;  // For ready to ship queue
   product?: {
     title: string;
   };
@@ -57,20 +59,22 @@ export interface Order {
   order_products?: OrderProduct[];
 }
 
-// UPDATED: Added 'ready_to_ship' between production_status and shipped
-export type TabType = 'my_orders' | 'invoice_approval' | 'sent_to_other' | 'production_status' | 'ready_to_ship' | 'shipped';
+// UPDATED: Added 'client_requests' for client order request workflow
+export type TabType = 'my_orders' | 'client_requests' | 'invoice_approval' | 'sent_to_other' | 'production_status' | 'ready_to_ship' | 'shipped';
 
-// Production sub-tabs (unchanged)
-export type ProductionSubTab = 'sample_approved' | 'approved_for_production' | 'in_production';
+// Production sub-tabs - UPDATED: Added 'sample_in_production'
+export type ProductionSubTab = 'sample_approved' | 'sample_in_production' | 'approved_for_production' | 'in_production';
 
 export interface TabCounts {
   my_orders: number;
+  client_requests: number;
   invoice_approval: number;
   sent_to_other: number;
   sample_approved: number;
+  sample_in_production: number;  // NEW: Count for samples in production
   approved_for_production: number;
   in_production: number;
-  ready_to_ship: number;  // NEW: Count for ready to ship queue
+  ready_to_ship: number;
   shipped: number;
   production_total: number;
 }

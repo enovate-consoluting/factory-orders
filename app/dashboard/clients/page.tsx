@@ -1,8 +1,16 @@
+/**
+ * Clients Management Page - /dashboard/clients
+ * Manage client accounts with search, edit, delete, and settings
+ * Roles: Admin, Super Admin
+ * Last Modified: December 2024
+ */
+
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Plus, Edit2, Trash2, X, Users, CheckCircle, XCircle, AlertCircle, Upload, Image as ImageIcon } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Users, CheckCircle, XCircle, AlertCircle, Upload, Settings, Search } from 'lucide-react'
 import PhoneInput from 'react-phone-input-2'
 import 'react-phone-input-2/lib/style.css'
 
@@ -14,6 +22,8 @@ interface Client {
   created_at: string
   phone_number?: string
   logo_url?: string
+  can_create_orders?: boolean
+  custom_margin_percentage?: number | null
 }
 
 interface Notification {
@@ -27,6 +37,7 @@ interface Notification {
 const inputClassName = "w-full px-3 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
 
 export default function ClientsPage() {
+  const router = useRouter()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -49,6 +60,9 @@ export default function ClientsPage() {
   const [deleting, setDeleting] = useState(false)
   const [notification, setNotification] = useState<Notification | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  
+  // NEW: Search state
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -70,21 +84,28 @@ export default function ClientsPage() {
   // Prevent background scroll when any modal is open
   useEffect(() => {
     if (showModal || showDeleteModal || showSuccessModal) {
-      // Store original styles
       const originalStyle = window.getComputedStyle(document.body).overflow
-      const originalPosition = window.getComputedStyle(document.body).position
-
-      // Prevent scroll
       document.body.style.overflow = 'hidden'
       document.body.style.paddingRight = window.innerWidth - document.documentElement.clientWidth + 'px'
 
       return () => {
-        // Restore original styles
         document.body.style.overflow = originalStyle
         document.body.style.paddingRight = ''
       }
     }
   }, [showModal, showDeleteModal, showSuccessModal])
+
+  // NEW: Filtered clients based on search
+  const filteredClients = useMemo(() => {
+    if (!searchQuery.trim()) return clients
+    
+    const query = searchQuery.toLowerCase()
+    return clients.filter(client => 
+      client.name.toLowerCase().includes(query) ||
+      client.email.toLowerCase().includes(query) ||
+      (client.phone_number && client.phone_number.includes(query))
+    )
+  }, [clients, searchQuery])
 
   const showNotification = (type: 'success' | 'error' | 'info', title: string, message: string) => {
     const id = Date.now().toString()
@@ -112,18 +133,15 @@ export default function ClientsPage() {
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      // Validate file type
       if (!file.type.startsWith('image/')) {
         setFormError('Please select an image file (PNG, JPG, etc.)')
         return
       }
-      // Validate file size (max 2MB)
       if (file.size > 2 * 1024 * 1024) {
         setFormError('Logo file size must be less than 2MB')
         return
       }
       setLogoFile(file)
-      // Create preview
       const reader = new FileReader()
       reader.onloadend = () => {
         setLogoPreview(reader.result as string)
@@ -138,12 +156,10 @@ export default function ClientsPage() {
 
     try {
       setUploading(true)
-      // Create unique filename
       const fileExt = logoFile.name.split('.').pop()
       const fileName = `${clientId}-${Date.now()}.${fileExt}`
       const filePath = fileName
 
-      // Upload to Supabase storage
       const { error: uploadError } = await supabase.storage
         .from('client-logos')
         .upload(filePath, logoFile, {
@@ -156,7 +172,6 @@ export default function ClientsPage() {
         throw uploadError
       }
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('client-logos')
         .getPublicUrl(filePath)
@@ -173,7 +188,6 @@ export default function ClientsPage() {
 
   const deleteLogo = async (logoUrl: string) => {
     try {
-      // Extract filename from URL
       const fileName = logoUrl.split('/').pop()
       if (!fileName) return
 
@@ -194,14 +208,11 @@ export default function ClientsPage() {
     setCreating(true)
 
     try {
-
       if (editingClient) {
-        // Upload logo if new file selected
         let logoUrl = editingClient.logo_url
         if (logoFile) {
           const uploadedUrl = await uploadLogo(editingClient.id, formData.name)
           if (uploadedUrl) {
-            // Delete old logo if exists
             if (editingClient.logo_url) {
               await deleteLogo(editingClient.logo_url)
             }
@@ -209,7 +220,6 @@ export default function ClientsPage() {
           }
         }
 
-        // If client has a user account, update via API
         if (editingClient.user_id) {
           const response = await fetch('/api/users', {
             method: 'PATCH',
@@ -229,7 +239,6 @@ export default function ClientsPage() {
           const result = await response.json()
           if (!response.ok) throw new Error(result.error)
         } else {
-          // Just update client record directly if no user account
           const { error } = await supabase
             .from('clients')
             .update({
@@ -246,7 +255,6 @@ export default function ClientsPage() {
         showNotification('success', 'Client Updated', `${formData.name} has been updated successfully.`)
         setShowModal(false)
       } else {
-        // Convert logo to base64 if file selected
         let logoBase64: string | null = null
         if (logoFile) {
           logoBase64 = await new Promise<string>((resolve) => {
@@ -256,7 +264,6 @@ export default function ClientsPage() {
           })
         }
 
-        // Create new client via API
         const response = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -265,7 +272,7 @@ export default function ClientsPage() {
             password: formData.password,
             name: formData.name,
             phone_number: formData.phone_number,
-            logo: logoBase64, // Send base64 logo to Scanacart API
+            logo: logoBase64,
             role: 'client',
             userType: 'client'
           })
@@ -274,7 +281,6 @@ export default function ClientsPage() {
         const result = await response.json()
 
         if (!response.ok) {
-          // Handle specific error cases with inline error only
           if (result.error?.includes('already been registered') || result.error?.includes('already exists')) {
             setFormError(`The email ${formData.email} is already registered. Please use a different email address.`)
           } else if (result.error?.includes('password')) {
@@ -286,9 +292,7 @@ export default function ClientsPage() {
           return
         }
 
-        // Upload logo to Supabase if file selected and client created
         if (logoFile && result.user) {
-          // Find the client ID from the response or fetch it
           const { data: clientData } = await supabase
             .from('clients')
             .select('id')
@@ -298,7 +302,6 @@ export default function ClientsPage() {
           if (clientData) {
             const uploadedLogoUrl = await uploadLogo(clientData.id, formData.name)
             if (uploadedLogoUrl) {
-              // Update client and user with logo URL
               await supabase
                 .from('clients')
                 .update({ logo_url: uploadedLogoUrl })
@@ -311,7 +314,6 @@ export default function ClientsPage() {
           }
         }
 
-        // Show success modal with credentials
         setCreatedCredentials({
           email: formData.email,
           password: formData.password,
@@ -349,7 +351,6 @@ export default function ClientsPage() {
   }
 
   const confirmDelete = async (client: Client) => {
-    // Check if client has orders
     const hasOrders = await checkClientOrders(client.id)
     
     if (hasOrders) {
@@ -368,7 +369,6 @@ export default function ClientsPage() {
     setDeleting(true)
     try {
       if (clientToDelete.user_id) {
-        // Delete via API if has user account
         const response = await fetch('/api/users', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
@@ -380,21 +380,18 @@ export default function ClientsPage() {
 
         const result = await response.json()
         if (!response.ok) {
-          // Handle foreign key constraint error
           if (result.error?.includes('foreign key') || result.error?.includes('violates')) {
             throw new Error(`Cannot delete ${clientToDelete.name} because they have existing orders. Please delete or reassign their orders first.`)
           }
           throw new Error(result.error)
         }
       } else {
-        // Just delete client record if no user account
         const { error } = await supabase
           .from('clients')
           .delete()
           .eq('id', clientToDelete.id)
         
         if (error) {
-          // Handle foreign key constraint error
           if (error.message?.includes('foreign key') || error.message?.includes('violates')) {
             throw new Error(`Cannot delete ${clientToDelete.name} because they have existing orders. Please delete or reassign their orders first.`)
           }
@@ -402,7 +399,6 @@ export default function ClientsPage() {
         }
       }
 
-      // Delete logo if exists
       if (clientToDelete.logo_url) {
         await deleteLogo(clientToDelete.logo_url)
       }
@@ -458,7 +454,7 @@ export default function ClientsPage() {
 
   return (
     <div className="p-6">
-      {/* Notification Toast - z-[60] to appear above modals */}
+      {/* Notification Toast */}
       {notification && (
         <div className={`fixed top-4 right-4 z-[60] animate-slide-in`}>
           <div className={`rounded-lg shadow-lg p-4 max-w-md flex items-start space-x-3 ${
@@ -494,6 +490,7 @@ export default function ClientsPage() {
         </div>
       )}
 
+      {/* Header */}
       <div className="mb-6">
         <div className="flex lg:justify-between lg:items-center lg:flex-row flex-col gap-4 items-start">
           <div>
@@ -514,8 +511,36 @@ export default function ClientsPage() {
         </div>
       </div>
 
+      {/* NEW: Search Bar */}
+      <div className="mb-6">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by name, email, or phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        {searchQuery && (
+          <p className="text-sm text-gray-500 mt-2">
+            Found {filteredClients.length} of {clients.length} clients
+          </p>
+        )}
+      </div>
+
+      {/* Client Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {clients.map((client) => (
+        {filteredClients.map((client) => (
           <div key={client.id} className="bg-white rounded-lg border border-gray-200 p-4">
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-3">
@@ -535,6 +560,31 @@ export default function ClientsPage() {
                   <p className="text-sm text-gray-500">{client.email}</p>
                 </div>
               </div>
+              
+              {/* NEW: Settings Gear Icon */}
+              {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                <button
+                  onClick={() => router.push(`/dashboard/clients/${client.id}/settings`)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Client Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Status badges */}
+            <div className="flex flex-wrap gap-2 mb-3">
+              {client.can_create_orders && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                  Can Create Orders
+                </span>
+              )}
+              {client.custom_margin_percentage !== null && client.custom_margin_percentage !== undefined && user?.role === 'super_admin' && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                  {client.custom_margin_percentage}% Margin
+                </span>
+              )}
             </div>
 
             {(user?.role === 'super_admin' || user?.role === 'admin') && (
@@ -559,6 +609,7 @@ export default function ClientsPage() {
         ))}
       </div>
 
+      {/* Empty States */}
       {clients.length === 0 && (
         <div className="text-center py-12">
           <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
@@ -572,6 +623,20 @@ export default function ClientsPage() {
               Add First Client
             </button>
           )}
+        </div>
+      )}
+
+      {clients.length > 0 && filteredClients.length === 0 && searchQuery && (
+        <div className="text-center py-12">
+          <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No clients found</h3>
+          <p className="text-gray-500 mb-4">No clients match "{searchQuery}"</p>
+          <button
+            onClick={() => setSearchQuery('')}
+            className="text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Clear search
+          </button>
         </div>
       )}
 
@@ -596,7 +661,6 @@ export default function ClientsPage() {
             </div>
 
             <form onSubmit={handleSubmit}>
-              {/* Error Message Display */}
               {formError && (
                 <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-red-50 border border-red-200 rounded-lg flex items-start">
                   <XCircle className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 mr-2 flex-shrink-0 mt-0.5" />
@@ -627,7 +691,7 @@ export default function ClientsPage() {
                     value={formData.email}
                     onChange={(e) => {
                       setFormData({ ...formData, email: e.target.value })
-                      setFormError(null) // Clear error when user types
+                      setFormError(null)
                     }}
                     className={inputClassName}
                     required
@@ -640,7 +704,7 @@ export default function ClientsPage() {
                   )}
                 </div>
 
-                 <div>
+                <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">
                     Phone Number
                   </label>
