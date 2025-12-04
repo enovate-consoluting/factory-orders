@@ -7,9 +7,9 @@
 
 'use client';
 
-import { useState } from 'react';
-import { 
-  X, FileText, AlertTriangle, Plus, FileX, 
+import React, { useState, useEffect } from 'react';
+import {
+  X, FileText, AlertTriangle, Plus, FileX,
   CheckCircle, Clock, AlertCircle, ChevronRight
 } from 'lucide-react';
 import VoidInvoiceModal from './VoidInvoiceModal';
@@ -54,6 +54,21 @@ export default function ExistingInvoicesModal({
     isOpen: false,
     invoice: null
   });
+
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -32,10 +32,10 @@ interface SaveAllRouteModalProps {
   steps?: string[];
 }
 
-export function SaveAllRouteModal({ 
-  isOpen, 
+export function SaveAllRouteModal({
+  isOpen,
   isSaving,
-  onClose, 
+  onClose,
   onRoute,
   productCount,
   userRole,
@@ -45,7 +45,22 @@ export function SaveAllRouteModal({
 }: SaveAllRouteModalProps) {
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
-  
+
+  // Prevent background scroll when modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = () => {

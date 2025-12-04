@@ -30,6 +30,21 @@ export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: Rou
   const [shippingNotes, setShippingNotes] = useState('');
   const [estimatedDelivery, setEstimatedDelivery] = useState('');
 
+  // Prevent background scroll when modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   if (!isOpen || !product) return null;
 
   const isManufacturer = userRole === 'manufacturer';

@@ -58,6 +58,21 @@ export default function SendInvoiceModal({
   // SMS sending state
   const [sendingSMS, setSendingSMS] = useState(false);
 
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [isOpen]);
+
   // SYNC STATE: Update fields when modal opens or props change
   useEffect(() => {
     if (isOpen) {

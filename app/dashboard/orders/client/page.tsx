@@ -107,6 +107,21 @@ export default function ClientOrdersPage() {
   const [sendingNote, setSendingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
 
+  // Prevent background scroll when modals are open
+  useEffect(() => {
+    if (mediaModal.isOpen || notesModal.isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [mediaModal.isOpen, notesModal.isOpen]);
+
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData) {

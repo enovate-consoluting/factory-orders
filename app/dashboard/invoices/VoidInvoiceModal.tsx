@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { X, AlertTriangle, FileX, Loader2 } from 'lucide-react';
 
@@ -23,15 +23,30 @@ interface VoidInvoiceModalProps {
   onVoided: () => void; // Callback after successful void
 }
 
-export default function VoidInvoiceModal({ 
-  isOpen, 
-  onClose, 
+export default function VoidInvoiceModal({
+  isOpen,
+  onClose,
   invoice,
-  onVoided 
+  onVoided
 }: VoidInvoiceModalProps) {
   const [voidReason, setVoidReason] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Prevent background scroll when modal is open
+  React.useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -167,6 +167,21 @@ export default function InvoicesPage() {
     }
   }, []);
 
+  // Prevent background scroll when modals are open
+  useEffect(() => {
+    if (showDeleteConfirm || voidModal.isOpen || existingInvoicesModal.isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [showDeleteConfirm, voidModal.isOpen, existingInvoicesModal.isOpen]);
+
   useEffect(() => {
     if (isClient && !clientId) {
       // Wait for clientId to be fetched before loading data
@@ -275,7 +290,6 @@ export default function InvoicesPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
-            invoiced,
             product:products(title),
             order_items(quantity)
           )
@@ -335,8 +349,7 @@ export default function InvoicesPage() {
             total_quantity: totalQty,
             total_value: productTotal,
             routed_at: p.routed_at,
-            product_status: p.product_status,
-            invoiced: p.invoiced
+            product_status: p.product_status
           };
         });
 
@@ -387,7 +400,6 @@ export default function InvoicesPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
-            invoiced,
             product:products(title),
             order_items(quantity)
           )
@@ -443,8 +455,7 @@ export default function InvoicesPage() {
             total_quantity: totalQty,
             total_value: productTotal,
             routed_at: p.routed_at,
-            product_status: p.product_status,
-            invoiced: p.invoiced
+            product_status: p.product_status
           };
         });
 
@@ -721,7 +732,7 @@ export default function InvoicesPage() {
     return (
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <div className={`p-3 sm:p-4 border-b ${isProductionTab ? 'bg-purple-50' : 'bg-amber-50'}`}>
-          <h2 className="text-sm sm:text-base font-semibold text-gray-900">{isProductionTab ? 'Orders In Production' : 'bg-white hover:bg-gray-50 transition-colorscing'}</h2>
+          <h2 className="text-sm sm:text-base font-semibold text-gray-900">{isProductionTab ? 'Orders In Production' : 'Orders for Approval'}</h2>
           {isProductionTab && (
             <p className="text-xs text-gray-600 mt-1">
               Products approved for production or currently being manufactured

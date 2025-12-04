@@ -60,21 +60,21 @@ export function AdminControlPanel({
   const calculateTotals = () => {
     let productTotal = 0;
     let shippingTotal = 0;
-    
+
     visibleProducts.forEach((product: any) => {
-      const totalQty = product.order_items?.reduce((sum: number, item: any) => 
+      const totalQty = product.order_items?.reduce((sum: number, item: any) =>
         sum + (item.quantity || 0), 0) || 0;
-      
+
       // Use CLIENT prices
       productTotal += (parseFloat(product.client_product_price || 0) * totalQty);
-      
+
       if (product.selected_shipping_method === 'air') {
         shippingTotal += parseFloat(product.client_shipping_air_price || 0);
       } else if (product.selected_shipping_method === 'boat') {
         shippingTotal += parseFloat(product.client_shipping_boat_price || 0);
       }
     });
-    
+
     return {
       product: productTotal,
       shipping: shippingTotal,
@@ -85,11 +85,11 @@ export function AdminControlPanel({
   const totals = calculateTotals();
 
   // Check if any products need attention
-  const productsNeedingPricing = visibleProducts.filter(p => 
+  const productsNeedingPricing = visibleProducts.filter(p =>
     !p.client_product_price || parseFloat(p.client_product_price) === 0
   ).length;
 
-  const productsWithoutShipping = visibleProducts.filter(p => 
+  const productsWithoutShipping = visibleProducts.filter(p =>
     !p.selected_shipping_method && !p.shipping_link_note
   ).length;
 
@@ -99,6 +99,23 @@ export function AdminControlPanel({
       fetchUnreadCount();
     }
   }, [order?.id]);
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (notesModal) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+      document.documentElement.style.overflow = "auto";
+    }
+
+    return () => {
+      document.body.style.overflow = "auto";
+      document.documentElement.style.overflow = "auto";
+    };
+  }, [notesModal]);
+
 
   const fetchUnreadCount = async () => {
     try {
@@ -261,10 +278,10 @@ export function AdminControlPanel({
             </div>
           )}
 
-          {/* Action Buttons - Mobile: 1 full + 2 half | Desktop: All in one row */}
+          {/* Action Buttons - Desktop: All in one row | Mobile: Notes + Print All 50/50, then Save full width */}
           <div className="space-y-2 sm:space-y-0">
             {/* Desktop: All buttons in one row */}
-            <div className="hidden lg:flex sm:grid sm:grid-cols-3 sm:gap-2">
+            <div className="hidden sm:grid sm:grid-cols-3 sm:gap-2">
               <button
                 onClick={onPrintAll}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
@@ -297,16 +314,8 @@ export function AdminControlPanel({
               )}
             </div>
 
-            {/* Mobile: Print All full width, then 2 buttons in grid */}
+            {/* Mobile: Notes + Print All in 50/50 grid, then Save full width below */}
             <div className="sm:hidden space-y-2">
-              <button
-                onClick={onPrintAll}
-                className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{t('printAll')}</span>
-              </button>
-
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={openNotesModal}
@@ -321,16 +330,24 @@ export function AdminControlPanel({
                   )}
                 </button>
 
-                {productCounts.withAdmin > 0 && (
-                  <button
-                    onClick={onSaveAndRoute}
-                    className="px-2 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5 font-medium text-sm"
-                  >
-                    <Save className="w-4 h-4 flex-shrink-0" />
-                    <span>{t('save')} ({productCounts.withAdmin})</span>
-                  </button>
-                )}
+                <button
+                  onClick={onPrintAll}
+                  className="px-2 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 font-medium text-sm"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>{t('printAll')}</span>
+                </button>
               </div>
+
+              {productCounts.withAdmin > 0 && (
+                <button
+                  onClick={onSaveAndRoute}
+                  className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                >
+                  <Save className="w-4 h-4 flex-shrink-0" />
+                  <span>{t('save')} ({productCounts.withAdmin})</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -338,8 +355,8 @@ export function AdminControlPanel({
 
       {/* Client Notes Modal */}
       {notesModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[80vh] overflow-hidden shadow-2xl flex flex-col my-8">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
               <div className="flex items-center gap-3">

@@ -109,6 +109,21 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | null>(null);
   const [routeNotes, setRouteNotes] = useState('');
 
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (showRouteModal) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [showRouteModal]);
+
   // Sync local state when props change (on load/refetch)
   useEffect(() => {
     setLocalFee(sampleFee);
@@ -339,6 +354,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
     (sampleRoutedTo === 'client' && isClient)
   );
+  
   
   // Fee and ETA: ONLY Manufacturer and Super Admin can edit
   const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
@@ -655,8 +671,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
       {/* ROUTE MODAL */}
       {showRouteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl my-8">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Send className="w-5 h-5 text-amber-600" />
               {t('routeSampleRequest')}

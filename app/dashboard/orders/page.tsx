@@ -1356,7 +1356,7 @@ export default function OrdersPage() {
                       )}
 
                       {/* Action Buttons */}
-                      <div className="flex items-center gap-0.5 sm:gap-1">
+                      <div className="flex items-center gap-1 sm:gap-1">
                         {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
                           <Link
                             href={`/dashboard/orders/edit/${order.id}`}
@@ -1364,7 +1364,7 @@ export default function OrdersPage() {
                             title={t('editOrder')}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <Edit className="w-5 h-5 sm:w-4 sm:h-4" />
+                            <Edit className="w-6 h-6 sm:w-5 sm:h-5" />
                           </Link>
                         )}
                         {canDelete && (
@@ -1380,7 +1380,7 @@ export default function OrdersPage() {
                             }`}
                             title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
                           >
-                            <Trash2 className="w-5 h-5 sm:w-4 sm:h-4" />
+                            <Trash2 className="w-6 h-6 sm:w-5 sm:h-5" />
                           </button>
                         )}
                         <button
@@ -1388,7 +1388,7 @@ export default function OrdersPage() {
                           className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
                           title={t('viewDetails')}
                         >
-                          <Eye className="w-5 h-5 sm:w-4 sm:h-4" />
+                          <Eye className="w-6 h-6 sm:w-5 sm:h-5" />
                         </button>
                       </div>
                     </div>

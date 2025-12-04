@@ -53,6 +53,21 @@ export default function ClientInvoicePage() {
     invoice: null
   });
 
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (viewModal.isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    }
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.documentElement.style.overflow = 'auto';
+    };
+  }, [viewModal.isOpen]);
+
   useEffect(() => {
     const userData = localStorage.getItem('user');
     if (!userData) {
