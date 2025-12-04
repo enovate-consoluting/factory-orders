@@ -418,18 +418,20 @@ export default function ProductsPage() {
                               .map(pv => pv.variant_option_id)
                             setSelectedVariants(currentVariants)
                           }}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium"
                         >
                           <Edit2 className="w-4 h-4" />
+                          <span>Edit</span>
                         </button>
                         <button
                           onClick={() => {
                             setProductToDelete(product)
                             setDeleteModalOpen(true)
                           }}
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors font-medium"
                         >
                           <Trash2 className="w-4 h-4" />
+                          <span>Delete</span>
                         </button>
                       </div>
                     )}
@@ -464,24 +466,23 @@ export default function ProductsPage() {
           })}
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Product
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Product
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  Variants
+                </th>
+                {canManageProducts() && (
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                    Actions
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Variants
-                  </th>
-                  {canManageProducts() && (
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  )}
-                </tr>
-              </thead>
+                )}
+              </tr>
+            </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredProducts.map(product => {
                   const variants = getProductVariants(product.id)
@@ -520,18 +521,20 @@ export default function ProductsPage() {
                                   .map(pv => pv.variant_option_id)
                                 setSelectedVariants(currentVariants)
                               }}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium"
                             >
                               <Edit2 className="w-4 h-4" />
+                              <span>Edit</span>
                             </button>
                             <button
                               onClick={() => {
                                 setProductToDelete(product)
                                 setDeleteModalOpen(true)
                               }}
-                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors font-medium"
                             >
                               <Trash2 className="w-4 h-4" />
+                              <span>Delete</span>
                             </button>
                           </div>
                         </td>
@@ -541,7 +544,6 @@ export default function ProductsPage() {
                 })}
               </tbody>
             </table>
-          </div>
         </div>
       )}
 

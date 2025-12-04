@@ -467,16 +467,16 @@ export default function FinanceOrdersPage() {
                             </div>
                             <button
                               onClick={() => setEditingOrder(order.id)}
-                              className="text-blue-600 hover:text-blue-800 p-1"
+                              className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg p-2 sm:p-2.5"
                             >
-                              <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <Edit className="w-5 h-5 sm:w-6 sm:h-6" />
                             </button>
                           </div>
                         </>
                       ) : (
-                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                          <div className="flex items-center gap-1">
-                            <label className="text-xs text-gray-500">Product:</label>
+                        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto w-full sm:w-auto">
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <label className="text-xs sm:text-sm text-gray-500 font-medium whitespace-nowrap">Product:</label>
                             <div className="relative">
                               <input
                                 type="number"
@@ -485,16 +485,16 @@ export default function FinanceOrdersPage() {
                                   ...prev,
                                   [order.id]: { ...prev[order.id], product: e.target.value }
                                 }))}
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
+                                className="w-14 sm:w-16 px-2 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                                 min="0"
                                 max="500"
                               />
-                              <span className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                             </div>
                           </div>
-                          
-                          <div className="flex items-center gap-1">
-                            <label className="text-xs text-gray-500">Ship:</label>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <label className="text-xs sm:text-sm text-gray-500 font-medium whitespace-nowrap">Ship:</label>
                             <div className="relative">
                               <input
                                 type="number"
@@ -503,31 +503,31 @@ export default function FinanceOrdersPage() {
                                   ...prev,
                                   [order.id]: { ...prev[order.id], shipping: e.target.value }
                                 }))}
-                                className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
+                                className="w-14 sm:w-16 px-2 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
                                 min="0"
                                 max="500"
                               />
-                              <span className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                             </div>
                           </div>
-                          
+
                           <button
                             onClick={() => handleSaveOrderMargin(order.id)}
                             disabled={saving === order.id}
-                            className="bg-blue-600 text-white px-2 sm:px-3 py-1 text-xs sm:text-sm rounded hover:bg-blue-700 disabled:bg-gray-400"
+                            className="bg-blue-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 text-sm rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-medium whitespace-nowrap flex-shrink-0"
                           >
                             {saving === order.id ? '...' : 'Save All'}
                           </button>
 
                           <button
                             onClick={() => setEditingOrder(null)}
-                            className="text-gray-600 hover:text-gray-800 px-2 py-1 text-xs sm:text-sm"
+                            className="text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 sm:px-4 py-1.5 sm:py-2 text-sm rounded-lg font-medium whitespace-nowrap flex-shrink-0"
                           >
                             Cancel
                           </button>
 
                           {message[order.id] && (
-                            <span className={`text-xs ${
+                            <span className={`text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0 ${
                               message[order.id] === 'Saved!' ? 'text-green-600' : 'text-red-600'
                             }`}>
                               {message[order.id]}
@@ -603,13 +603,13 @@ export default function FinanceOrdersPage() {
                                           [product.id]: effectiveMargin.toString()
                                         }));
                                       }}
-                                      className="text-blue-600 hover:text-blue-800 p-1"
+                                      className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 rounded-lg p-2 sm:p-2.5"
                                     >
-                                      <Edit className="w-3 h-3" />
+                                      <Edit className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </button>
                                   </>
                                 ) : (
-                                  <div className="flex items-center gap-1 sm:gap-2">
+                                  <div className="flex items-center gap-2 sm:gap-2.5">
                                     <div className="relative">
                                       <input
                                         type="number"
@@ -618,30 +618,30 @@ export default function FinanceOrdersPage() {
                                           ...prev,
                                           [product.id]: e.target.value
                                         }))}
-                                        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
+                                        className="w-16 sm:w-18 px-2 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-green-500"
                                         min="0"
                                         max="500"
                                       />
-                                      <span className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
                                     </div>
-                                    
+
                                     <button
                                       onClick={() => handleSaveProductMargin(product.id, order.id)}
                                       disabled={saving === product.id}
-                                      className="bg-green-600 text-white px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs rounded hover:bg-green-700 disabled:bg-gray-400"
+                                      className="bg-green-600 text-white px-3 sm:px-4 py-1.5 text-sm rounded-lg hover:bg-green-700 disabled:bg-gray-400 font-medium"
                                     >
                                       {saving === product.id ? '...' : 'Save'}
                                     </button>
 
                                     <button
                                       onClick={() => setEditingProduct(null)}
-                                      className="text-gray-600 hover:text-gray-800 px-1.5 sm:px-2 py-0.5 sm:py-1 text-xs"
+                                      className="text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-3 sm:px-4 py-1.5 text-sm rounded-lg font-medium"
                                     >
                                       Cancel
                                     </button>
 
                                     {message[product.id] && (
-                                      <span className={`text-xs ${
+                                      <span className={`text-xs sm:text-sm font-medium ${
                                         message[product.id] === 'Saved!' ? 'text-green-600' : 'text-red-600'
                                       }`}>
                                         {message[product.id]}

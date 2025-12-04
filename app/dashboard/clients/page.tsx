@@ -538,18 +538,20 @@ export default function ClientsPage() {
             </div>
 
             {(user?.role === 'super_admin' || user?.role === 'admin') && (
-              <div className="flex justify-end gap-2">
+              <div className="flex gap-2 pt-3 border-t border-gray-200">
                 <button
                   onClick={() => openEditModal(client)}
-                  className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                  className="flex-1 px-3 py-2 text-sm bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium flex items-center justify-center gap-1"
                 >
                   <Edit2 className="w-4 h-4" />
+                  Edit
                 </button>
                 <button
                   onClick={() => confirmDelete(client)}
-                  className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                  className="flex-1 px-3 py-2 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium flex items-center justify-center gap-1"
                 >
                   <Trash2 className="w-4 h-4" />
+                  Delete
                 </button>
               </div>
             )}

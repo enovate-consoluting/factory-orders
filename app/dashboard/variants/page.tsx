@@ -399,22 +399,24 @@ export default function VariantsPage() {
                       <Tag className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                       <h3 className="font-semibold text-gray-900 text-base sm:text-lg">{translate(type.name)}</h3>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-2">
                       <button
                         onClick={() => openEditModal(type)}
                         disabled={isProcessing}
-                        className="p-1 sm:p-1.5 hover:bg-white rounded-lg transition-colors group"
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium"
                         title="Edit type"
                       >
-                        <Edit2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500 group-hover:text-blue-600" />
+                        <Edit2 className="w-4 h-4" />
+                        <span>Edit</span>
                       </button>
                       <button
                         onClick={() => setDeleteConfirm({ type: 'type', item: type })}
                         disabled={isProcessing}
-                        className="p-1 sm:p-1.5 hover:bg-white rounded-lg transition-colors group"
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors font-medium"
                         title="Delete type"
                       >
-                        <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500 group-hover:text-red-600" />
+                        <Trash2 className="w-4 h-4" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>
@@ -578,10 +580,10 @@ export default function VariantsPage() {
                         <button
                           type="button"
                           onClick={() => removeOptionField(index)}
-                          className="p-1.5 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
+                          className="p-2 sm:p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                           title={existingOptionIds[index] ? t("removeThisOptionWillBeDeleted") : t("removeThisField")}
                         >
-                          <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <Trash2 className="w-5 h-5 sm:w-5 sm:h-5" />
                         </button>
                       )}
                     </div>

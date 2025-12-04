@@ -395,11 +395,11 @@ export default function ManufacturerSettingsPage() {
       </div>
 
       {/* Save Button */}
-      <div className="mt-4 sm:mt-6 flex justify-end">
+      <div className="mt-4 sm:mt-6">
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors font-medium"
+          className="w-full sm:w-auto sm:ml-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed transition-colors font-medium"
         >
           {saving ? (
             <>
