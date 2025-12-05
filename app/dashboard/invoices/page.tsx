@@ -41,6 +41,7 @@ interface Invoice {
   created_at: string;
   sent_at?: string;
   order_id?: string;
+  pdf_url?: string;
   voided?: boolean;
   voided_at?: string;
   void_reason?: string;
@@ -1068,7 +1069,7 @@ export default function InvoicesPage() {
                           <Link
                             href={`/dashboard/orders/${invoice.order.id}`}
                             target="_blank"
-                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors mt-4"
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                             title="View Order"
                           >
                             <Eye className="w-4 h-4" />
@@ -1174,10 +1175,10 @@ export default function InvoicesPage() {
                       <Link
                         href={`/dashboard/orders/${invoice.order.id}`}
                         target="_blank"
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors lg:mt-0 mt-[12px]"
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                         title="View Order"
                       >
-                        <Eye className="w-4 h-4 " />
+                        <Eye className="w-4 h-4" />
                       </Link>
                     )}
                     {/* PDF Download Button */}
