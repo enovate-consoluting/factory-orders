@@ -67,21 +67,30 @@ export function OrderHeader({
 
       {/* Order Information Card */}
       <div className="bg-gray-50">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4">
-            <div className="flex flex-col gap-3">
-              {/* Order Title and Number */}
-              <div>
-                <h1 className="text-base sm:text-lg font-bold text-gray-900 break-words">
-                  {(order as any).order_name ? translate((order as any).order_name) : `${t('order')} ${formatOrderNumber(order.order_number)}`}
-                </h1>
-                <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
-                  Order #{formatOrderNumber(order.order_number)}
-                </p>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-2 sm:py-3">
+          <div className="bg-white rounded-lg border border-gray-200 p-2.5 sm:p-4">
+            <div className="flex flex-col gap-2 sm:gap-3">
+              {/* Order Title, Number, and Status Badge */}
+              <div className="flex items-start justify-between gap-1.5 sm:gap-2">
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-base sm:text-lg font-bold text-gray-900 break-words">
+                    {(order as any).order_name ? translate((order as any).order_name) : `${t('order')} ${formatOrderNumber(order.order_number)}`}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-gray-600 mt-0.5">
+                    Order #{formatOrderNumber(order.order_number)}
+                  </p>
+                </div>
+
+                {/* Status Badge - Right aligned on mobile for non-super admin */}
+                {!isSuperAdmin && (
+                  <div className="flex-shrink-0">
+                    <StatusBadge status={order.status} />
+                  </div>
+                )}
               </div>
 
               {/* Status Dropdown - SUPER ADMIN ONLY */}
-              {isSuperAdmin && onStatusChange ? (
+              {isSuperAdmin && onStatusChange && (
                 <select
                   value={order.status}
                   onChange={(e) => onStatusChange(e.target.value)}
@@ -103,11 +112,6 @@ export function OrderHeader({
                   <option value="completed">{t('completed')}</option>
                   <option value="rejected">{t('rejected')}</option>
                 </select>
-              ) : (
-                // Regular admins and manufacturers just see the status badge
-                <div className="flex-shrink-0">
-                  <StatusBadge status={order.status} />
-                </div>
               )}
 
               {/* Metadata row */}
@@ -128,7 +132,7 @@ export function OrderHeader({
 
               {/* Estimated Total - ONLY SHOW FOR NON-MANUFACTURERS */}
               {!isManufacturer && (
-                <div className="border-t pt-3">
+                <div className="border-t pt-2 sm:pt-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-gray-500 uppercase tracking-wide">{t('estimatedTotal')}</p>

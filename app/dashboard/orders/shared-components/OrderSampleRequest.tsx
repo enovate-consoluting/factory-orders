@@ -362,18 +362,18 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const showRoutingButtons = isSampleActive;
 
   return (
-    <div className={`rounded-lg p-3 sm:p-4 border mb-4 ${
+    <div className={`rounded-lg p-2.5 sm:p-4 border mb-2 sm:mb-4 ${
       isSampleActive ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
     }`}>
       {/* Header with routing status */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-3">
-        <h3 className={`text-sm font-semibold flex items-center ${
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+        <h3 className={`text-xs sm:text-sm font-semibold flex items-center ${
           isSampleActive ? 'text-amber-900' : 'text-gray-500'
         }`}>
-          <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
-          <span className="text-xs sm:text-sm">{t('orderSampleRequestTechPack')}</span>
+          <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+          <span>{t('orderSampleRequestTechPack')}</span>
         </h3>
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {getRoutingStatusBadge()}
           {getSampleStatusBadge()}
 
@@ -401,8 +401,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
       {/* ROUTING BUTTONS */}
       {showRoutingButtons && (
-        <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-white rounded-lg border border-amber-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <div className="mb-2 sm:mb-3 p-2 sm:p-3 bg-white rounded-lg border border-amber-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2">
             <span className="text-xs font-medium text-gray-700 whitespace-nowrap">{t('sampleRouting')}:</span>
 
             <div className="grid grid-cols-2 sm:inline-flex items-stretch sm:items-center gap-2">
@@ -457,7 +457,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       )}
 
       {/* Sample Details Fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 mb-2 sm:mb-3">
         <div className={!canEditFeeETA ? "opacity-60" : ""}>
           <label className="block text-xs font-medium text-amber-800 mb-1">
             {t('sampleFee')}

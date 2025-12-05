@@ -42,11 +42,11 @@ export function ProductDistributionBar({
   if (counts.total === 0) return null;
 
   return (
-    <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-3 sm:p-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">{t('productDistribution')}</h3>
+    <div className="mb-2 sm:mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-2.5 sm:p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+        <h3 className="text-xs sm:text-sm font-semibold text-gray-700 flex-shrink-0">{t('productDistribution')}</h3>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <select
             value={selectedProductId}
             onChange={(e) => onProductSelect(e.target.value)}
@@ -62,7 +62,7 @@ export function ProductDistributionBar({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mt-3">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-2 sm:mt-3">
         {counts.withAdmin > 0 && (
           <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">
             {counts.withAdmin} {t('withAdmin')}

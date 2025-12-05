@@ -984,12 +984,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         setLanguage={setLanguage}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 pb-20">
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-3 pb-20">
         {/* Client & Manufacturer Info Cards */}
         {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
             {/* Client Card */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-3 sm:p-4 hover:shadow-md transition-shadow relative">
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
                 <button
                   onClick={() => {
@@ -1085,7 +1085,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             </div>
 
             {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-3 sm:p-4 hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-2 sm:gap-3 mb-2">
                 <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
                   <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
@@ -1184,9 +1184,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Products Section */}
-          <div className="space-y-3 sm:space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-0">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+          <div className="space-y-2 sm:space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
+            <h2 className="text-sm sm:text-lg font-semibold text-gray-900">
               {selectedProductId !== 'all' ? t('productDetail') : t('orderProducts')}
             </h2>
             <div className="flex items-center gap-2">

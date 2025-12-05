@@ -7,14 +7,28 @@
  * Last Modified: December 4, 2025
  */
 
-import React, { useState, useMemo } from 'react';
-import { 
-  Package, Download, Printer, Save, Send, DollarSign, 
-  FileImage, FileText, X, Loader2, Calendar, FolderDown,
-  File, Image, FileVideo, FileArchive, Clock
-} from 'lucide-react';
-import { SetShipDatesModal } from '../modals/SetShipDatesModal';
-import { SetProductionDaysModal } from '../modals/SetProductionDaysModal';
+import React, { useState, useMemo } from "react";
+import {
+  Package,
+  Download,
+  Printer,
+  Save,
+  Send,
+  DollarSign,
+  FileImage,
+  FileText,
+  X,
+  Loader2,
+  Calendar,
+  FolderDown,
+  File,
+  Image,
+  FileVideo,
+  FileArchive,
+  Clock,
+} from "lucide-react";
+import { SetShipDatesModal } from "../modals/SetShipDatesModal";
+import { SetProductionDaysModal } from "../modals/SetProductionDaysModal";
 
 interface ManufacturerControlPanelProps {
   order: any;
@@ -26,35 +40,41 @@ interface ManufacturerControlPanelProps {
 
 // Helper to get file icon based on type/extension
 const getFileIcon = (fileName: string, fileType?: string) => {
-  const ext = fileName?.split('.').pop()?.toLowerCase() || '';
-  
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) || fileType?.includes('image')) {
+  const ext = fileName?.split(".").pop()?.toLowerCase() || "";
+
+  if (
+    ["jpg", "jpeg", "png", "gif", "webp", "svg"].includes(ext) ||
+    fileType?.includes("image")
+  ) {
     return <Image className="w-4 h-4 text-blue-500" />;
   }
-  if (['pdf'].includes(ext)) {
+  if (["pdf"].includes(ext)) {
     return <FileText className="w-4 h-4 text-red-500" />;
   }
-  if (['mp4', 'mov', 'avi', 'webm'].includes(ext) || fileType?.includes('video')) {
+  if (
+    ["mp4", "mov", "avi", "webm"].includes(ext) ||
+    fileType?.includes("video")
+  ) {
     return <FileVideo className="w-4 h-4 text-purple-500" />;
   }
-  if (['zip', 'rar', '7z'].includes(ext)) {
+  if (["zip", "rar", "7z"].includes(ext)) {
     return <FileArchive className="w-4 h-4 text-amber-500" />;
   }
-  if (['doc', 'docx', 'txt', 'rtf'].includes(ext)) {
+  if (["doc", "docx", "txt", "rtf"].includes(ext)) {
     return <FileText className="w-4 h-4 text-blue-600" />;
   }
-  if (['xls', 'xlsx', 'csv'].includes(ext)) {
+  if (["xls", "xlsx", "csv"].includes(ext)) {
     return <FileText className="w-4 h-4 text-green-600" />;
   }
   return <File className="w-4 h-4 text-gray-500" />;
 };
 
-export function ManufacturerControlPanel({ 
-  order, 
+export function ManufacturerControlPanel({
+  order,
   visibleProducts,
   onSaveAndRoute,
   onPrintAll,
-  onUpdate
+  onUpdate,
 }: ManufacturerControlPanelProps) {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showAllMediaModal, setShowAllMediaModal] = useState(false);
@@ -62,60 +82,74 @@ export function ManufacturerControlPanel({
   const [showProductionDaysModal, setShowProductionDaysModal] = useState(false);
   const [downloadingAll, setDownloadingAll] = useState(false);
   const [downloadingMedia, setDownloadingMedia] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState({ current: 0, total: 0 });
+  const [downloadProgress, setDownloadProgress] = useState({
+    current: 0,
+    total: 0,
+  });
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [selectedMediaFiles, setSelectedMediaFiles] = useState<Set<string>>(new Set());
+  const [selectedMediaFiles, setSelectedMediaFiles] = useState<Set<string>>(
+    new Set()
+  );
 
   // Calculate totals (MANUFACTURER prices - their costs)
   const calculateTotals = () => {
     let productTotal = 0;
     let sampleTotal = 0;
     let shippingTotal = 0;
-    
+
     visibleProducts.forEach((product: any) => {
-      const totalQty = product.order_items?.reduce((sum: number, item: any) => 
-        sum + (item.quantity || 0), 0) || 0;
-      
+      const totalQty =
+        product.order_items?.reduce(
+          (sum: number, item: any) => sum + (item.quantity || 0),
+          0
+        ) || 0;
+
       // Use manufacturer prices (their costs)
-      productTotal += (parseFloat(product.product_price || 0) * totalQty);
+      productTotal += parseFloat(product.product_price || 0) * totalQty;
       sampleTotal += parseFloat(product.sample_fee || 0);
-      
-      if (product.selected_shipping_method === 'air') {
+
+      if (product.selected_shipping_method === "air") {
         shippingTotal += parseFloat(product.shipping_air_price || 0);
-      } else if (product.selected_shipping_method === 'boat') {
+      } else if (product.selected_shipping_method === "boat") {
         shippingTotal += parseFloat(product.shipping_boat_price || 0);
       }
     });
-    
+
     return {
       product: productTotal,
       sample: sampleTotal,
       shipping: shippingTotal,
-      total: productTotal + sampleTotal + shippingTotal
+      total: productTotal + sampleTotal + shippingTotal,
     };
   };
 
   const totals = calculateTotals();
 
   // Count products with ship dates set
-  const productsWithShipDates = visibleProducts.filter(p => p.estimated_ship_date).length;
-  
+  const productsWithShipDates = visibleProducts.filter(
+    (p) => p.estimated_ship_date
+  ).length;
+
   // Count products with production days set
-  const productsWithProductionDays = visibleProducts.filter(p => p.production_days).length;
+  const productsWithProductionDays = visibleProducts.filter(
+    (p) => p.production_days
+  ).length;
 
   // Collect all sample media (existing functionality)
   const allSampleFiles = useMemo(() => {
     const files: any[] = [];
-    visibleProducts.forEach(product => {
-      const sampleMedia = product.order_media?.filter(
-        (m: any) => m.file_type === 'sample_image' || m.file_type === 'sample_document'
-      ) || [];
-      
+    visibleProducts.forEach((product) => {
+      const sampleMedia =
+        product.order_media?.filter(
+          (m: any) =>
+            m.file_type === "sample_image" || m.file_type === "sample_document"
+        ) || [];
+
       sampleMedia.forEach((file: any) => {
         files.push({
           ...file,
           productCode: product.product_order_number,
-          productName: product.description || 'Product'
+          productName: product.description || "Product",
         });
       });
     });
@@ -126,24 +160,25 @@ export function ManufacturerControlPanel({
   const allMediaFiles = useMemo(() => {
     const files: any[] = [];
     const seenIds = new Set<string>();
-    
+
     // 1. Get ALL media from visible products (routed to manufacturer)
-    visibleProducts.forEach(product => {
+    visibleProducts.forEach((product) => {
       const productMedia = product.order_media || [];
-      
+
       productMedia.forEach((file: any) => {
         if (!seenIds.has(file.id)) {
           seenIds.add(file.id);
           files.push({
             ...file,
-            source: 'product',
-            productCode: product.product_order_number || 'N/A',
-            productName: product.description || product.product?.title || 'Product'
+            source: "product",
+            productCode: product.product_order_number || "N/A",
+            productName:
+              product.description || product.product?.title || "Product",
           });
         }
       });
     });
-    
+
     // 2. Get order-level sample/tech pack files
     if (order?.order_media) {
       order.order_media.forEach((file: any) => {
@@ -151,27 +186,27 @@ export function ManufacturerControlPanel({
           seenIds.add(file.id);
           files.push({
             ...file,
-            source: 'order',
-            productCode: 'ORDER',
-            productName: 'Order Sample/Tech Pack'
+            source: "order",
+            productCode: "ORDER",
+            productName: "Order Sample/Tech Pack",
           });
         }
       });
     }
-    
+
     return files;
   }, [visibleProducts, order]);
 
   // Open download modal (samples only - existing)
   const openDownloadModal = () => {
-    const allFileIds = new Set(allSampleFiles.map(f => f.id));
+    const allFileIds = new Set(allSampleFiles.map((f) => f.id));
     setSelectedFiles(allFileIds);
     setShowDownloadModal(true);
   };
 
   // Open all media download modal
   const openAllMediaModal = () => {
-    const allFileIds = new Set(allMediaFiles.map(f => f.id));
+    const allFileIds = new Set(allMediaFiles.map((f) => f.id));
     setSelectedMediaFiles(allFileIds);
     setShowAllMediaModal(true);
   };
@@ -204,7 +239,7 @@ export function ManufacturerControlPanel({
       const response = await fetch(fileUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
@@ -212,7 +247,7 @@ export function ManufacturerControlPanel({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
-      console.error('Error downloading file:', error);
+      console.error("Error downloading file:", error);
     }
   };
 
@@ -220,35 +255,41 @@ export function ManufacturerControlPanel({
   const downloadSelectedFiles = async () => {
     setDownloadingAll(true);
     setShowDownloadModal(false);
-    
-    const filesToDownload = allSampleFiles.filter(f => selectedFiles.has(f.id));
-    
+
+    const filesToDownload = allSampleFiles.filter((f) =>
+      selectedFiles.has(f.id)
+    );
+
     for (const file of filesToDownload) {
-      const fileName = file.display_name || file.original_filename || 'sample-file';
+      const fileName =
+        file.display_name || file.original_filename || "sample-file";
       await downloadFile(file.file_url, fileName);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
-    
+
     setDownloadingAll(false);
   };
 
   // Download selected media files (all media)
   const downloadSelectedMediaFiles = async () => {
-    const filesToDownload = allMediaFiles.filter(f => selectedMediaFiles.has(f.id));
-    
+    const filesToDownload = allMediaFiles.filter((f) =>
+      selectedMediaFiles.has(f.id)
+    );
+
     setDownloadingMedia(true);
     setDownloadProgress({ current: 0, total: filesToDownload.length });
     setShowAllMediaModal(false);
-    
+
     for (let i = 0; i < filesToDownload.length; i++) {
       const file = filesToDownload[i];
-      const fileName = file.display_name || file.original_filename || `file-${i + 1}`;
+      const fileName =
+        file.display_name || file.original_filename || `file-${i + 1}`;
       setDownloadProgress({ current: i + 1, total: filesToDownload.length });
       await downloadFile(file.file_url, fileName);
       // Small delay between downloads to prevent browser issues
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
-    
+
     setDownloadingMedia(false);
     setDownloadProgress({ current: 0, total: 0 });
   };
@@ -269,110 +310,137 @@ export function ManufacturerControlPanel({
           <div className="flex items-center gap-6">
             <div>
               <span className="text-xs text-gray-500">Order</span>
-              <p className="font-bold text-lg text-gray-900">{order.order_number}</p>
+              <p className="font-bold text-lg text-gray-900">
+                {order.order_number}
+              </p>
             </div>
             <div className="h-10 w-px bg-gray-300" />
             <div>
               <span className="text-xs text-gray-500">Client</span>
-              <p className="font-semibold text-gray-900">{order.client?.name}</p>
+              <p className="font-semibold text-gray-900">
+                {order.client?.name}
+              </p>
             </div>
             <div className="h-10 w-px bg-gray-300" />
             <div>
               <span className="text-xs text-gray-500">Products</span>
-              <p className="font-semibold text-gray-900">{visibleProducts.length}</p>
+              <p className="font-semibold text-gray-900">
+                {visibleProducts.length}
+              </p>
             </div>
           </div>
-          
+
           {/* Totals */}
           <div className="flex items-center gap-4">
             {totals.sample > 0 && (
               <div className="text-right">
                 <span className="text-xs text-gray-500">Samples</span>
-                <p className="font-semibold text-amber-600">${totals.sample.toFixed(2)}</p>
+                <p className="font-semibold text-amber-600">
+                  ${totals.sample.toFixed(2)}
+                </p>
               </div>
             )}
             {totals.shipping > 0 && (
               <div className="text-right">
                 <span className="text-xs text-gray-500">Shipping</span>
-                <p className="font-semibold text-blue-600">${totals.shipping.toFixed(2)}</p>
+                <p className="font-semibold text-blue-600">
+                  ${totals.shipping.toFixed(2)}
+                </p>
               </div>
             )}
-            <div className="text-right">
+            <div className="">
               <span className="text-xs text-gray-500">Total</span>
-              <p className="font-bold text-xl text-green-600">${totals.total.toFixed(2)}</p>
+              <p className="font-bold text-xl text-green-600">
+                ${totals.total.toFixed(2)}
+              </p>
             </div>
           </div>
         </div>
 
         {/* Action Buttons Row */}
-        <div className="flex flex-wrap items-center gap-3 pt-3 border-t">
-          {/* Print All */}
-          <button
-            onClick={onPrintAll}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
-          >
-            <Printer className="w-4 h-4" />
-            Print All
-          </button>
+        {/* Action Buttons Row */}
+<div className="pt-3 border-t">
 
-          {/* All Media Download - Changed from purple to blue */}
-          {allMediaFiles.length > 0 && (
-            <button
-              onClick={openAllMediaModal}
-              disabled={downloadingMedia}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium"
-            >
-              {downloadingMedia ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {downloadProgress.current}/{downloadProgress.total}
-                </>
-              ) : (
-                <>
-                  <FolderDown className="w-4 h-4" />
-                  All Media ({allMediaFiles.length})
-                </>
-              )}
-            </button>
-          )}
+  {/* Wrap all buttons inside one main flex container */}
+  <div className="flex flex-col lg:flex-row lg:items-center lg:gap-3 w-full">
 
-          {/* Set Production Days - NEW */}
-          <button
-            onClick={() => setShowProductionDaysModal(true)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 font-medium"
-          >
-            <Clock className="w-4 h-4" />
-            Production Days
-            {productsWithProductionDays > 0 && (
-              <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
-                {productsWithProductionDays}/{visibleProducts.length}
-              </span>
-            )}
-          </button>
+    {/* Left 2 buttons */}
+    <div className="grid grid-cols-2 gap-2 w-full lg:flex lg:w-auto lg:gap-3">
+      {/* Print All */}
+      <button
+        onClick={onPrintAll}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
+      >
+        <Printer className="w-4 h-4" />
+        Print All
+      </button>
 
-          {/* Set Ship Dates */}
-          <button
-            onClick={() => setShowShipDatesModal(true)}
-            className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
-          >
-            <Calendar className="w-4 h-4" />
-            Ship Dates
-            {productsWithShipDates > 0 && (
-              <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
-                {productsWithShipDates}/{visibleProducts.length}
-              </span>
-            )}
-          </button>
+      {/* Set Ship Dates */}
+      <button
+        onClick={() => setShowShipDatesModal(true)}
+        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
+      >
+        <Calendar className="w-4 h-4" />
+        Ship Dates
+        {productsWithShipDates > 0 && (
+          <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
+            {productsWithShipDates}/{visibleProducts.length}
+          </span>
+        )}
+      </button>
+    </div>
 
-          {/* Save All & Route */}
-          <button
-            onClick={onSaveAndRoute}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium ml-auto"
-          >
-            <Save className="w-4 h-4" />
-            Save All & Route
-          </button>
-        </div>
+    {/* All Media Download */}
+    {allMediaFiles.length > 0 && (
+      <button
+        onClick={openAllMediaModal}
+        disabled={downloadingMedia}
+        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium mt-3 lg:mt-0"
+      >
+        {downloadingMedia ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {downloadProgress.current}/{downloadProgress.total}
+          </>
+        ) : (
+          <>
+            <FolderDown className="w-4 h-4" />
+            All Media ({allMediaFiles.length})
+          </>
+        )}
+      </button>
+    )}
+
+    {/* Right side buttons */}
+    <div className="flex flex-col gap-3 mt-4 lg:flex-row lg:mt-0">
+      {/* Production Days */}
+      <button
+        onClick={() => setShowProductionDaysModal(true)}
+        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 font-medium"
+      >
+        <Clock className="w-4 h-4" />
+        Production Days
+        {productsWithProductionDays > 0 && (
+          <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
+            {productsWithProductionDays}/{visibleProducts.length}
+          </span>
+        )}
+      </button>
+
+      {/* Save All & Route */}
+      <button
+        onClick={onSaveAndRoute}
+        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium"
+      >
+        <Save className="w-4 h-4" />
+        Save All & Route
+      </button>
+    </div>
+
+  </div>
+</div>
+
+        
       </div>
 
       {/* Set Ship Dates Modal */}
@@ -409,7 +477,8 @@ export function ManufacturerControlPanel({
             </div>
 
             <p className="text-sm text-gray-500 mb-3">
-              Select files to download from this order. Includes product media and order-level tech packs.
+              Select files to download from this order. Includes product media
+              and order-level tech packs.
             </p>
 
             <div className="flex items-center justify-between mb-2 pb-2 border-b">
@@ -421,7 +490,9 @@ export function ManufacturerControlPanel({
                     if (selectedMediaFiles.size === allMediaFiles.length) {
                       setSelectedMediaFiles(new Set());
                     } else {
-                      setSelectedMediaFiles(new Set(allMediaFiles.map(f => f.id)));
+                      setSelectedMediaFiles(
+                        new Set(allMediaFiles.map((f) => f.id))
+                      );
                     }
                   }}
                   className="w-4 h-4 text-blue-600 border-gray-300 rounded"
@@ -439,17 +510,23 @@ export function ManufacturerControlPanel({
                   <tr>
                     <th className="w-10 p-2"></th>
                     <th className="w-10 p-2"></th>
-                    <th className="text-left p-2 font-medium text-gray-700">File Name</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Source</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Type</th>
+                    <th className="text-left p-2 font-medium text-gray-700">
+                      File Name
+                    </th>
+                    <th className="text-left p-2 font-medium text-gray-700">
+                      Source
+                    </th>
+                    <th className="text-left p-2 font-medium text-gray-700">
+                      Type
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {allMediaFiles.map((file) => (
-                    <tr 
-                      key={file.id} 
+                    <tr
+                      key={file.id}
                       className={`hover:bg-gray-50 cursor-pointer ${
-                        selectedMediaFiles.has(file.id) ? 'bg-blue-50' : ''
+                        selectedMediaFiles.has(file.id) ? "bg-blue-50" : ""
                       }`}
                       onClick={() => toggleMediaFileSelection(file.id)}
                     >
@@ -463,28 +540,38 @@ export function ManufacturerControlPanel({
                         />
                       </td>
                       <td className="p-2 text-center">
-                        {getFileIcon(file.original_filename || file.display_name || '', file.file_type)}
+                        {getFileIcon(
+                          file.original_filename || file.display_name || "",
+                          file.file_type
+                        )}
                       </td>
-                      <td className="p-2 text-gray-900 font-medium truncate max-w-[200px]" title={file.display_name || file.original_filename}>
-                        {file.display_name || file.original_filename || 'Unnamed file'}
+                      <td
+                        className="p-2 text-gray-900 font-medium truncate max-w-[200px]"
+                        title={file.display_name || file.original_filename}
+                      >
+                        {file.display_name ||
+                          file.original_filename ||
+                          "Unnamed file"}
                       </td>
                       <td className="p-2">
-                        {file.source === 'order' ? (
+                        {file.source === "order" ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
                             Order Level
                           </span>
                         ) : (
-                          <span className="text-gray-600 text-xs">{file.productCode}</span>
+                          <span className="text-gray-600 text-xs">
+                            {file.productCode}
+                          </span>
                         )}
                       </td>
                       <td className="p-2 text-gray-500 text-xs capitalize">
-                        {file.file_type?.replace(/_/g, ' ') || 'file'}
+                        {file.file_type?.replace(/_/g, " ") || "file"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              
+
               {allMediaFiles.length === 0 && (
                 <div className="p-8 text-center text-gray-500">
                   No media files found for this order.
@@ -542,7 +629,9 @@ export function ManufacturerControlPanel({
                     if (selectedFiles.size === allSampleFiles.length) {
                       setSelectedFiles(new Set());
                     } else {
-                      setSelectedFiles(new Set(allSampleFiles.map(f => f.id)));
+                      setSelectedFiles(
+                        new Set(allSampleFiles.map((f) => f.id))
+                      );
                     }
                   }}
                   className="w-3.5 h-3.5 text-amber-600 border-gray-300 rounded"
@@ -568,7 +657,7 @@ export function ManufacturerControlPanel({
                         />
                       </td>
                       <td className="py-1 px-1">
-                        {file.file_type === 'sample_image' ? (
+                        {file.file_type === "sample_image" ? (
                           <FileImage className="w-3 h-3 text-amber-600" />
                         ) : (
                           <FileText className="w-3 h-3 text-amber-600" />

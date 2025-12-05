@@ -84,14 +84,16 @@ export default function ClientsPage() {
   // Prevent background scroll when any modal is open
   useEffect(() => {
     if (showModal || showDeleteModal || showSuccessModal) {
-      const originalStyle = window.getComputedStyle(document.body).overflow
       document.body.style.overflow = 'hidden'
-      document.body.style.paddingRight = window.innerWidth - document.documentElement.clientWidth + 'px'
+      document.documentElement.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'auto'
+      document.documentElement.style.overflow = 'auto'
+    }
 
-      return () => {
-        document.body.style.overflow = originalStyle
-        document.body.style.paddingRight = ''
-      }
+    return () => {
+      document.body.style.overflow = 'auto'
+      document.documentElement.style.overflow = 'auto'
     }
   }, [showModal, showDeleteModal, showSuccessModal])
 

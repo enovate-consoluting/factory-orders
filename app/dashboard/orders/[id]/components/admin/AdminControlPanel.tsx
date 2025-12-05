@@ -204,16 +204,16 @@ export function AdminControlPanel({
 
   return (
     <>
-      <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
+      <div className="mb-2 sm:mb-4 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
         {/* Header */}
-        <div className="px-3 sm:px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
+        <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
           <Settings className="w-4 h-4 text-white flex-shrink-0" />
           <h3 className="text-sm font-semibold text-white">{t('controlPanel')}</h3>
         </div>
 
-        <div className="p-3 sm:p-4">
+        <div className="p-2.5 sm:p-4">
           {/* Order Info Summary - Stacked on mobile */}
-          <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-3 sm:mb-4">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-2 sm:mb-3">
             <div className="text-center sm:text-left">
               <span className="block text-xs text-gray-500">{t('order')}</span>
               <p className="font-bold text-sm text-gray-900 truncate">{order.order_number}</p>
@@ -230,7 +230,7 @@ export function AdminControlPanel({
 
           {/* Product Distribution - Wrap on mobile */}
           {productCounts.total > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
               {productCounts.withAdmin > 0 && (
                 <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
                   {productCounts.withAdmin} {t('withAdmin')}
@@ -250,7 +250,7 @@ export function AdminControlPanel({
           )}
 
           {/* Totals - Side by side on mobile */}
-          <div className="flex items-center justify-between gap-3 mb-3 pb-3 border-b border-gray-200">
+          <div className="flex items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3 pb-2 sm:pb-3 border-b border-gray-200">
             {totals.shipping > 0 && (
               <div>
                 <span className="block text-xs text-gray-500">{t('shipping')}</span>
@@ -265,7 +265,7 @@ export function AdminControlPanel({
 
           {/* Warnings Row */}
           {(productsNeedingPricing > 0 || productsWithoutShipping > 0) && (
-            <div className="flex gap-2 mb-3 p-2 sm:p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex gap-1.5 sm:gap-2 mb-2 sm:mb-3 p-2 sm:p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1 text-xs sm:text-sm text-amber-800">
                 {productsNeedingPricing > 0 && (
