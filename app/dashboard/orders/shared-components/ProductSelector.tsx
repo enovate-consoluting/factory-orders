@@ -65,10 +65,17 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
     (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  // Prevent background scroll when modal is open
   useEffect(() => {
     if (showNewProductModal) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
       fetchVariantTypes();
     }
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.documentElement.style.overflow = 'unset';
+    };
   }, [showNewProductModal]);
 
   const fetchVariantTypes = async () => {
@@ -266,42 +273,43 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
 
   return (
     <>
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">{t('selectProductsToAdd')}</h2>
-          <div className="flex items-center gap-3">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">{t('selectProductsToAdd')}</h2>
+          <div className="flex items-center gap-2 sm:gap-3">
             {getTotalProductsSelected() > 0 && (
-              <div className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-medium">
+              <div className="bg-blue-100 text-blue-700 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium">
                 {getTotalProductsSelected()} {t('productsAdded')}
               </div>
             )}
             <button
               type="button"
               onClick={() => setShowNewProductModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+              className="px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-1.5 sm:gap-2 shadow-md hover:shadow-lg transition-all text-sm"
             >
-              <Plus className="w-4 h-4" />
-              {t('product')}
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">{t('product')}</span>
+              <span className="xs:hidden">Add</span>
             </button>
           </div>
         </div>
 
-        <div className="mb-4">
+        <div className="mb-3 sm:mb-4">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t('searchProducts')}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-500"
+            className="w-full px-3 sm:px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base text-gray-900 placeholder-gray-500"
           />
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {filteredProducts.map((product) => (
             <div
               key={product.id}
               onClick={() => onProductClick(product.id)}
-              className={`border rounded-lg p-4 transition-all cursor-pointer select-none ${
+              className={`border rounded-lg p-3 sm:p-4 transition-all cursor-pointer select-none ${
                 selectedProducts[product.id] > 0
                   ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
                   : 'border-gray-300 hover:border-gray-400 hover:shadow-md'
@@ -314,13 +322,13 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                   </div>
                 )}
                 
-                <div className="mb-3">
-                  <h3 className="font-semibold text-gray-900">{product.title}</h3>
+                <div className="mb-2 sm:mb-3">
+                  <h3 className="font-semibold text-sm sm:text-base text-gray-900">{product.title}</h3>
                   {product.description && (
-                    <p className="text-sm text-gray-600 mt-1">{product.description}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">{product.description}</p>
                   )}
                   {product.variants && product.variants.length > 0 && (
-                    <div className="mt-2">
+                    <div className="mt-1.5 sm:mt-2">
                       {product.variants.map((variant, idx) => (
                         <div key={idx} className="text-xs text-gray-700">
                           <span className="font-medium text-gray-800">{variant.type}:</span> {variant.options.join(', ')}
@@ -331,7 +339,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                 </div>
 
                 {/* Bottom section - Edit button next to tap text */}
-                <div className="mt-3 pt-3 border-t border-gray-200">
+                <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
                   {selectedProducts[product.id] > 0 ? (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -398,10 +406,22 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
 
       {/* New Product Modal - PROPERLY TRANSPARENT WITH FROSTED BACKGROUND */}
       {showNewProductModal && (
-        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-semibold text-gray-900">Create New Product</h3>
+        <div 
+          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowNewProductModal(false);
+              setNewProductTitle('');
+              setSelectedVariants([]);
+              setNewVariantValues({});
+              setAddingVariantFor(null);
+            }
+          }}
+        >
+          <div className="min-h-screen flex items-center justify-center p-3 sm:p-4">
+            <div className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-3xl max-h-[calc(100vh-2rem)] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3 sm:mb-4">
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Create New Product</h3>
               <button
                 onClick={() => {
                   setShowNewProductModal(false);
@@ -410,13 +430,13 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                   setNewVariantValues({});
                   setAddingVariantFor(null);
                 }}
-                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
 
-            <div className="space-y-4 flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="space-y-3 sm:space-y-4 flex-1 overflow-y-auto overflow-x-hidden">
               {/* Product Title */}
               <div>
                 <label className="block text-sm font-semibold text-gray-800 mb-1">
@@ -426,7 +446,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                   type="text"
                   value={newProductTitle}
                   onChange={(e) => setNewProductTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder-gray-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-400 text-sm sm:text-base text-gray-900 placeholder-gray-500"
                   placeholder="Enter product name..."
                   autoFocus
                 />
@@ -556,7 +576,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 mt-4 sm:mt-6 pt-3 sm:pt-4 border-t">
               <button
                 onClick={() => {
                   setShowNewProductModal(false);
@@ -565,14 +585,14 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
                   setNewVariantValues({});
                   setAddingVariantFor(null);
                 }}
-                className="px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                className="w-full sm:w-auto px-4 sm:px-5 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium text-sm sm:text-base"
                 disabled={saving}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveProduct}
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 font-medium shadow-md hover:shadow-lg transition-all"
+                className="w-full sm:w-auto px-4 sm:px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium shadow-md hover:shadow-lg transition-all text-sm sm:text-base"
                 disabled={saving || !newProductTitle.trim()}
               >
                 {saving ? (
@@ -586,6 +606,7 @@ export const ProductSelector: React.FC<ProductSelectorProps> = ({
               </button>
             </div>
           </div>
+        </div>
         </div>
       )}
     </>

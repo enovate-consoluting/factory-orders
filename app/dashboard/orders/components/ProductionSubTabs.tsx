@@ -94,11 +94,7 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
 
   return (
     <div className="relative mb-3 sm:mb-4 bg-gray-50 rounded-lg overflow-hidden">
-      {/* Scroll hint shadows for mobile - enhanced visibility */}
-      <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-gray-50 via-gray-50/90 to-transparent pointer-events-none z-10 lg:hidden" />
-      <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-gray-50 via-gray-50/90 to-transparent pointer-events-none z-10 lg:hidden" />
-
-      <div className="flex gap-1.5 sm:gap-2 p-1.5 sm:p-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-smooth">
+      <div className="flex gap-1.5 sm:gap-2 px-2 py-1.5 sm:p-2 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-smooth">
         {subTabs.map((tab) => {
           const isActive = activeSubTab === tab.key;
           return (

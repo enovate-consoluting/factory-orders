@@ -628,15 +628,12 @@ export default function CreateInvoicePage() {
       const total = subtotal + taxAmount;
       
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const [prefix, seqNum] = generatedInvoiceNumber.split('-');
       
       // Create invoice in database - NOW WITH pay_link and sent_at
       const { data: invoice, error } = await supabase
         .from('invoices')
         .insert({
           invoice_number: generatedInvoiceNumber,
-          invoice_prefix: prefix,
-          invoice_sequence_number: parseInt(seqNum),
           order_id: orderId,
           client_id: invoiceData?.client.id,
           amount: total,
@@ -838,28 +835,30 @@ export default function CreateInvoicePage() {
       {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2 sm:py-3">
-          <div className="flex flex-col gap-2 sm:gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 sm:gap-3">
-                <button
-                  onClick={handleCancel}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <h1 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900">Create Invoice</h1>
-              </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
                 onClick={handleCancel}
-                className="sm:hidden px-2.5 py-1.5 text-xs border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                Cancel
+                <ArrowLeft className="w-4 h-4" />
               </button>
+              <h1 className="text-base sm:text-lg lg:text-xl font-bold text-gray-900">Create Invoice</h1>
             </div>
-            <div className="grid grid-cols-3 sm:flex sm:flex-row gap-2 sm:ml-auto">
+            
+            {/* Mobile Cancel Button */}
+            <button
+              onClick={handleCancel}
+              className="sm:hidden w-full px-2.5 py-1.5 text-xs border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            
+            {/* Action Buttons */}
+            <div className="grid grid-cols-3 sm:flex sm:flex-row gap-2">
               <button
                 onClick={handleCancel}
-                className="hidden sm:inline-flex px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="hidden sm:inline-flex px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors items-center justify-center"
               >
                 Cancel
               </button>
@@ -886,16 +885,15 @@ export default function CreateInvoicePage() {
                 <Save className="w-3.5 h-3.5" />
                 <span>Draft</span>
               </button>
-           
-            </div>
-               <button
+              <button
                 onClick={handleSendClick}
-                className="col-span-2 sm:col-span-1 px-2.5 sm:px-3 py-2 sm:py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
+                className="col-span-3 sm:col-span-1 px-2.5 sm:px-3 py-2 sm:py-1.5 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
                 disabled={saving}
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Send Invoice</span>
               </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1303,6 +1301,73 @@ export default function CreateInvoicePage() {
                   </div>
                 );
               })}
+              
+              {/* Custom Items - Mobile */}
+              {customItems.map((item, index) => (
+                <div key={item.id} className="border rounded-lg p-2.5 bg-blue-50 border-blue-200">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <p className="font-medium text-gray-900 text-sm">Custom Item</p>
+                    <button
+                      onClick={() => setCustomItems(customItems.filter(i => i.id !== item.id))}
+                      className="text-red-600 hover:text-red-700 text-xs px-2 py-0.5 border border-red-300 rounded"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Description</label>
+                      <input
+                        type="text"
+                        value={item.description}
+                        onChange={(e) => {
+                          const updated = [...customItems];
+                          updated[index].description = e.target.value;
+                          setCustomItems(updated);
+                        }}
+                        placeholder="Enter description"
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Quantity</label>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const updated = [...customItems];
+                            updated[index].quantity = parseInt(e.target.value) || 0;
+                            setCustomItems(updated);
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Price</label>
+                        <input
+                          type="number"
+                          value={item.price}
+                          step="0.01"
+                          onChange={(e) => {
+                            const updated = [...customItems];
+                            updated[index].price = parseFloat(e.target.value) || 0;
+                            setCustomItems(updated);
+                          }}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between border-t pt-2 mt-2">
+                      <span className="font-medium text-gray-900 text-sm">Total:</span>
+                      <span className="font-bold text-gray-900 text-sm">${(item.quantity * item.price).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
             
             <button

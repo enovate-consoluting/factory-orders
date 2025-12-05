@@ -8,6 +8,7 @@ import {
   CheckCircle,
   DollarSign,
   AlertTriangle,
+  Send,
 } from "lucide-react";
 import { ProductStatusBadge } from "../../../shared-components/StatusBadge";
 import { getProductStatusIcon } from "./ProductStatusIcon";
@@ -135,6 +136,7 @@ export function CollapsedProductHeader({
                 onClick={onRoute}
                 className="flex-1 px-2 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-1.5"
               >
+                <Send className="w-4 h-4 flex-shrink-0" />
                 <span className="text-xs">{t("route")}</span>
               </button>
             )}
@@ -309,8 +311,9 @@ export function CollapsedProductHeader({
             {onRoute && (
               <button
                 onClick={onRoute}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
               >
+                <Send className="w-4 h-4" />
                 {t("route")}
               </button>
             )}

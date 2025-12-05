@@ -1068,7 +1068,7 @@ export default function InvoicesPage() {
                           <Link
                             href={`/dashboard/orders/${invoice.order.id}`}
                             target="_blank"
-                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors mt-4"
                             title="View Order"
                           >
                             <Eye className="w-4 h-4" />
@@ -1169,16 +1169,28 @@ export default function InvoicesPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-end gap-2 pt-2">
+                  <div className="flex items-center justify-end gap-1 pt-2 border-t border-gray-100 mt-2">
                     {invoice.order?.id && (
                       <Link
                         href={`/dashboard/orders/${invoice.order.id}`}
                         target="_blank"
-                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors lg:mt-0 mt-[12px]"
                         title="View Order"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-4 h-4 " />
                       </Link>
+                    )}
+                    {/* PDF Download Button */}
+                    {invoice.pdf_url && (
+                      <a
+                        href={invoice.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-amber-500 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                        title="Download PDF"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </a>
                     )}
                     {/* Void Button - Mobile */}
                     {!isClient && canVoid(invoice) && (
