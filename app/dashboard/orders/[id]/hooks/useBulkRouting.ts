@@ -1,10 +1,11 @@
 /**
  * useBulkRouting Hook - /dashboard/orders/[id]/hooks/useBulkRouting.ts
  * Handles bulk save and route operations for all user roles
- * FIXED: Now properly saves sample notes with audit log
- * FIXED: Uploads pending sample files
- * FIXED: Routes sample section when routing products
- * Last Modified: November 29, 2025
+ * FIXED: Now calculates client_sample_fee with margin
+ * FIXED: Now saves ALL dirty data from cards before routing
+ * FIXED: Saves variant data directly, not just via card refs
+ * FIXED: Sample status defaults to 'no_sample' when no sample data
+ * Last Modified: December 2025
  */
 
 import { useState } from 'react';
@@ -39,9 +40,7 @@ export interface UseBulkRoutingOptions {
     eta: string;
     status: string;
   };
-  // Pending sample files to upload
   pendingSampleFiles?: File[];
-  // Sample notes to save
   sampleNotes?: string;
   onSuccess: () => void;
   onRedirect?: () => void;
@@ -161,21 +160,100 @@ export function useBulkRouting({
     });
   };
 
-  // COMPLETE sample data save function
+  // Check if sample has any actual data
+  const hasSampleData = (): boolean => {
+    const hasFee = orderSampleData?.fee && parseFloat(orderSampleData.fee) > 0;
+    const hasETA = orderSampleData?.eta && orderSampleData.eta.trim() !== '';
+    const hasNotes = sampleNotes && sampleNotes.trim() !== '';
+    const hasFiles = pendingSampleFiles && pendingSampleFiles.length > 0;
+    return hasFee || hasETA || hasNotes || hasFiles;
+  };
+
+  // =========================================================================
+  // NEW: Load sample margin with client priority
+  // =========================================================================
+  const loadSampleMargin = async (): Promise<number> => {
+    console.log('🔵 Loading sample margin for order...');
+    
+    try {
+      // Get client_id from order
+      const clientId = order?.client_id;
+      if (!clientId) {
+        console.log('🔵 No client_id, using system default');
+        return await getSystemSampleMargin();
+      }
+
+      console.log('🔵 Client ID:', clientId);
+
+      // Check client's custom sample margin
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .select('custom_sample_margin_percentage, name')
+        .eq('id', clientId)
+        .single();
+
+      if (clientError) {
+        console.log('🔵 Client fetch error, using system default:', clientError);
+        return await getSystemSampleMargin();
+      }
+
+      console.log('🔵 Client data:', clientData);
+
+      // Check if client has custom sample margin
+      if (clientData?.custom_sample_margin_percentage !== null && 
+          clientData?.custom_sample_margin_percentage !== undefined) {
+        const margin = parseFloat(clientData.custom_sample_margin_percentage);
+        console.log(`✅ Using CLIENT sample margin: ${margin}% (${clientData.name})`);
+        return margin;
+      }
+
+      // Fall back to system default
+      const systemMargin = await getSystemSampleMargin();
+      console.log(`🔵 Using SYSTEM sample margin: ${systemMargin}%`);
+      return systemMargin;
+
+    } catch (error) {
+      console.error('🔴 Error loading sample margin:', error);
+      return 80; // Default fallback
+    }
+  };
+
+  const getSystemSampleMargin = async (): Promise<number> => {
+    try {
+      const { data } = await supabase
+        .from('system_config')
+        .select('config_value')
+        .eq('config_key', 'default_sample_margin_percentage')
+        .single();
+
+      if (data?.config_value) {
+        return parseFloat(data.config_value);
+      }
+    } catch (error) {
+      console.log('🔵 System config error, using default 80%');
+    }
+    return 80; // Default fallback
+  };
+
+  // =========================================================================
+  // FIXED: Sample data save function with margin calculation
+  // =========================================================================
   const saveSampleData = async (user: any, routeNotes?: string) => {
     console.log('=== SAVING SAMPLE DATA ===');
     console.log('orderSampleData:', orderSampleData);
     console.log('sampleNotes:', sampleNotes);
     console.log('pendingSampleFiles:', pendingSampleFiles?.length);
     
-    // Check if there's anything to save
-    const hasFee = orderSampleData?.fee && parseFloat(orderSampleData.fee) > 0;
-    const hasETA = orderSampleData?.eta && orderSampleData.eta.trim() !== '';
-    const hasNotes = sampleNotes && sampleNotes.trim() !== '';
-    const hasFiles = pendingSampleFiles && pendingSampleFiles.length > 0;
-    
-    if (!hasFee && !hasETA && !hasNotes && !hasFiles) {
-      console.log('No sample data to save, skipping...');
+    // If no sample data at all, ensure status is 'no_sample'
+    if (!hasSampleData()) {
+      console.log('No sample data - setting status to no_sample');
+      await supabase
+        .from('orders')
+        .update({ 
+          sample_status: 'no_sample',
+          sample_workflow_status: 'no_sample'
+        })
+        .eq('id', orderId);
       return;
     }
     
@@ -204,6 +282,7 @@ export function useBulkRouting({
     }
     
     // Add notes to audit
+    const hasNotes = sampleNotes && sampleNotes.trim() !== '';
     if (hasNotes) {
       changes.push(`Note from ${roleName}: "${sampleNotes.trim()}"`);
     }
@@ -213,31 +292,53 @@ export function useBulkRouting({
       changes.push(`Route note: "${routeNotes.trim()}"`);
     }
     
-    // Build update data - NOW INCLUDES sample_notes
+    // Determine status - if no sample data and status is 'no_sample', keep it
+    let finalStatus = orderSampleData?.status || 'pending';
+    if (!hasSampleData() && finalStatus === 'no_sample') {
+      finalStatus = 'no_sample';
+    } else if (hasSampleData() && finalStatus === 'no_sample') {
+      finalStatus = 'pending'; // Auto-upgrade to pending if there's data
+    }
+
+    // =========================================================================
+    // NEW: Calculate client_sample_fee with margin
+    // =========================================================================
+    let clientSampleFee: number | null = null;
+    
+    if (newFee && newFee > 0) {
+      const sampleMargin = await loadSampleMargin();
+      clientSampleFee = newFee * (1 + sampleMargin / 100);
+      
+      console.log('🟡 Sample fee calculation:');
+      console.log(`🟡   Manufacturer fee: $${newFee}`);
+      console.log(`🟡   Sample margin: ${sampleMargin}%`);
+      console.log(`🟡   Client fee: $${clientSampleFee.toFixed(2)} = $${newFee} × (1 + ${sampleMargin}/100)`);
+      
+      changes.push(`Client fee: $${clientSampleFee.toFixed(2)} (${sampleMargin}% margin)`);
+    }
+    
+    // Build update data - NOW INCLUDES client_sample_fee
     const updateData: any = {
-      sample_required: true,
+      sample_required: hasSampleData(),
       sample_fee: newFee,
+      client_sample_fee: clientSampleFee,  // ← NEW: Client price with margin!
       sample_eta: newEta || null,
-      sample_status: orderSampleData?.status || 'pending',
-      sample_workflow_status: orderSampleData?.status || 'pending'
+      sample_status: finalStatus,
+      sample_workflow_status: finalStatus
     };
     
-    // APPEND notes to sample_notes column (don't overwrite existing)
+    // APPEND notes to sample_notes column
     if (hasNotes) {
       const timestamp = new Date().toLocaleDateString();
-      const roleName = isManufacturer ? 'Manufacturer' : 'Admin';
       const newNote = `[${timestamp} - ${roleName}] ${sampleNotes.trim()}`;
-      
-      // Get existing notes and append
       const existingNotes = order?.sample_notes || '';
       updateData.sample_notes = existingNotes 
         ? `${existingNotes}\n\n${newNote}`
         : newNote;
-      
       console.log('Saving sample_notes:', updateData.sample_notes);
     }
     
-    console.log('Updating order with sample data:', updateData);
+    console.log('🟠 Updating order with sample data:', updateData);
     
     // Update order
     const { error: updateError } = await supabase
@@ -246,13 +347,14 @@ export function useBulkRouting({
       .eq('id', orderId);
     
     if (updateError) {
-      console.error('Error saving sample data:', updateError);
+      console.error('🔴 Error saving sample data:', updateError);
       throw updateError;
     }
     
-    console.log('Order sample data updated successfully');
+    console.log('✅ Order sample data updated successfully');
     
     // Upload pending files
+    const hasFiles = pendingSampleFiles && pendingSampleFiles.length > 0;
     if (hasFiles) {
       console.log(`Uploading ${pendingSampleFiles.length} sample file(s)...`);
       changes.push(`${pendingSampleFiles.length} file(s) uploaded`);
@@ -331,35 +433,19 @@ export function useBulkRouting({
     // Build steps for progress display
     const steps: string[] = [];
     
-    // Check if sample has data to save
-    const hasSampleData = 
-      (orderSampleData?.fee && parseFloat(orderSampleData.fee) > 0) ||
-      (orderSampleData?.eta && orderSampleData.eta.trim() !== '') ||
-      (sampleNotes && sampleNotes.trim() !== '') ||
-      (pendingSampleFiles && pendingSampleFiles.length > 0);
+    // Always check sample data
+    steps.push('Checking sample data...');
     
-    if (hasSampleData) {
-      steps.push('Saving sample data...');
-    }
-    
-    if (isManufacturer && products.length > 0) {
-      steps.push(`Saving ${products.length} product${products.length > 1 ? 's' : ''}...`);
-    }
-    
-    // Admin also needs to save product data
-    if (isAdmin && products.length > 0) {
+    if (products.length > 0) {
       steps.push(`Saving ${products.length} product${products.length > 1 ? 's' : ''}...`);
     }
     
     steps.push('Applying routing...');
     
     // Check if sample should be routed
-    const shouldRouteSample = sampleRouting && (
-      // Manufacturer sending to admin - route sample if it's with manufacturer
+    const shouldRouteSample = sampleRouting && hasSampleData() && (
       (isManufacturer && routeOption === 'send_to_admin' && order?.sample_routed_to === 'manufacturer') ||
-      // Admin sending to manufacturer - route sample if it's with admin
       (isAdmin && routeOption === 'send_to_manufacturer' && order?.sample_routed_to === 'admin') ||
-      // Admin sending to client - route sample if it's with admin
       (isAdmin && routeOption === 'send_for_approval' && order?.sample_routed_to === 'admin')
     );
     
@@ -379,45 +465,42 @@ export function useBulkRouting({
     try {
       let stepIndex = 0;
 
-      // STEP 1: Save sample data if present
-      if (hasSampleData) {
-        console.log('Step 1: Saving sample data...');
-        await saveSampleData(user, notes);
-        stepIndex++;
-        setState(prev => ({ ...prev, currentStep: stepIndex }));
-      }
+      // STEP 1: Save sample data (or set to no_sample if empty)
+      console.log('Step 1: Processing sample data...');
+      await saveSampleData(user, notes);
+      stepIndex++;
+      setState(prev => ({ ...prev, currentStep: stepIndex }));
 
-      // STEP 2: Save all product data (manufacturer cards have saveAll method)
-      if (isManufacturer && manufacturerCardRefs && products.length > 0) {
-        console.log(`Step 2: Processing ${products.length} products via manufacturer card refs...`);
+      // STEP 2: Save all product data via card refs AND directly
+      if (products.length > 0) {
+        console.log(`Step 2: Processing ${products.length} products...`);
         
-        for (const product of products) {
-          const cardRef = manufacturerCardRefs.current.get(product.id);
-          
-          if (cardRef && typeof cardRef.saveAll === 'function') {
-            console.log(`Calling saveAll for product ${product.product_order_number}`);
-            await cardRef.saveAll();
-          } else {
-            console.log(`No saveAll method found for product ${product.id}`);
+        // First, try to save via card refs (this handles any UI state)
+        if (isManufacturer && manufacturerCardRefs) {
+          for (const product of products) {
+            const cardRef = manufacturerCardRefs.current.get(product.id);
+            if (cardRef && typeof cardRef.saveAll === 'function') {
+              console.log(`Calling saveAll for manufacturer product ${product.product_order_number}`);
+              try {
+                await cardRef.saveAll();
+              } catch (e) {
+                console.warn(`Card saveAll failed for ${product.id}, continuing...`, e);
+              }
+            }
           }
         }
         
-        stepIndex++;
-        setState(prev => ({ ...prev, currentStep: stepIndex }));
-      }
-      
-      // STEP 2 (Admin): Save all product data via admin card refs
-      if (isAdmin && adminCardRefs && products.length > 0) {
-        console.log(`Step 2: Processing ${products.length} products via admin card refs...`);
-        
-        for (const product of products) {
-          const cardRef = adminCardRefs.current.get(product.id);
-          
-          if (cardRef && typeof cardRef.saveAll === 'function') {
-            console.log(`Calling saveAll for admin product ${product.product_order_number}`);
-            await cardRef.saveAll();
-          } else {
-            console.log(`No saveAll method found for admin product ${product.id} - AdminProductCard may need saveAll function`);
+        if (isAdmin && adminCardRefs) {
+          for (const product of products) {
+            const cardRef = adminCardRefs.current.get(product.id);
+            if (cardRef && typeof cardRef.saveAll === 'function') {
+              console.log(`Calling saveAll for admin product ${product.product_order_number}`);
+              try {
+                await cardRef.saveAll();
+              } catch (e) {
+                console.warn(`Card saveAll failed for ${product.id}, continuing...`, e);
+              }
+            }
           }
         }
         
@@ -519,10 +602,14 @@ export function useBulkRouting({
         if (Object.keys(productUpdate).length > 0) {
           console.log(`Updating product ${product.product_order_number}:`, productUpdate);
           
-          await supabase
+          const { error: productError } = await supabase
             .from('order_products')
             .update(productUpdate)
             .eq('id', product.id);
+            
+          if (productError) {
+            console.error(`Error updating product ${product.id}:`, productError);
+          }
         }
       }
       

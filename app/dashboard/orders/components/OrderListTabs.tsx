@@ -3,7 +3,8 @@
  * Main tab navigation for orders listing
  * Location: app/dashboard/orders/components/OrderListTabs.tsx
  * UPDATED: Added Client Requests tab (teal) for Admin/Super Admin
- * Last Modified: Dec 4 2025
+ * FIXED: Tab label now shows "Client Requests" with proper spacing
+ * Last Modified: Dec 5 2025
  */
 
 import React from 'react';
@@ -36,6 +37,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
 
   // Use configured label or fall back to translation default
   const shipQueueLabel = readyToShipLabel || t('readyToShip');
+
+  // Helper to get client requests label (handles missing translation)
+  const getClientRequestsLabel = () => {
+    const translated = t('clientRequests');
+    // If translation returns the key itself, use proper label
+    if (translated === 'clientRequests') {
+      return 'Client Requests';
+    }
+    return translated;
+  };
 
   return (
     <div className="relative border-b border-gray-200 mb-4">
@@ -73,7 +84,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
             }`}
           >
             <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-            <span className="whitespace-nowrap">{t('clientRequests') || 'Client Requests'}</span>
+            <span className="whitespace-nowrap">{getClientRequestsLabel()}</span>
             {tabCounts.client_requests > 0 && (
               <span className="bg-teal-100 text-teal-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center animate-pulse">
                 {tabCounts.client_requests}

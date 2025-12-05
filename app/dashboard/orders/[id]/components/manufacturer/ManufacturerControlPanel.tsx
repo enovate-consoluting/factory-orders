@@ -1,10 +1,9 @@
 /**
  * ManufacturerControlPanel - Control panel for manufacturer order actions
  * Shows order summary, totals, and action buttons
- * UPDATED: Changed Download All Media button to blue, renamed to "All Media"
- * UPDATED: Added Set Production Days button for production timeline
+ * REDESIGNED: Cleaner layout with better organization
  * Roles: Manufacturer
- * Last Modified: December 4, 2025
+ * Last Modified: December 5, 2025
  */
 
 import React, { useState, useMemo } from "react";
@@ -26,6 +25,10 @@ import {
   FileVideo,
   FileArchive,
   Clock,
+  Building2,
+  ShoppingBag,
+  Truck,
+  CheckCircle,
 } from "lucide-react";
 import { SetShipDatesModal } from "../modals/SetShipDatesModal";
 import { SetProductionDaysModal } from "../modals/SetProductionDaysModal";
@@ -303,136 +306,155 @@ export function ManufacturerControlPanel({
 
   return (
     <>
-      {/* Main Control Panel */}
-      <div className="mb-4 bg-white rounded-lg shadow-lg border border-gray-300 p-4">
-        {/* Order Info Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-6">
-            <div>
-              <span className="text-xs text-gray-500">Order</span>
-              <p className="font-bold text-lg text-gray-900">
-                {order.order_number}
-              </p>
+      {/* Main Control Panel - Redesigned */}
+      <div className="mb-4 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+        {/* Header Section - Order Info */}
+        <div className="bg-gradient-to-r from-gray-800 to-gray-900 text-white p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            {/* Order & Client Info */}
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-white/10 rounded-lg">
+                <ShoppingBag className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-white/70 text-xs uppercase tracking-wide">Order</p>
+                <p className="font-bold text-xl">{order.order_number}</p>
+              </div>
+              <div className="hidden sm:block h-10 w-px bg-white/20" />
+              <div className="hidden sm:block">
+                <p className="text-white/70 text-xs uppercase tracking-wide">Client</p>
+                <p className="font-semibold">{order.client?.name || "—"}</p>
+              </div>
             </div>
-            <div className="h-10 w-px bg-gray-300" />
-            <div>
-              <span className="text-xs text-gray-500">Client</span>
-              <p className="font-semibold text-gray-900">
-                {order.client?.name}
-              </p>
-            </div>
-            <div className="h-10 w-px bg-gray-300" />
-            <div>
-              <span className="text-xs text-gray-500">Products</span>
-              <p className="font-semibold text-gray-900">
-                {visibleProducts.length}
-              </p>
+            
+            {/* Products Count Badge */}
+            <div className="flex items-center gap-2">
+              <div className="px-4 py-2 bg-white/10 rounded-lg text-center">
+                <p className="text-2xl font-bold">{visibleProducts.length}</p>
+                <p className="text-xs text-white/70">Products</p>
+              </div>
             </div>
           </div>
+          
+          {/* Mobile: Show client name */}
+          <div className="sm:hidden mt-2 pt-2 border-t border-white/10">
+            <p className="text-white/70 text-xs">Client: <span className="text-white font-medium">{order.client?.name || "—"}</span></p>
+          </div>
+        </div>
 
-          {/* Totals */}
-          <div className="flex items-center gap-4">
-            {totals.sample > 0 && (
-              <div className="text-right">
-                <span className="text-xs text-gray-500">Samples</span>
-                <p className="font-semibold text-amber-600">
-                  ${totals.sample.toFixed(2)}
-                </p>
+        {/* Totals Section */}
+        <div className="bg-gray-50 border-b border-gray-200 p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Products Total */}
+            <div className="bg-white rounded-lg p-3 border border-gray-200">
+              <div className="flex items-center gap-2 mb-1">
+                <Package className="w-4 h-4 text-gray-400" />
+                <span className="text-xs text-gray-500 uppercase">Products</span>
               </div>
-            )}
-            {totals.shipping > 0 && (
-              <div className="text-right">
-                <span className="text-xs text-gray-500">Shipping</span>
-                <p className="font-semibold text-blue-600">
-                  ${totals.shipping.toFixed(2)}
-                </p>
+              <p className="text-lg font-bold text-gray-900">${totals.product.toFixed(2)}</p>
+            </div>
+
+            {/* Samples Total */}
+            <div className="bg-white rounded-lg p-3 border border-gray-200">
+              <div className="flex items-center gap-2 mb-1">
+                <FileImage className="w-4 h-4 text-amber-500" />
+                <span className="text-xs text-gray-500 uppercase">Samples</span>
               </div>
-            )}
-            <div className="">
-              <span className="text-xs text-gray-500">Total</span>
-              <p className="font-bold text-xl text-green-600">
-                ${totals.total.toFixed(2)}
-              </p>
+              <p className="text-lg font-bold text-amber-600">${totals.sample.toFixed(2)}</p>
+            </div>
+
+            {/* Shipping Total */}
+            <div className="bg-white rounded-lg p-3 border border-gray-200">
+              <div className="flex items-center gap-2 mb-1">
+                <Truck className="w-4 h-4 text-blue-500" />
+                <span className="text-xs text-gray-500 uppercase">Shipping</span>
+              </div>
+              <p className="text-lg font-bold text-blue-600">${totals.shipping.toFixed(2)}</p>
+            </div>
+
+            {/* Grand Total */}
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg p-3 text-white">
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="w-4 h-4 text-white/80" />
+                <span className="text-xs text-white/80 uppercase">Total</span>
+              </div>
+              <p className="text-xl font-bold">${totals.total.toFixed(2)}</p>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons Row */}
-        <div className="pt-3 border-t">
-          <div className="flex flex-col gap-2">
-            {/* Row 1: Print All and Ship Dates (50/50 on mobile) */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={onPrintAll}
-                className="px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-              >
-                <Printer className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">Print All</span>
-              </button>
+        {/* Action Buttons Section */}
+        <div className="p-4">
+          {/* Primary Action - Save & Route */}
+          <button
+            onClick={onSaveAndRoute}
+            className="w-full mb-3 px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all flex items-center justify-center gap-2 font-semibold text-base shadow-md hover:shadow-lg"
+          >
+            <Save className="w-5 h-5" />
+            Save All & Route to Admin
+          </button>
 
-              <button
-                onClick={() => setShowShipDatesModal(true)}
-                className="px-3 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-              >
-                <Calendar className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">Ship Dates</span>
-                {productsWithShipDates > 0 && (
-                  <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded flex-shrink-0">
-                    {productsWithShipDates}/{visibleProducts.length}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Row 2: Production Days (full width on mobile) */}
+          {/* Secondary Actions Grid */}
+          <div className="grid grid-cols-2 gap-2">
+            {/* Print All */}
             <button
-              onClick={() => setShowProductionDaysModal(true)}
-              className="w-full px-3 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+              onClick={onPrintAll}
+              className="px-3 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-gray-200"
             >
-              <Clock className="w-4 h-4 flex-shrink-0" />
-              <span>Production Days</span>
-              {productsWithProductionDays > 0 && (
-                <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
-                  {productsWithProductionDays}/{visibleProducts.length}
-                </span>
-              )}
+              <Printer className="w-4 h-4" />
+              <span>Print All</span>
             </button>
 
-            {/* Row 3: Save All & Route (full width on mobile) */}
-            <button
-              onClick={onSaveAndRoute}
-              className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-            >
-              <Save className="w-4 h-4 flex-shrink-0" />
-              <span>Save All & Route</span>
-            </button>
-
-            {/* Row 4: All Media Download (if media exists, full width) */}
+            {/* All Media Download */}
             {allMediaFiles.length > 0 && (
               <button
                 onClick={openAllMediaModal}
                 disabled={downloadingMedia}
-                className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                className="px-3 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-blue-200"
               >
                 {downloadingMedia ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                    <span>
-                      {downloadProgress.current}/{downloadProgress.total}
-                    </span>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{downloadProgress.current}/{downloadProgress.total}</span>
                   </>
                 ) : (
                   <>
-                    <FolderDown className="w-4 h-4 flex-shrink-0" />
-                    <span>All Media ({allMediaFiles.length})</span>
+                    <FolderDown className="w-4 h-4" />
+                    <span>Media ({allMediaFiles.length})</span>
                   </>
                 )}
               </button>
             )}
+
+            {/* Ship Dates */}
+            <button
+              onClick={() => setShowShipDatesModal(true)}
+              className="px-3 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-orange-200"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Ship Dates</span>
+              {productsWithShipDates > 0 && (
+                <span className="bg-orange-200 text-orange-800 text-xs px-1.5 py-0.5 rounded-full">
+                  {productsWithShipDates}/{visibleProducts.length}
+                </span>
+              )}
+            </button>
+
+            {/* Production Days */}
+            <button
+              onClick={() => setShowProductionDaysModal(true)}
+              className="px-3 py-2.5 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-indigo-200"
+            >
+              <Clock className="w-4 h-4" />
+              <span>Prod. Days</span>
+              {productsWithProductionDays > 0 && (
+                <span className="bg-indigo-200 text-indigo-800 text-xs px-1.5 py-0.5 rounded-full">
+                  {productsWithProductionDays}/{visibleProducts.length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
-
-        
       </div>
 
       {/* Set Ship Dates Modal */}
@@ -443,7 +465,7 @@ export function ManufacturerControlPanel({
         onUpdate={handleModalUpdate}
       />
 
-      {/* Set Production Days Modal - NEW */}
+      {/* Set Production Days Modal */}
       <SetProductionDaysModal
         isOpen={showProductionDaysModal}
         onClose={() => setShowProductionDaysModal(false)}

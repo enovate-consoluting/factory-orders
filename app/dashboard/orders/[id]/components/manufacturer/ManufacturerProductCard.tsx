@@ -1,16 +1,17 @@
 /**
- * Manufacturer Product Card Component - FINAL VERSION
+ * Manufacturer Product Card Component - DEBUG VERSION v4
  * Product card for Manufacturer users with cost pricing
- * FIXES:
- * - Shipping allocation moved INSIDE blue shipping box (more logical placement)
- * - Always shows for manufacturers (not dependent on multiple products)
- * - Fixed currency formatting to always show cents (.50 not .5)
- * - Improved button spacing throughout
- * - Uses new database fields (shipping_linked_products, shipping_link_note)
- * - CLEANUP: Now imports formatCurrency from shared utils (removed duplicate)
- * - FIX: client_notes now saved in saveAll function (was missing!)
- * - NEW: Added production_days field for ETA calculation
- * Last Modified: December 4, 2025
+ * 
+ * DEBUG VERSION - EXTENSIVE CONSOLE LOGGING
+ * Look for these emoji markers in console:
+ * 🔵 = Margin loading
+ * 🟢 = Save starting
+ * 🟡 = Calculation step
+ * 🟠 = Database operation
+ * 🔴 = Error
+ * ✅ = Success
+ * 
+ * Last Modified: December 5, 2025
  */
 
 import React, {
@@ -107,10 +108,16 @@ export const ManufacturerProductCard = forwardRef<
   const permissions = usePermissions() as any;
   const userRole = isSuperAdminView ? "super_admin" : "manufacturer";
 
-  // State for finance margins - LOAD FROM SYSTEM CONFIG
+  // State for finance margins - WILL BE LOADED WITH CLIENT PRIORITY
   const [productMargin, setProductMargin] = useState(80);
   const [shippingMargin, setShippingMargin] = useState(5);
+  const [sampleMargin, setSampleMargin] = useState(80);
   const [marginsLoaded, setMarginsLoaded] = useState(false);
+  const [marginSource, setMarginSource] = useState<{product: string, shipping: string, sample: string}>({
+    product: 'default',
+    shipping: 'default',
+    sample: 'default'
+  });
 
   // Collapsible state
   const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -130,7 +137,7 @@ export const ManufacturerProductCard = forwardRef<
     }
   }, [(product as any)?.product_status, autoCollapse, forceExpanded]);
 
-  // State for notes - KEEPING BUT WILL COMMENT OUT THE DISPLAY
+  // State for notes
   const [tempNotes, setTempNotes] = useState("");
   const [tempBulkNotes, setTempBulkNotes] = useState("");
 
@@ -166,7 +173,7 @@ export const ManufacturerProductCard = forwardRef<
     (product as any).production_time || ""
   );
 
-  // NEW: State for production days (numeric for ETA calculation)
+  // State for production days (numeric for ETA calculation)
   const [productionDays, setProductionDays] = useState<string>(
     (product as any).production_days?.toString() || ""
   );
@@ -196,7 +203,7 @@ export const ManufacturerProductCard = forwardRef<
   // State for pending file uploads
   const [pendingBulkFiles, setPendingBulkFiles] = useState<File[]>([]);
 
-  // NEW: State for shipping allocation
+  // State for shipping allocation
   const [applyShippingToOthers, setApplyShippingToOthers] = useState(false);
   const [selectedProductsForShipping, setSelectedProductsForShipping] =
     useState<string[]>([]);
@@ -231,9 +238,173 @@ export const ManufacturerProductCard = forwardRef<
     manufacturerNotes: (product as any).manufacturer_notes || "",
   });
 
-  // LOAD MARGINS FROM SYSTEM CONFIG
+  // =========================================================================
+  // 🔵 LOAD MARGINS WITH CLIENT PRIORITY - DEBUG VERSION
+  // =========================================================================
   useEffect(() => {
-    const loadMargins = async () => {
+    const loadMarginsWithClientPriority = async () => {
+      console.log("🔵🔵🔵 MARGIN LOADING STARTED 🔵🔵🔵");
+      console.log("🔵 Product ID:", (product as any).id);
+      console.log("🔵 Order ID:", (product as any).order_id);
+      
+      try {
+        // Step 1: Get the order to find the client_id
+        const orderId = (product as any).order_id;
+        if (!orderId) {
+          console.log("🔴 No order_id found, using system defaults");
+          await loadSystemDefaults();
+          return;
+        }
+
+        console.log("🔵 Step 1: Fetching order to get client_id...");
+        const { data: orderData, error: orderError } = await supabase
+          .from("orders")
+          .select("client_id")
+          .eq("id", orderId)
+          .single();
+
+        if (orderError) {
+          console.log("🔴 Order fetch error:", orderError);
+          await loadSystemDefaults();
+          return;
+        }
+
+        if (!orderData?.client_id) {
+          console.log("🔴 No client_id in order, using system defaults");
+          await loadSystemDefaults();
+          return;
+        }
+
+        console.log("🔵 Step 1 SUCCESS - client_id:", orderData.client_id);
+
+        // Step 2: Get the client's custom margin settings
+        console.log("🔵 Step 2: Fetching client margin settings...");
+        const { data: clientData, error: clientError } = await supabase
+          .from("clients")
+          .select("custom_margin_percentage, custom_shipping_margin_percentage, custom_sample_margin_percentage, name")
+          .eq("id", orderData.client_id)
+          .single();
+
+        if (clientError) {
+          console.log("🔴 Client fetch error:", clientError);
+          await loadSystemDefaults();
+          return;
+        }
+
+        console.log("🔵 Step 2 SUCCESS - Client data:", clientData);
+        console.log("🔵 Client name:", clientData?.name);
+        console.log("🔵 custom_margin_percentage:", clientData?.custom_margin_percentage, "(type:", typeof clientData?.custom_margin_percentage, ")");
+        console.log("🔵 custom_shipping_margin_percentage:", clientData?.custom_shipping_margin_percentage, "(type:", typeof clientData?.custom_shipping_margin_percentage, ")");
+        console.log("🔵 custom_sample_margin_percentage:", clientData?.custom_sample_margin_percentage, "(type:", typeof clientData?.custom_sample_margin_percentage, ")");
+
+        // Step 3: Get system defaults
+        console.log("🔵 Step 3: Fetching system defaults...");
+        const { data: systemConfig, error: sysError } = await supabase
+          .from("system_config")
+          .select("config_key, config_value")
+          .in("config_key", [
+            "default_margin_percentage",
+            "default_shipping_margin_percentage",
+            "default_sample_margin_percentage",
+          ]);
+
+        if (sysError) {
+          console.log("🔴 System config error:", sysError);
+        }
+
+        console.log("🔵 Step 3 SUCCESS - System config:", systemConfig);
+
+        let systemProductMargin = 80;
+        let systemShippingMargin = 5;
+        let systemSampleMargin = 80;
+
+        if (systemConfig) {
+          systemConfig.forEach((config) => {
+            console.log("🔵 Processing config:", config.config_key, "=", config.config_value);
+            if (config.config_key === "default_margin_percentage") {
+              systemProductMargin = parseFloat(config.config_value) || 80;
+            } else if (config.config_key === "default_shipping_margin_percentage") {
+              systemShippingMargin = parseFloat(config.config_value) || 5;
+            } else if (config.config_key === "default_sample_margin_percentage") {
+              systemSampleMargin = parseFloat(config.config_value) || 80;
+            }
+          });
+        }
+
+        console.log("🔵 System defaults parsed:");
+        console.log("🔵   Product:", systemProductMargin + "%");
+        console.log("🔵   Shipping:", systemShippingMargin + "%");
+        console.log("🔵   Sample:", systemSampleMargin + "%");
+
+        // Step 4: Apply margins with CLIENT PRIORITY
+        console.log("🔵 Step 4: Applying margin priority logic...");
+        
+        let finalProductMargin = systemProductMargin;
+        let finalShippingMargin = systemShippingMargin;
+        let finalSampleMargin = systemSampleMargin;
+        let productSource = 'system';
+        let shippingSource = 'system';
+        let sampleSource = 'system';
+
+        // Check PRODUCT margin
+        const clientProductMarginValue = clientData?.custom_margin_percentage;
+        console.log("🔵 Checking product margin - value:", clientProductMarginValue, "isNull:", clientProductMarginValue === null, "isUndefined:", clientProductMarginValue === undefined);
+        
+        if (clientProductMarginValue !== null && clientProductMarginValue !== undefined) {
+          finalProductMargin = parseFloat(clientProductMarginValue);
+          productSource = `client (${clientData?.name})`;
+          console.log("✅ Using CLIENT product margin:", finalProductMargin + "%");
+        } else {
+          console.log("🔵 Using SYSTEM product margin:", finalProductMargin + "%");
+        }
+
+        // Check SHIPPING margin
+        const clientShippingMarginValue = clientData?.custom_shipping_margin_percentage;
+        console.log("🔵 Checking shipping margin - value:", clientShippingMarginValue, "isNull:", clientShippingMarginValue === null, "isUndefined:", clientShippingMarginValue === undefined);
+        
+        if (clientShippingMarginValue !== null && clientShippingMarginValue !== undefined) {
+          finalShippingMargin = parseFloat(clientShippingMarginValue);
+          shippingSource = `client (${clientData?.name})`;
+          console.log("✅ Using CLIENT shipping margin:", finalShippingMargin + "%");
+        } else {
+          console.log("🔵 Using SYSTEM shipping margin:", finalShippingMargin + "%");
+        }
+
+        // Check SAMPLE margin
+        const clientSampleMarginValue = clientData?.custom_sample_margin_percentage;
+        console.log("🔵 Checking sample margin - value:", clientSampleMarginValue, "isNull:", clientSampleMarginValue === null, "isUndefined:", clientSampleMarginValue === undefined);
+        
+        if (clientSampleMarginValue !== null && clientSampleMarginValue !== undefined) {
+          finalSampleMargin = parseFloat(clientSampleMarginValue);
+          sampleSource = `client (${clientData?.name})`;
+          console.log("✅ Using CLIENT sample margin:", finalSampleMargin + "%");
+        } else {
+          console.log("🔵 Using SYSTEM sample margin:", finalSampleMargin + "%");
+        }
+
+        // Set the final margins
+        console.log("🔵🔵🔵 FINAL MARGINS 🔵🔵🔵");
+        console.log("🔵 Product:", finalProductMargin + "% (source:", productSource + ")");
+        console.log("🔵 Shipping:", finalShippingMargin + "% (source:", shippingSource + ")");
+        console.log("🔵 Sample:", finalSampleMargin + "% (source:", sampleSource + ")");
+        
+        setProductMargin(finalProductMargin);
+        setShippingMargin(finalShippingMargin);
+        setSampleMargin(finalSampleMargin);
+        setMarginSource({ product: productSource, shipping: shippingSource, sample: sampleSource });
+        setMarginsLoaded(true);
+
+        console.log("🔵🔵🔵 MARGIN LOADING COMPLETE 🔵🔵🔵");
+
+      } catch (error) {
+        console.log("🔴🔴🔴 MARGIN LOADING ERROR 🔴🔴🔴", error);
+        await loadSystemDefaults();
+      }
+    };
+
+    // Helper to load just system defaults
+    const loadSystemDefaults = async () => {
+      console.log("🔵 Loading system defaults only...");
       try {
         const { data } = await supabase
           .from("system_config")
@@ -241,32 +412,36 @@ export const ManufacturerProductCard = forwardRef<
           .in("config_key", [
             "default_margin_percentage",
             "default_shipping_margin_percentage",
+            "default_sample_margin_percentage",
           ]);
+
+        console.log("🔵 System defaults data:", data);
 
         if (data) {
           data.forEach((config) => {
             if (config.config_key === "default_margin_percentage") {
               setProductMargin(parseFloat(config.config_value) || 80);
-              console.log("Loaded product margin:", config.config_value + "%");
-            } else if (
-              config.config_key === "default_shipping_margin_percentage"
-            ) {
+            } else if (config.config_key === "default_shipping_margin_percentage") {
               setShippingMargin(parseFloat(config.config_value) || 5);
-              console.log("Loaded shipping margin:", config.config_value + "%");
+            } else if (config.config_key === "default_sample_margin_percentage") {
+              setSampleMargin(parseFloat(config.config_value) || 80);
             }
           });
         }
+        setMarginSource({ product: 'system', shipping: 'system', sample: 'system' });
         setMarginsLoaded(true);
+        console.log("🔵 System defaults loaded successfully");
       } catch (error) {
-        console.error("Error loading margins:", error);
-        // Use defaults if loading fails
+        console.log("🔴 Error loading system defaults:", error);
         setProductMargin(80);
         setShippingMargin(5);
+        setSampleMargin(80);
         setMarginsLoaded(true);
       }
     };
-    loadMargins();
-  }, []);
+
+    loadMarginsWithClientPriority();
+  }, [(product as any).order_id]);
 
   // Initialize item quantities and notes from items
   useEffect(() => {
@@ -361,35 +536,49 @@ export const ManufacturerProductCard = forwardRef<
     };
   };
 
-  // EXPOSE SAVE ALL FUNCTION TO PARENT - NOW CALCULATES CLIENT PRICES AND USES NEW DB FIELDS
+  // =========================================================================
+  // 🟢 SAVE ALL FUNCTION - DEBUG VERSION
+  // =========================================================================
   useImperativeHandle(
     ref,
     () => ({
       saveAll: async () => {
-        console.log(
-          "=== SaveAll called for product:",
-          (product as any).product_order_number
-        );
-        console.log("Product margin:", productMargin + "%");
-        console.log("Shipping margin:", shippingMargin + "%");
+        console.log("🟢🟢🟢 SAVE ALL STARTED 🟢🟢🟢");
+        console.log("🟢 Product:", (product as any).product_order_number);
+        console.log("🟢 Product ID:", (product as any).id);
+        console.log("🟢 Margins loaded:", marginsLoaded);
+        console.log("🟢 Current margins state:");
+        console.log("🟢   productMargin:", productMargin);
+        console.log("🟢   shippingMargin:", shippingMargin);
+        console.log("🟢   sampleMargin:", sampleMargin);
+        console.log("🟢   marginSource:", marginSource);
 
         try {
-          // STEP 1: Save all product pricing data with CLIENT PRICE CALCULATIONS
-          console.log("Step 1: Calculating client prices and saving...");
+          // STEP 1: Get input values
+          console.log("🟡 Step 1: Reading input values from state...");
+          console.log("🟡   productPrice state:", productPrice);
+          console.log("🟡   shippingAirPrice state:", shippingAirPrice);
+          console.log("🟡   shippingBoatPrice state:", shippingBoatPrice);
+          console.log("🟡   sampleFee state:", sampleFee);
 
-          // Calculate CLIENT prices using margins from system config
-          const mfgProductPrice = productPrice
-            ? parseFloat(productPrice)
-            : null;
-          const mfgAirPrice = shippingAirPrice
-            ? parseFloat(shippingAirPrice)
-            : null;
-          const mfgBoatPrice = shippingBoatPrice
-            ? parseFloat(shippingBoatPrice)
-            : null;
+          // Calculate CLIENT prices using the loaded margins
+          const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
+          const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+          const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
           const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
 
+          console.log("🟡 Step 2: Parsed manufacturer prices:");
+          console.log("🟡   mfgProductPrice:", mfgProductPrice);
+          console.log("🟡   mfgAirPrice:", mfgAirPrice);
+          console.log("🟡   mfgBoatPrice:", mfgBoatPrice);
+          console.log("🟡   mfgSampleFee:", mfgSampleFee);
+
           // Apply margins to get client prices
+          console.log("🟡 Step 3: Calculating client prices with margins...");
+          console.log("🟡   Product margin to apply:", productMargin + "%");
+          console.log("🟡   Shipping margin to apply:", shippingMargin + "%");
+          console.log("🟡   Sample margin to apply:", sampleMargin + "%");
+
           const clientProductPrice = mfgProductPrice
             ? mfgProductPrice * (1 + productMargin / 100)
             : null;
@@ -400,21 +589,16 @@ export const ManufacturerProductCard = forwardRef<
             ? mfgBoatPrice * (1 + shippingMargin / 100)
             : null;
           const clientSampleFee = mfgSampleFee
-            ? mfgSampleFee * (1 + productMargin / 100)
-            : null; // Sample uses product margin
+            ? mfgSampleFee * (1 + sampleMargin / 100)
+            : null;
 
-          console.log("Manufacturer prices:", {
-            mfgProductPrice,
-            mfgAirPrice,
-            mfgBoatPrice,
-          });
-          console.log("Client prices:", {
-            clientProductPrice,
-            clientAirPrice,
-            clientBoatPrice,
-          });
+          console.log("🟡 Step 3 RESULTS - Calculated client prices:");
+          console.log("🟡   clientProductPrice:", clientProductPrice, "(", mfgProductPrice, "* (1 +", productMargin, "/ 100) )");
+          console.log("🟡   clientAirPrice:", clientAirPrice);
+          console.log("🟡   clientBoatPrice:", clientBoatPrice);
+          console.log("🟡   clientSampleFee:", clientSampleFee, "(", mfgSampleFee, "* (1 +", sampleMargin, "/ 100) )");
 
-          // Combine ALL notes
+          // Combine notes
           let finalManufacturerNotes = manufacturerNotes || "";
           let finalInternalNotes = (product as any).internal_notes || "";
 
@@ -429,7 +613,7 @@ export const ManufacturerProductCard = forwardRef<
             finalInternalNotes = tempNotes.trim();
           }
 
-          // Prepare shipping allocation data for THIS product
+          // Prepare shipping allocation
           let shippingLinkNote = "";
           if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
             const selectedNames = selectedProductsForShipping
@@ -441,6 +625,7 @@ export const ManufacturerProductCard = forwardRef<
             shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
           }
 
+          // Build update data
           const productUpdateData: any = {
             // Manufacturer prices
             product_price: mfgProductPrice,
@@ -460,14 +645,12 @@ export const ManufacturerProductCard = forwardRef<
             sample_eta: sampleETA || null,
             manufacturer_notes: finalManufacturerNotes || null,
             internal_notes: finalInternalNotes || null,
-
-            // FIX: Add client_notes (bulk notes) - was missing from saveAll!
             client_notes:
               tempBulkNotes && tempBulkNotes.trim()
                 ? tempBulkNotes.trim()
                 : (product as any).client_notes || null,
 
-            // Shipping allocation fields
+            // Shipping allocation
             shipping_linked_products:
               applyShippingToOthers && selectedProductsForShipping.length > 0
                 ? JSON.stringify(selectedProductsForShipping)
@@ -475,22 +658,31 @@ export const ManufacturerProductCard = forwardRef<
             shipping_link_note: shippingLinkNote || null,
           };
 
-          console.log("Updating product with:", productUpdateData);
+          console.log("🟠🟠🟠 DATABASE UPDATE DATA 🟠🟠🟠");
+          console.log("🟠 Full update object:", JSON.stringify(productUpdateData, null, 2));
 
-          const { error: productError } = await supabase
+          // Execute database update
+          console.log("🟠 Executing Supabase update on order_products...");
+          console.log("🟠 WHERE id =", (product as any).id);
+
+          const { data: updateResult, error: productError } = await supabase
             .from("order_products")
             .update(productUpdateData)
-            .eq("id", (product as any).id);
+            .eq("id", (product as any).id)
+            .select();
 
           if (productError) {
-            console.error("Error updating product:", productError);
+            console.log("🔴🔴🔴 DATABASE UPDATE ERROR 🔴🔴🔴");
+            console.log("🔴 Error:", productError);
             throw productError;
           }
 
-          console.log("Product updated successfully with client prices");
+          console.log("✅✅✅ DATABASE UPDATE SUCCESS ✅✅✅");
+          console.log("✅ Updated data returned:", updateResult);
 
           // Update linked products if shipping is shared
           if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
+            console.log("🟠 Updating linked products for shipping...");
             for (const linkedProductId of selectedProductsForShipping) {
               const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
 
@@ -498,7 +690,6 @@ export const ManufacturerProductCard = forwardRef<
                 .from("order_products")
                 .update({
                   shipping_link_note: linkNote,
-                  // Clear their shipping prices since they're included elsewhere
                   shipping_air_price: 0,
                   shipping_boat_price: 0,
                   client_shipping_air_price: 0,
@@ -508,16 +699,11 @@ export const ManufacturerProductCard = forwardRef<
             }
           }
 
-          // STEP 2: Save variant quantities and notes
-          console.log("Step 2: Saving variant quantities and notes...");
-
+          // Save variant quantities and notes
+          console.log("🟠 Saving variant quantities and notes...");
           for (const item of items) {
             const newQty = parseInt(itemQuantities[item.id]) || 0;
             const newNote = variantNotes[item.id] || "";
-
-            console.log(
-              `Saving variant ${item.variant_combo}: qty=${newQty}, note="${newNote}"`
-            );
 
             const { error: itemError } = await supabase
               .from("order_items")
@@ -528,21 +714,19 @@ export const ManufacturerProductCard = forwardRef<
               .eq("id", item.id);
 
             if (itemError) {
-              console.error(`Error updating item ${item.id}:`, itemError);
+              console.log("🔴 Error updating item", item.id, ":", itemError);
             }
           }
 
-          // STEP 3: Upload any pending files
+          // Upload pending files
           if (pendingBulkFiles.length > 0) {
-            console.log("Step 3: Uploading pending files...");
+            console.log("🟠 Uploading", pendingBulkFiles.length, "pending files...");
             const user = getCurrentUser();
 
             for (const file of pendingBulkFiles) {
               const timestamp = Date.now();
               const randomStr = Math.random().toString(36).substring(2, 8);
               const storagePath = `${(product as any).order_id}/${(product as any).id}/${timestamp}_${randomStr}_${file.name}`;
-
-              console.log(`Uploading file: ${file.name}`);
 
               const { error: uploadError } = await supabase.storage
                 .from("order-media")
@@ -565,13 +749,9 @@ export const ManufacturerProductCard = forwardRef<
                   original_filename: file.name,
                   display_name: file.name,
                 });
-
-                console.log(`File uploaded successfully: ${file.name}`);
+                console.log("✅ File uploaded:", file.name);
               } else {
-                console.error(
-                  `Error uploading file ${file.name}:`,
-                  uploadError
-                );
+                console.log("🔴 File upload error:", uploadError);
               }
             }
           }
@@ -591,15 +771,10 @@ export const ManufacturerProductCard = forwardRef<
                 .eq("id", (product as any).order_id);
             }
           } catch (orderError) {
-            console.error("Error updating order status:", orderError);
+            console.log("🔴 Error updating order status:", orderError);
           }
 
-          console.log(
-            "=== SaveAll completed successfully for product:",
-            (product as any).product_order_number
-          );
-
-          // Clear temp states after successful save
+          // Clear temp states
           setTempNotes("");
           setTempBulkNotes("");
           setPendingBulkFiles([]);
@@ -612,9 +787,10 @@ export const ManufacturerProductCard = forwardRef<
             setManufacturerNotes(finalManufacturerNotes);
           }
 
+          console.log("🟢🟢🟢 SAVE ALL COMPLETE 🟢🟢🟢");
           return true;
         } catch (error) {
-          console.error("Error in saveAll:", error);
+          console.log("🔴🔴🔴 SAVE ALL ERROR 🔴🔴🔴", error);
           return false;
         }
       },
@@ -628,12 +804,18 @@ export const ManufacturerProductCard = forwardRef<
           selectedShippingMethod,
           sampleFee,
           sampleETA,
-          manufacturerNotes: manufacturerNotes,
+          manufacturerNotes,
           tempBulkNotes,
           tempNotes,
           itemQuantities,
           variantNotes,
           pendingBulkFiles,
+          margins: {
+            product: productMargin,
+            shipping: shippingMargin,
+            sample: sampleMargin,
+            source: marginSource
+          }
         };
       },
     }),
@@ -655,6 +837,9 @@ export const ManufacturerProductCard = forwardRef<
       items,
       productMargin,
       shippingMargin,
+      sampleMargin,
+      marginSource,
+      marginsLoaded,
       applyShippingToOthers,
       selectedProductsForShipping,
       allOrderProducts,
@@ -750,24 +935,34 @@ export const ManufacturerProductCard = forwardRef<
     }
   };
 
-  // Save Bulk Section - WITH CLIENT PRICE CALCULATIONS AND NEW DB FIELDS
+  // =========================================================================
+  // 🟢 SAVE BULK SECTION - DEBUG VERSION
+  // =========================================================================
   const handleSaveBulkSection = async () => {
-    console.log(
-      "Starting bulk save with margins - Product:",
-      productMargin + "%, Shipping:",
-      shippingMargin + "%"
-    );
+    console.log("🟢🟢🟢 SAVE BULK SECTION STARTED 🟢🟢🟢");
+    console.log("🟢 This is the individual product save button");
+    console.log("🟢 Product:", (product as any).product_order_number);
+    console.log("🟢 Margins state at save time:");
+    console.log("🟢   productMargin:", productMargin);
+    console.log("🟢   shippingMargin:", shippingMargin);
+    console.log("🟢   sampleMargin:", sampleMargin);
+    console.log("🟢   marginSource:", marginSource);
 
     setSavingBulkSection(true);
     try {
       const user = getCurrentUser();
-      const changes = [];
 
       // Validate no negative prices
       const price = parseFloat(productPrice) || 0;
       const airPrice = parseFloat(shippingAirPrice) || 0;
       const boatPrice = parseFloat(shippingBoatPrice) || 0;
       const samplePrice = parseFloat(sampleFee) || 0;
+
+      console.log("🟡 Input values:");
+      console.log("🟡   productPrice:", productPrice, "-> parsed:", price);
+      console.log("🟡   shippingAirPrice:", shippingAirPrice, "-> parsed:", airPrice);
+      console.log("🟡   shippingBoatPrice:", shippingBoatPrice, "-> parsed:", boatPrice);
+      console.log("🟡   sampleFee:", sampleFee, "-> parsed:", samplePrice);
 
       if (price < 0 || airPrice < 0 || boatPrice < 0 || samplePrice < 0) {
         alert("Prices cannot be negative");
@@ -786,7 +981,7 @@ export const ManufacturerProductCard = forwardRef<
           : `[${timestamp} - Manufacturer] ${tempBulkNotes.trim()}`;
       }
 
-      // Prepare shipping allocation data
+      // Prepare shipping allocation
       let shippingLinkNote = "";
       if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
         const selectedNames = selectedProductsForShipping
@@ -798,15 +993,18 @@ export const ManufacturerProductCard = forwardRef<
         shippingLinkNote = `Shipping fees apply to: ${selectedNames}`;
       }
 
-      // CALCULATE CLIENT PRICES WITH MARGINS
+      // CALCULATE CLIENT PRICES
+      console.log("🟡 Calculating client prices...");
       const mfgProductPrice = productPrice ? parseFloat(productPrice) : null;
-      const mfgAirPrice = shippingAirPrice
-        ? parseFloat(shippingAirPrice)
-        : null;
-      const mfgBoatPrice = shippingBoatPrice
-        ? parseFloat(shippingBoatPrice)
-        : null;
+      const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
+      const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
       const mfgSampleFee = sampleFee ? parseFloat(sampleFee) : null;
+
+      console.log("🟡 Manufacturer prices:");
+      console.log("🟡   mfgProductPrice:", mfgProductPrice);
+      console.log("🟡   mfgAirPrice:", mfgAirPrice);
+      console.log("🟡   mfgBoatPrice:", mfgBoatPrice);
+      console.log("🟡   mfgSampleFee:", mfgSampleFee);
 
       // Apply margins
       const clientProductPrice = mfgProductPrice
@@ -819,10 +1017,16 @@ export const ManufacturerProductCard = forwardRef<
         ? mfgBoatPrice * (1 + shippingMargin / 100)
         : null;
       const clientSampleFee = mfgSampleFee
-        ? mfgSampleFee * (1 + productMargin / 100)
+        ? mfgSampleFee * (1 + sampleMargin / 100)
         : null;
 
-      // Prepare update data with BOTH manufacturer and client prices AND shipping allocation
+      console.log("🟡 Client prices calculated:");
+      console.log("🟡   clientProductPrice:", clientProductPrice, "=", mfgProductPrice, "* (1 +", productMargin, "/ 100)");
+      console.log("🟡   clientAirPrice:", clientAirPrice, "=", mfgAirPrice, "* (1 +", shippingMargin, "/ 100)");
+      console.log("🟡   clientBoatPrice:", clientBoatPrice, "=", mfgBoatPrice, "* (1 +", shippingMargin, "/ 100)");
+      console.log("🟡   clientSampleFee:", clientSampleFee, "=", mfgSampleFee, "* (1 +", sampleMargin, "/ 100)");
+
+      // Build update data
       const updateData: any = {
         // Manufacturer prices
         product_price: mfgProductPrice,
@@ -842,7 +1046,7 @@ export const ManufacturerProductCard = forwardRef<
         sample_eta: sampleETA || null,
         manufacturer_notes: finalManufacturerNotes || null,
 
-        // NEW: Shipping allocation fields
+        // Shipping allocation
         shipping_linked_products:
           applyShippingToOthers && selectedProductsForShipping.length > 0
             ? JSON.stringify(selectedProductsForShipping)
@@ -854,28 +1058,38 @@ export const ManufacturerProductCard = forwardRef<
         updateData.client_notes = finalBulkNotes;
       }
 
-      console.log(
-        "Update data with client prices and shipping allocation:",
-        updateData
-      );
+      console.log("🟠🟠🟠 DATABASE UPDATE DATA 🟠🟠🟠");
+      console.log("🟠 Full update object:", JSON.stringify(updateData, null, 2));
+      console.log("🟠 Updating order_products WHERE id =", (product as any).id);
 
       // Update database
-      const { error } = await supabase
+      const { data: updateResult, error } = await supabase
         .from("order_products")
         .update(updateData)
-        .eq("id", (product as any).id);
+        .eq("id", (product as any).id)
+        .select();
 
       if (error) {
-        console.error("Error updating bulk section:", error);
-        alert(
-          `Failed to save bulk section: ${error.message || "Unknown error"}`
-        );
+        console.log("🔴🔴🔴 DATABASE ERROR 🔴🔴🔴");
+        console.log("🔴 Error:", error);
+        alert(`Failed to save: ${error.message || "Unknown error"}`);
         return;
       }
 
-      console.log("Bulk section updated successfully with client prices");
+      console.log("✅✅✅ DATABASE UPDATE SUCCESS ✅✅✅");
+      console.log("✅ Returned data:", updateResult);
 
-      // Update linked products if shipping is shared
+      // Verify what was saved
+      console.log("🟠 Verifying saved data...");
+      const { data: verifyData } = await supabase
+        .from("order_products")
+        .select("product_price, client_product_price, sample_fee, client_sample_fee, shipping_air_price, client_shipping_air_price")
+        .eq("id", (product as any).id)
+        .single();
+      
+      console.log("✅ Verification - data in database now:", verifyData);
+
+      // Update linked products
       if (applyShippingToOthers && selectedProductsForShipping.length > 0) {
         for (const linkedProductId of selectedProductsForShipping) {
           const linkNote = `Shipping fees included with ${(product as any).product_order_number}`;
@@ -884,7 +1098,6 @@ export const ManufacturerProductCard = forwardRef<
             .from("order_products")
             .update({
               shipping_link_note: linkNote,
-              // Clear their shipping prices since they're included elsewhere
               shipping_air_price: 0,
               shipping_boat_price: 0,
               client_shipping_air_price: 0,
@@ -896,7 +1109,7 @@ export const ManufacturerProductCard = forwardRef<
 
       // Upload files
       if (pendingBulkFiles.length > 0) {
-        console.log("Uploading bulk files...");
+        console.log("🟠 Uploading files...");
 
         for (const file of pendingBulkFiles) {
           const timestamp = Date.now();
@@ -922,7 +1135,6 @@ export const ManufacturerProductCard = forwardRef<
             });
           }
         }
-        console.log("Files uploaded successfully");
       }
 
       // Update original values
@@ -949,9 +1161,10 @@ export const ManufacturerProductCard = forwardRef<
 
       if (onExpand) onExpand();
 
+      console.log("🟢🟢🟢 SAVE BULK SECTION COMPLETE 🟢🟢🟢");
       await onUpdate();
     } catch (error) {
-      console.error("Error in handleSaveBulkSection:", error);
+      console.log("🔴🔴🔴 SAVE BULK SECTION ERROR 🔴🔴🔴", error);
       alert("An error occurred while saving. Please try again.");
     } finally {
       setSavingBulkSection(false);
@@ -1121,6 +1334,10 @@ export const ManufacturerProductCard = forwardRef<
                 <span className="break-all">{(product as any).product_order_number}</span>
                 <span className="hidden sm:inline">•</span>
                 <span>Qty: {totalQuantity}</span>
+                {/* DEBUG: Show current margins */}
+                <span className="text-blue-600 font-medium">
+                  [Margins: P:{productMargin}% S:{shippingMargin}% Sample:{sampleMargin}%]
+                </span>
               </div>
             </div>
           </div>
@@ -1303,7 +1520,7 @@ export const ManufacturerProductCard = forwardRef<
               </div>
             </div>
 
-            {/* NEW: Production Days for ETA Calculation */}
+            {/* Production Days for ETA Calculation */}
             <div className="sm:col-span-2 md:col-span-1">
               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 {t ? t("productionDays") : "Production Days"}
@@ -1591,6 +1808,17 @@ export const ManufacturerProductCard = forwardRef<
               {(product as any).shipping_link_note && (
                 <div className="text-xs text-blue-600 italic">
                   {(product as any).shipping_link_note}
+                </div>
+              )}
+              {/* Sample Fee in Summary */}
+              {sampleFee && parseFloat(sampleFee) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-700">
+                    {t ? t("sampleFee") : "Sample Fee"}
+                  </span>
+                  <span className="font-semibold text-gray-900">
+                    ${formatCurrency(parseFloat(sampleFee))}
+                  </span>
                 </div>
               )}
               <div className="pt-2 border-t border-green-300">

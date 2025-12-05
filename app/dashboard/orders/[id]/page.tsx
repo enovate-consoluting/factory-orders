@@ -6,7 +6,10 @@
  * UPDATED: Admin redirects to orders list after routing
  * FIXED: Sample section saves and routes with products
  * FIXED: Products no longer disappear when routed - routing is now just a queue indicator
- * Last Modified: December 4, 2025
+ * ADDED: Client Notes section for client_request orders
+ * ADDED: Inline manufacturer selector in manufacturer card (like client card)
+ * FIXED: Show all variants including zero quantity ones
+ * Last Modified: December 5, 2025
  */
 
 'use client';
@@ -47,7 +50,7 @@ import { getProductCounts } from '../utils/orderCalculations';
 import { printManufacturingSheets } from '../utils/printManufacturingSheet';
 
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, User, Clock, CheckCircle } from 'lucide-react';
+import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, User, Clock, CheckCircle, MessageSquare } from 'lucide-react';
 
 // Calculate order total based on user role
 const calculateOrderTotal = (order: any, userRole: string): number => {
@@ -113,6 +116,12 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [selectedClientId, setSelectedClientId] = useState('');
   const [availableClients, setAvailableClients] = useState<any[]>([]);
   const [savingClient, setSavingClient] = useState(false);
+  
+  // State for editing manufacturer (inline like client)
+  const [isEditingManufacturer, setIsEditingManufacturer] = useState(false);
+  const [availableManufacturers, setAvailableManufacturers] = useState<any[]>([]);
+  const [selectedManufacturerId, setSelectedManufacturerId] = useState('');
+  const [savingManufacturer, setSavingManufacturer] = useState(false);
   
   // State for showing all products
   const [showAllProducts, setShowAllProducts] = useState(false);
@@ -211,6 +220,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
+  
+  // Check if this is a client request order
+  const isClientRequest = order?.status === 'client_request';
 
   // Helper functions
   const getAllProducts = () => {
@@ -325,18 +337,23 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
     if (userRole === 'admin' || userRole === 'super_admin') {
       fetchAvailableClients();
+      fetchAvailableManufacturers();
     }
   }, [router, userRole, id]);
 
-  // Load order-level sample data for display
+// Load order-level sample data for display
   useEffect(() => {
     if (order) {
-      setOrderSampleFee(order.sample_fee?.toString() || '');
+      // Manufacturer sees their cost, Admin/Client sees client price (with margin)
+      const displayFee = userRole === 'manufacturer' 
+        ? order.sample_fee 
+        : (order.client_sample_fee || order.sample_fee);
+      setOrderSampleFee(displayFee?.toString() || '');
       setOrderSampleETA(order.sample_eta || '');
       setOrderSampleStatus(order.sample_status || 'pending');
       setOrderSampleNotes('');
     }
-  }, [order]);
+  }, [order, userRole]);
 
   // Auto-mark manufacturer notifications as read
   useEffect(() => {
@@ -388,6 +405,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.error('Error fetching clients:', err);
     }
   };
+
+  const fetchAvailableManufacturers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('manufacturers')
+        .select('id, name, email')
+        .order('name');
+      
+      if (data && !error) {
+        setAvailableManufacturers(data);
+      }
+    } catch (err) {
+      console.error('Error fetching manufacturers:', err);
+    }
+  };
   
   const handleClientChange = async () => {
     if (!selectedClientId || !order) return;
@@ -437,6 +469,74 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       alert('Error updating client. Please try again.');
     } finally {
       setSavingClient(false);
+    }
+  };
+
+  const handleManufacturerChange = async () => {
+    if (!selectedManufacturerId || !order) return;
+    
+    setSavingManufacturer(true);
+    try {
+      const selectedMfr = availableManufacturers.find(m => m.id === selectedManufacturerId);
+      if (!selectedMfr) throw new Error('Manufacturer not found');
+      
+      // Update order - if it was client_request, change to draft
+      const updateData: any = { 
+        manufacturer_id: selectedManufacturerId
+      };
+      
+      // If this is a client_request, convert to draft
+      if (order.status === 'client_request') {
+        updateData.status = 'draft';
+        updateData.workflow_status = 'draft';
+      }
+      
+      const { error } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', order.id);
+
+      if (error) throw error;
+      
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      // Log the action
+      await supabase
+        .from('audit_log')
+        .insert({
+          user_id: user.id || crypto.randomUUID(),
+          user_name: user.name || user.email || 'Admin User',
+          action_type: 'manufacturer_changed',
+          target_type: 'order',
+          target_id: order.id,
+          old_value: order.manufacturer?.name || 'No manufacturer',
+          new_value: selectedMfr.name,
+          timestamp: new Date().toISOString()
+        });
+
+      // Create notification for new manufacturer
+      try {
+        await supabase
+          .from('manufacturer_notifications')
+          .insert({
+            manufacturer_id: selectedManufacturerId,
+            order_id: order.id,
+            message: `Order ${order.order_number} assigned to you`,
+            is_read: false,
+            created_at: new Date().toISOString()
+          });
+      } catch (notifError) {
+        console.warn('Could not create manufacturer notification:', notifError);
+      }
+
+      setIsEditingManufacturer(false);
+      setSelectedManufacturerId('');
+      await refetch();
+    } catch (error) {
+      console.error('Error updating manufacturer:', error);
+      alert('Error updating manufacturer. Please try again.');
+    } finally {
+      setSavingManufacturer(false);
     }
   };
 
@@ -1085,20 +1185,129 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               )}
             </div>
 
-            {/* Manufacturer Card */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+            {/* Manufacturer Card - Now with inline edit like Client Card */}
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow relative">
+              {(isAdmin || isSuperAdmin) && !isEditingManufacturer && (
+                <button
+                  onClick={() => {
+                    setIsEditingManufacturer(true);
+                    setSelectedManufacturerId(order.manufacturer?.id || '');
+                  }}
+                  className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-green-600 transition-colors"
+                  title="Edit Manufacturer"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              
+              {isEditingManufacturer ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs sm:text-sm text-gray-500">
+                      {order.manufacturer_id ? 'Change Manufacturer' : 'Assign Manufacturer'}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setIsEditingManufacturer(false);
+                        setSelectedManufacturerId(order.manufacturer?.id || '');
+                      }}
+                      className="p-1 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <select
+                    value={selectedManufacturerId}
+                    onChange={(e) => setSelectedManufacturerId(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-green-500"
+                    disabled={savingManufacturer}
+                  >
+                    <option value="">Select a manufacturer...</option>
+                    {availableManufacturers.map(mfr => (
+                      <option key={mfr.id} value={mfr.id}>
+                        {mfr.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setIsEditingManufacturer(false);
+                        setSelectedManufacturerId(order.manufacturer?.id || '');
+                      }}
+                      disabled={savingManufacturer}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      {t('cancel')}
+                    </button>
+                    <button
+                      onClick={handleManufacturerChange}
+                      disabled={!selectedManufacturerId || selectedManufacturerId === order.manufacturer?.id || savingManufacturer}
+                      className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {savingManufacturer ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          {t('saving')}
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          {t('save')}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {isClientRequest && selectedManufacturerId && (
+                    <p className="text-xs text-amber-600">
+                      Order will be converted from "Client Request" to "Draft" status.
+                    </p>
+                  )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs sm:text-sm text-gray-500">{t('manufacturer')}</p>
-                  <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{translate(order.manufacturer?.name)}</p>
-                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm text-gray-500">{t('manufacturer')}</p>
+                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
+                        {order.manufacturer?.name ? translate(order.manufacturer.name) : (
+                          <span className="text-amber-600 italic">Not assigned - click edit to assign</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  {order.manufacturer?.email && (
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
+                      <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                      <span className="truncate">{order.manufacturer.email}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Client Notes Section - Show for client_request orders */}
+        {isClientRequest && order.client_notes && (
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-5 h-5 text-teal-600" />
               </div>
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                <span className="truncate">{order.manufacturer?.email}</span>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-teal-900 mb-1 flex items-center gap-2">
+                  <span>Client Notes</span>
+                  <span className="px-2 py-0.5 bg-teal-200 text-teal-800 text-xs rounded-full">
+                    From Request
+                  </span>
+                </h3>
+                <p className="text-sm text-teal-800 whitespace-pre-wrap">
+                  {order.client_notes}
+                </p>
               </div>
             </div>
           </div>
@@ -1126,17 +1335,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           />
         )}
 
-        {/* PRODUCT DISTRIBUTION BAR (moved ABOVE sample request) */}
-        <ProductDistributionBar
-          products={allProducts}
-          selectedProductId={selectedProductId}
-          onProductSelect={setSelectedProductId}
-          showAllProducts={showAllProducts}
-          onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
-          isSuperAdmin={isSuperAdmin}
-          counts={productCounts}
-          translate={translate}
-        />
+        {/* PRODUCT DISTRIBUTION BAR - Hide for client_request orders */}
+        {!isClientRequest && (
+          <ProductDistributionBar
+            products={allProducts}
+            selectedProductId={selectedProductId}
+            onProductSelect={setSelectedProductId}
+            showAllProducts={showAllProducts}
+            onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
+            isSuperAdmin={isSuperAdmin}
+            counts={productCounts}
+            translate={translate}
+          />
+        )}
 
         {/* ORDER-LEVEL SAMPLE REQUEST SECTION (now BELOW control panel and distribution) */}
         {(isAdmin || isSuperAdmin || isManufacturer) && (
@@ -1185,13 +1396,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         )}
 
         {/* Products Section */}
-          <div className="space-y-2 sm:space-y-3">
+        <div className="space-y-2 sm:space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
             <h2 className="text-sm sm:text-lg font-semibold text-gray-900">
               {selectedProductId !== 'all' ? t('productDetail') : t('orderProducts')}
             </h2>
             <div className="flex items-center gap-2">
-              {isSuperAdmin && productCounts.withManufacturer > 0 && (
+              {isSuperAdmin && productCounts.withManufacturer > 0 && !isClientRequest && (
                 <button
                   onClick={() => setShowAllProducts(!showAllProducts)}
                   className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow transition-all flex items-center gap-1.5 sm:gap-2 font-medium text-sm ${
@@ -1290,7 +1501,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     allOrderProducts={allProducts}
                     translate={translate}
                     t={t}
-                    />
+                  />
                 );
               }
               
@@ -1310,10 +1521,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   onRoute={handleRouteProduct}
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
                   hasNewHistory={hasNewHistory(product.id)}
-                  autoCollapse={shouldAutoCollapse}
+                  autoCollapse={isClientRequest ? false : shouldAutoCollapse}
                   translate={translate}
                   t={t}
-                 />
+                />
               );
             })
           )}

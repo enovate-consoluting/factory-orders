@@ -3,8 +3,10 @@
 /**
  * Create Invoice Page - /dashboard/invoices/create
  * Creates invoices from orders, generates PDF, saves pay_link and pdf_url
- * UPDATED: Now saves pay_link and pdf_url to database
- * Last Modified: December 1, 2025
+ * FIXED: QR Code now saves invoice first (including custom items)
+ * FIXED: QR Modal has better close functionality
+ * DEBUG: Added detailed error logging for QR code
+ * Last Modified: December 2024
  */
 
 import { useEffect, useState } from 'react';
@@ -30,17 +32,19 @@ interface InvoiceData {
   dueDate: string;
 }
 
-// QR Code Modal Component
+// QR Code Modal Component - FIXED with better close handling
 const QRCodeModal = ({
   isOpen,
   onClose,
   invoiceUrl,
-  invoiceNumber
+  invoiceNumber,
+  isLoading = false
 }: {
   isOpen: boolean;
   onClose: () => void;
   invoiceUrl: string;
   invoiceNumber: string;
+  isLoading?: boolean;
 }) => {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
@@ -60,10 +64,10 @@ const QRCodeModal = ({
   }, [isOpen]);
 
   useEffect(() => {
-    if (isOpen && invoiceUrl) {
+    if (isOpen && invoiceUrl && !isLoading) {
       generateQRCode();
     }
-  }, [isOpen, invoiceUrl]);
+  }, [isOpen, invoiceUrl, isLoading]);
   
   const generateQRCode = async () => {
     try {
@@ -81,25 +85,53 @@ const QRCodeModal = ({
       console.error('Error generating QR code:', error);
     }
   };
+
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
   
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <div className="flex justify-between items-center mb-4">
+    // FIXED: Click outside to close
+    <div 
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => {
+        // Close when clicking the backdrop (not the modal content)
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 relative">
+        {/* FIXED: More prominent close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-2 hover:bg-gray-100 rounded-full transition-colors z-10"
+          title="Close (Esc)"
+        >
+          <X className="w-6 h-6 text-gray-500" />
+        </button>
+        
+        <div className="flex justify-between items-center mb-4 pr-8">
           <h3 className="text-lg font-semibold text-gray-900">Scan to Download Invoice</h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </div>
         
         <div className="text-center">
           <div className="bg-gray-50 p-6 rounded-lg mb-4">
-            {qrCodeDataUrl ? (
+            {isLoading ? (
+              <div className="w-[300px] h-[300px] flex flex-col items-center justify-center text-gray-500">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                <p>Saving invoice...</p>
+              </div>
+            ) : qrCodeDataUrl ? (
               <img 
                 src={qrCodeDataUrl} 
                 alt="QR Code"
@@ -124,6 +156,14 @@ const QRCodeModal = ({
               <strong>Tip:</strong> On iPhone, use the Camera app. On Android, use Google Lens or your camera app.
             </p>
           </div>
+
+          {/* FIXED: Added explicit close button at bottom */}
+          <button
+            onClick={onClose}
+            className="mt-4 w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors font-medium"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -164,6 +204,7 @@ export default function CreateInvoicePage() {
   const [generatedInvoiceNumber, setGeneratedInvoiceNumber] = useState('');
   const [invoiceReserved, setInvoiceReserved] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
   
   useEffect(() => {
     if (orderId) {
@@ -564,17 +605,208 @@ export default function CreateInvoicePage() {
     }
   };
 
-  const handleShowQRCode = () => {
+  // FIXED: handleShowQRCode with detailed error logging
+  const handleShowQRCode = async () => {
     if (selectedProducts.length === 0 && customItems.length === 0) {
       notify.error('Please select at least one product or add a custom item');
       return;
     }
 
-    const baseUrl = window.location.origin;
-    const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${invoiceData?.invoiceNumber}&temp=true`;
-    
-    setInvoiceDownloadUrl(invoiceUrl);
-    setShowQRCode(true);
+    try {
+      // Show modal immediately with loading state
+      setShowQRCode(true);
+      setQrLoading(true);
+
+      // Calculate totals
+      const subtotal = calculateSelectedTotal();
+      const taxAmount = applyTax ? (subtotal * taxRate) / 100 : 0;
+      const total = subtotal + taxAmount;
+      
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      console.log('=== QR Code Debug Info ===');
+      console.log('User from localStorage:', user);
+      console.log('Order ID:', orderId);
+      console.log('Client ID:', invoiceData?.client.id);
+      console.log('Invoice Number:', generatedInvoiceNumber);
+      console.log('Total:', total);
+
+      // Check if invoice already exists (was saved as draft)
+      const { data: existingInvoice, error: checkError } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('invoice_number', generatedInvoiceNumber)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116 = no rows returned, which is fine
+        console.log('Check existing invoice error:', checkError);
+      }
+
+      let invoiceId: string;
+
+      if (existingInvoice) {
+        // Update existing invoice
+        console.log('Existing invoice found:', existingInvoice.id);
+        invoiceId = existingInvoice.id;
+        
+        const { error: updateError } = await supabase
+          .from('invoices')
+          .update({
+            amount: total,
+            due_date: dueDate,
+            notes: notes || null,
+            payment_terms: terms || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', invoiceId);
+
+        if (updateError) {
+          console.error('Update error:', JSON.stringify(updateError, null, 2));
+        }
+
+        // Delete old invoice items and recreate
+        await supabase
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invoiceId);
+      } else {
+        // Create new invoice as draft for QR code
+        // Using only the fields that definitely exist in your table
+        const insertData: any = {
+          invoice_number: generatedInvoiceNumber,
+          order_id: orderId,
+          client_id: invoiceData?.client.id,
+          amount: total,
+          paid_amount: 0,
+          status: 'draft',
+          due_date: dueDate,
+          notes: notes || null,
+          payment_terms: terms || null
+        };
+
+        // Only add created_by if user.id exists
+        if (user.id) {
+          insertData.created_by = user.id;
+        }
+
+        console.log('Attempting to insert invoice with data:', JSON.stringify(insertData, null, 2));
+
+        const { data: invoice, error } = await supabase
+          .from('invoices')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          // Log the full error details
+          console.error('=== INVOICE INSERT ERROR ===');
+          console.error('Full error object:', JSON.stringify(error, null, 2));
+          console.error('Error message:', error.message);
+          console.error('Error code:', error.code);
+          console.error('Error details:', error.details);
+          console.error('Error hint:', error.hint);
+          
+          notify.error(`Failed to prepare invoice: ${error.message || 'Unknown error'}`);
+          setShowQRCode(false);
+          setQrLoading(false);
+          return;
+        }
+
+        console.log('Invoice created successfully:', invoice);
+        invoiceId = invoice.id;
+      }
+
+      // Create invoice items (including custom items!)
+      const invoiceItems = [];
+      
+      // Add selected products
+      for (const productId of selectedProducts) {
+        const product = invoiceData?.products.find((p: any) => p.id === productId);
+        if (!product) continue;
+        
+        const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        const clientPrice = product.client_product_price || 0;
+        
+        if (product.sample_fee > 0) {
+          invoiceItems.push({
+            invoice_id: invoiceId,
+            order_product_id: product.id,
+            description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
+            amount: product.sample_fee
+          });
+        }
+        
+        if (clientPrice > 0 && totalQty > 0) {
+          invoiceItems.push({
+            invoice_id: invoiceId,
+            order_product_id: product.id,
+            description: `${product.description || product.product?.title || 'Product'} - Production (Qty: ${totalQty})`,
+            amount: clientPrice * totalQty
+          });
+        }
+        
+        if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+          invoiceItems.push({
+            invoice_id: invoiceId,
+            order_product_id: product.id,
+            description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
+            amount: product.client_shipping_air_price
+          });
+        } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+          invoiceItems.push({
+            invoice_id: invoiceId,
+            order_product_id: product.id,
+            description: `${product.description || product.product?.title || 'Product'} - Boat Shipping`,
+            amount: product.client_shipping_boat_price
+          });
+        }
+      }
+      
+      // Add custom items - THIS IS THE KEY FIX
+      for (const item of customItems) {
+        if (item.description && item.price > 0) {
+          invoiceItems.push({
+            invoice_id: invoiceId,
+            order_product_id: null,
+            description: `${item.description} (Qty: ${item.quantity})`,
+            amount: item.price * item.quantity
+          });
+        }
+      }
+      
+      console.log('Invoice items to insert:', invoiceItems.length);
+      console.log('Invoice items:', JSON.stringify(invoiceItems, null, 2));
+      
+      // Save all invoice items
+      if (invoiceItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('invoice_items')
+          .insert(invoiceItems);
+        
+        if (itemsError) {
+          console.error('Error creating invoice items:', JSON.stringify(itemsError, null, 2));
+        } else {
+          console.log('Invoice items created successfully');
+        }
+      }
+
+      // Generate QR code URL
+      const baseUrl = window.location.origin;
+      const invoiceUrl = `${baseUrl}/api/invoices/download?order=${orderId}&invoice=${generatedInvoiceNumber}`;
+      
+      console.log('QR Code URL:', invoiceUrl);
+      setInvoiceDownloadUrl(invoiceUrl);
+      setQrLoading(false);
+      
+    } catch (error: any) {
+      console.error('=== CAUGHT EXCEPTION ===');
+      console.error('Error:', error);
+      console.error('Error message:', error?.message);
+      console.error('Error stack:', error?.stack);
+      notify.error('Failed to generate QR code');
+      setShowQRCode(false);
+      setQrLoading(false);
+    }
   };
 
   const handleDownloadInvoice = () => {
@@ -614,7 +846,6 @@ export default function CreateInvoicePage() {
     router.back();
   };
 
-  // UPDATED: handleCreateInvoice now saves pay_link and generates PDF
   const handleCreateInvoice = async (status: 'draft' | 'sent', sendData?: any) => {
     if (selectedProducts.length === 0 && customItems.length === 0) {
       notify.error('Please select at least one product or add a custom item');
@@ -629,10 +860,48 @@ export default function CreateInvoicePage() {
       
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      // Create invoice in database - NOW WITH pay_link and sent_at
-      const { data: invoice, error } = await supabase
+      // Check if invoice already exists (from QR code auto-save)
+      const { data: existingInvoice } = await supabase
         .from('invoices')
-        .insert({
+        .select('id')
+        .eq('invoice_number', generatedInvoiceNumber)
+        .single();
+
+      let invoiceId: string;
+
+      if (existingInvoice) {
+        // Update existing invoice
+        invoiceId = existingInvoice.id;
+        
+        const { error: updateError } = await supabase
+          .from('invoices')
+          .update({
+            amount: total,
+            status: status,
+            due_date: dueDate,
+            notes: notes || null,
+            payment_terms: terms || null,
+            pay_link: (sendData?.includePaymentLink && sendData?.paymentUrl) ? sendData.paymentUrl : null,
+            sent_at: status === 'sent' ? new Date().toISOString() : null,
+            sent_to: status === 'sent' ? billToEmail : null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', invoiceId);
+
+        if (updateError) {
+          console.error('Invoice update error:', updateError);
+          notify.error('Failed to update invoice');
+          throw updateError;
+        }
+
+        // Delete old invoice items and recreate
+        await supabase
+          .from('invoice_items')
+          .delete()
+          .eq('invoice_id', invoiceId);
+      } else {
+        // Create invoice in database
+        const insertData: any = {
           invoice_number: generatedInvoiceNumber,
           order_id: orderId,
           client_id: invoiceData?.client.id,
@@ -642,22 +911,29 @@ export default function CreateInvoicePage() {
           due_date: dueDate,
           notes: notes || null,
           payment_terms: terms || null,
-          created_by: user.id || null,
-          // Only save pay_link if "Include Payment Link" was checked in modal
           pay_link: (sendData?.includePaymentLink && sendData?.paymentUrl) ? sendData.paymentUrl : null,
           sent_at: status === 'sent' ? new Date().toISOString() : null,
           sent_to: status === 'sent' ? billToEmail : null
-        })
-        .select()
-        .single();
+        };
 
-      if (error) {
-        console.error('Invoice creation error:', error);
-        notify.error('Failed to create invoice');
-        throw error;
+        if (user.id) {
+          insertData.created_by = user.id;
+        }
+
+        const { data: invoice, error } = await supabase
+          .from('invoices')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Invoice creation error:', error);
+          notify.error('Failed to create invoice');
+          throw error;
+        }
+
+        invoiceId = invoice.id;
       }
-
-      const invoiceId = invoice.id;
 
       // Generate and upload PDF if sending
       let pdfUrl: string | null = null;
@@ -752,7 +1028,6 @@ export default function CreateInvoicePage() {
         
         if (markError) {
           console.error('Error marking products as invoiced:', markError);
-          // Don't fail the whole operation, invoice is already created
         }
       }
 
@@ -766,7 +1041,7 @@ export default function CreateInvoicePage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               invoiceId: invoiceId,
-              pdfUrl: pdfUrl,  // Include PDF URL in email
+              pdfUrl: pdfUrl,
               ...sendData
             })
           });
@@ -1471,6 +1746,7 @@ export default function CreateInvoicePage() {
         onClose={() => setShowQRCode(false)}
         invoiceUrl={invoiceDownloadUrl}
         invoiceNumber={invoiceData?.invoiceNumber || ''}
+        isLoading={qrLoading}
       />
 
       {/* Send Invoice Modal */}

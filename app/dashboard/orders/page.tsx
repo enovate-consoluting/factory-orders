@@ -968,9 +968,14 @@ export default function OrdersPage() {
         return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('needAction')}`, color: 'indigo' };
       }
     } else if (activeTab === 'client_requests') {
-      // Client requests tab - show pending review status
-      return { status: 'client_request', label: t('pendingReview') || 'Pending Review', color: 'teal' };
-    } else if (activeTab === 'sent_to_other') {
+      // Client requests tab - show product count with pending review status
+      const productCount = products.length;
+      return { 
+        status: 'client_request', 
+        label: `${productCount} ${t('pendingReview') || 'Pending Review'}`, 
+        color: 'teal' 
+        };
+       } else if (activeTab === 'sent_to_other') {
       if (isAdminUser) {
         const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
         const totalWithManufacturer = withManufacturer + sampleCount;

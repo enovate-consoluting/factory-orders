@@ -1,441 +1,477 @@
 /**
  * Client Settings Page - /dashboard/clients/[id]/settings
- * Configure client permissions and custom pricing margins
- * Roles: Admin (partial), Super Admin (full)
- * Last Modified: December 2024
+ * Configure per-client custom margin overrides
+ * Includes: Product Margin, Sample Margin (NEW), Shipping Margin
+ * Roles: Super Admin only
+ * Last Modified: December 5, 2025
  */
 
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { 
-  ArrowLeft, 
   Save, 
-  Users, 
-  ShoppingCart, 
-  DollarSign, 
-  Percent,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  Info
-} from 'lucide-react'
-
-interface Client {
-  id: string
-  name: string
-  email: string
-  logo_url?: string
-  can_create_orders: boolean
-  custom_margin_percentage: number | null
-  custom_shipping_margin_percentage: number | null
-}
-
-interface FinanceSettings {
-  default_product_margin_percentage: number
-  default_shipping_margin_percentage: number
-}
-
-const inputClassName = "w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+  ArrowLeft, 
+  Percent, 
+  AlertCircle, 
+  CheckCircle, 
+  Package, 
+  Truck, 
+  FileBox,
+  Building2,
+  Loader2
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import Link from 'next/link';
 
 export default function ClientSettingsPage() {
-  const router = useRouter()
-  const params = useParams()
-  const clientId = params.id as string
+  const params = useParams();
+  const router = useRouter();
+  const clientId = params.id as string;
 
-  const [user, setUser] = useState<any>(null)
-  const [client, setClient] = useState<Client | null>(null)
-  const [financeSettings, setFinanceSettings] = useState<FinanceSettings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null)
+  // Client info
+  const [clientName, setClientName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
 
-  // Form state
-  const [canCreateOrders, setCanCreateOrders] = useState(false)
-  const [useCustomProductMargin, setUseCustomProductMargin] = useState(false)
-  const [customProductMargin, setCustomProductMargin] = useState<string>('')
-  const [useCustomShippingMargin, setUseCustomShippingMargin] = useState(false)
-  const [customShippingMargin, setCustomShippingMargin] = useState<string>('')
+  // System defaults (for display)
+  const [systemProductMargin, setSystemProductMargin] = useState(80);
+  const [systemSampleMargin, setSystemSampleMargin] = useState(80);
+  const [systemShippingMargin, setSystemShippingMargin] = useState(5);
 
+  // Client custom margins - null means use system default
+  const [customProductMargin, setCustomProductMargin] = useState<string>('');
+  const [customSampleMargin, setCustomSampleMargin] = useState<string>('');
+  const [customShippingMargin, setCustomShippingMargin] = useState<string>('');
+
+  // Toggle states for using custom vs system
+  const [useCustomProduct, setUseCustomProduct] = useState(false);
+  const [useCustomSample, setUseCustomSample] = useState(false);
+  const [useCustomShipping, setUseCustomShipping] = useState(false);
+
+  // Check if user is super admin
   useEffect(() => {
-    const userData = localStorage.getItem('user')
+    const userData = localStorage.getItem('user');
     if (!userData) {
-      router.push('/')
-      return
+      router.push('/dashboard');
+      return;
     }
-    
-    const parsedUser = JSON.parse(userData)
-    if (!['super_admin', 'admin'].includes(parsedUser.role)) {
-      router.push('/dashboard')
-      return
+    const user = JSON.parse(userData);
+    if (user.role !== 'super_admin') {
+      router.push('/dashboard');
     }
-    
-    setUser(parsedUser)
-    loadData()
-  }, [clientId])
+  }, [router]);
 
+  // Load data
   useEffect(() => {
-    if (notification) {
-      const timer = setTimeout(() => setNotification(null), 4000)
-      return () => clearTimeout(timer)
-    }
-  }, [notification])
+    loadData();
+  }, [clientId]);
 
   const loadData = async () => {
     try {
-      // Load client
-      const { data: clientData, error: clientError } = await supabase
+      // Load system defaults
+      const { data: systemConfig } = await supabase
+        .from('system_config')
+        .select('config_key, config_value')
+        .in('config_key', [
+          'default_margin_percentage',
+          'default_sample_margin_percentage',
+          'default_shipping_margin_percentage'
+        ]);
+
+      if (systemConfig) {
+        systemConfig.forEach(config => {
+          if (config.config_key === 'default_margin_percentage') {
+            setSystemProductMargin(parseFloat(config.config_value) || 80);
+          } else if (config.config_key === 'default_sample_margin_percentage') {
+            setSystemSampleMargin(parseFloat(config.config_value) || 80);
+          } else if (config.config_key === 'default_shipping_margin_percentage') {
+            setSystemShippingMargin(parseFloat(config.config_value) || 5);
+          }
+        });
+      }
+
+      // Load client data
+      const { data: client, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('name, custom_margin_percentage, custom_sample_margin_percentage, custom_shipping_margin_percentage')
         .eq('id', clientId)
-        .single()
+        .single();
 
-      if (clientError || !clientData) {
-        console.error('Error loading client:', clientError)
-        router.push('/dashboard/clients')
-        return
+      if (error) {
+        console.error('Error loading client:', error);
+        setMessage('Failed to load client data');
+        return;
       }
 
-      setClient(clientData)
-      setCanCreateOrders(clientData.can_create_orders || false)
-      
-      if (clientData.custom_margin_percentage !== null) {
-        setUseCustomProductMargin(true)
-        setCustomProductMargin(clientData.custom_margin_percentage.toString())
-      }
-      
-      if (clientData.custom_shipping_margin_percentage !== null) {
-        setUseCustomShippingMargin(true)
-        setCustomShippingMargin(clientData.custom_shipping_margin_percentage.toString())
-      }
+      if (client) {
+        setClientName(client.name || 'Unknown Client');
 
-      // Load finance settings for default values display
-      const { data: financeData } = await supabase
-        .from('finance_settings')
-        .select('*')
-        .single()
+        // Product margin
+        if (client.custom_margin_percentage !== null && client.custom_margin_percentage !== undefined) {
+          setUseCustomProduct(true);
+          setCustomProductMargin(client.custom_margin_percentage.toString());
+        }
 
-      if (financeData) {
-        setFinanceSettings({
-          default_product_margin_percentage: financeData.default_product_margin_percentage || 80,
-          default_shipping_margin_percentage: financeData.default_shipping_margin_percentage || 5
-        })
-      } else {
-        setFinanceSettings({
-          default_product_margin_percentage: 80,
-          default_shipping_margin_percentage: 5
-        })
+        // Sample margin
+        if (client.custom_sample_margin_percentage !== null && client.custom_sample_margin_percentage !== undefined) {
+          setUseCustomSample(true);
+          setCustomSampleMargin(client.custom_sample_margin_percentage.toString());
+        }
+
+        // Shipping margin
+        if (client.custom_shipping_margin_percentage !== null && client.custom_shipping_margin_percentage !== undefined) {
+          setUseCustomShipping(true);
+          setCustomShippingMargin(client.custom_shipping_margin_percentage.toString());
+        }
       }
-
     } catch (error) {
-      console.error('Error loading data:', error)
+      console.error('Error loading data:', error);
+      setMessage('Failed to load data');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleSave = async () => {
-    setSaving(true)
+    setSaving(true);
+    setMessage('');
 
     try {
-      const updates: any = {
-        can_create_orders: canCreateOrders
+      // Validate margins if custom is enabled
+      if (useCustomProduct) {
+        const val = parseFloat(customProductMargin);
+        if (isNaN(val) || val < 0 || val > 500) {
+          setMessage('Product margin must be between 0 and 500');
+          setSaving(false);
+          return;
+        }
       }
 
-      // Only super_admin can set custom margins
-      if (user?.role === 'super_admin') {
-        updates.custom_margin_percentage = useCustomProductMargin && customProductMargin 
-          ? parseFloat(customProductMargin) 
-          : null
-        
-        updates.custom_shipping_margin_percentage = useCustomShippingMargin && customShippingMargin
-          ? parseFloat(customShippingMargin)
-          : null
+      if (useCustomSample) {
+        const val = parseFloat(customSampleMargin);
+        if (isNaN(val) || val < 0 || val > 500) {
+          setMessage('Sample margin must be between 0 and 500');
+          setSaving(false);
+          return;
+        }
       }
+
+      if (useCustomShipping) {
+        const val = parseFloat(customShippingMargin);
+        if (isNaN(val) || val < 0 || val > 500) {
+          setMessage('Shipping margin must be between 0 and 500');
+          setSaving(false);
+          return;
+        }
+      }
+
+      // Prepare update data - null means use system default
+      const updateData: any = {
+        custom_margin_percentage: useCustomProduct ? parseFloat(customProductMargin) : null,
+        custom_sample_margin_percentage: useCustomSample ? parseFloat(customSampleMargin) : null,
+        custom_shipping_margin_percentage: useCustomShipping ? parseFloat(customShippingMargin) : null,
+      };
+
+      console.log('Saving client margins:', updateData);
 
       const { error } = await supabase
         .from('clients')
-        .update(updates)
-        .eq('id', clientId)
+        .update(updateData)
+        .eq('id', clientId);
 
-      if (error) throw error
+      if (error) {
+        console.error('Error saving:', error);
+        setMessage('Failed to save settings');
+        return;
+      }
 
-      setNotification({ type: 'success', message: 'Settings saved successfully!' })
-      
-      // Reload client data
-      loadData()
-
-    } catch (error: any) {
-      console.error('Error saving settings:', error)
-      setNotification({ type: 'error', message: error.message || 'Failed to save settings' })
+      setMessage('Settings saved successfully!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Error saving:', error);
+      setMessage('Failed to save settings');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading client settings...</div>
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
       </div>
-    )
-  }
-
-  if (!client) {
-    return (
-      <div className="p-6">
-        <div className="text-center py-12">
-          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Client not found</h3>
-          <button
-            onClick={() => router.push('/dashboard/clients')}
-            className="text-blue-600 hover:text-blue-700 font-medium"
-          >
-            Back to Clients
-          </button>
-        </div>
-      </div>
-    )
+    );
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 rounded-lg shadow-lg p-4 flex items-center gap-2 ${
-          notification.type === 'success' ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
-        }`}>
-          {notification.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 text-green-600" />
-          ) : (
-            <XCircle className="w-5 h-5 text-red-600" />
-          )}
-          <span className={notification.type === 'success' ? 'text-green-800' : 'text-red-800'}>
-            {notification.message}
-          </span>
-        </div>
-      )}
-
+    <div className="p-3 sm:p-4 md:p-6 max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <button
-          onClick={() => router.push('/dashboard/clients')}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+      <div className="mb-4 sm:mb-6">
+        <Link 
+          href="/dashboard/clients"
+          className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 mb-3"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 mr-1" />
           Back to Clients
-        </button>
-
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center overflow-hidden">
-            {client.logo_url ? (
-              <img src={client.logo_url} alt={client.name} className="w-full h-full object-cover" />
-            ) : (
-              <Users className="w-6 h-6 text-green-600" />
-            )}
+        </Link>
+        
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-lg">
+            <Building2 className="w-6 h-6 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{client.name}</h1>
-            <p className="text-gray-500">{client.email}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{clientName}</h1>
+            <p className="text-sm text-gray-600">Custom Margin Settings</p>
           </div>
         </div>
       </div>
 
-      {/* Settings Sections */}
-      <div className="space-y-6">
-        
-        {/* Order Permissions */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <ShoppingCart className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Order Permissions</h2>
-              <p className="text-sm text-gray-500">Control what this client can do in the system</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={canCreateOrders}
-                onChange={(e) => setCanCreateOrders(e.target.checked)}
-                className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <div>
-                <span className="font-medium text-gray-900">Allow client to create order requests</span>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Client can submit order requests that you review and approve. They can select from existing products and enter quantities.
-                </p>
-              </div>
-            </label>
+      {/* Info Box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-6">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div className="text-sm text-blue-900">
+            <p className="font-semibold mb-1">How Custom Margins Work:</p>
+            <ul className="list-disc ml-5 space-y-1">
+              <li><strong>Enabled:</strong> Uses the custom percentage you set below</li>
+              <li><strong>Disabled:</strong> Falls back to the system default margin</li>
+              <li>Changes apply to NEW orders only (existing orders keep their margins)</li>
+            </ul>
           </div>
         </div>
+      </div>
 
-        {/* Custom Pricing - Super Admin Only */}
-        {user?.role === 'super_admin' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <DollarSign className="w-5 h-5 text-purple-600" />
+      {/* Settings Card */}
+      <div className="bg-white rounded-lg shadow-md">
+        <div className="p-4 sm:p-6 space-y-6">
+          
+          {/* Product Margin */}
+          <div className="border-b pb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-blue-600" />
+                <label className="text-lg font-semibold text-gray-900">Product Margin</label>
               </div>
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Custom Pricing</h2>
-                <p className="text-sm text-gray-500">Override default margins for this client</p>
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-sm text-gray-600">Use Custom</span>
+                <input
+                  type="checkbox"
+                  checked={useCustomProduct}
+                  onChange={(e) => {
+                    setUseCustomProduct(e.target.checked);
+                    if (e.target.checked && !customProductMargin) {
+                      setCustomProductMargin(systemProductMargin.toString());
+                    }
+                  }}
+                  className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+              </label>
             </div>
-
-            {/* Info box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-2">
-              <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-blue-800">
-                <p className="font-medium">How it works:</p>
-                <p className="mt-1">
-                  When manufacturer costs come in, the system adds your margin percentage to calculate client prices. 
-                  Default is {financeSettings?.default_product_margin_percentage || 80}% for products and {financeSettings?.default_shipping_margin_percentage || 5}% for shipping.
-                </p>
-              </div>
+            
+            <div className="ml-7">
+              {useCustomProduct ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      value={customProductMargin}
+                      onChange={(e) => setCustomProductMargin(e.target.value)}
+                      className="w-full pl-4 pr-10 py-3 text-lg font-semibold text-gray-900 bg-white border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="80"
+                      min="0"
+                      max="500"
+                    />
+                    <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+                  </div>
+                  <span className="text-sm text-green-600 font-medium">✓ Custom margin active</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="px-4 py-3 bg-gray-100 rounded-lg">
+                    <span className="text-lg font-semibold text-gray-600">{systemProductMargin}%</span>
+                  </div>
+                  <span className="text-sm text-gray-500">Using system default</span>
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="space-y-4">
-              {/* Product Margin */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <label className="flex items-start gap-3 cursor-pointer mb-3">
-                  <input
-                    type="checkbox"
-                    checked={useCustomProductMargin}
-                    onChange={(e) => {
-                      setUseCustomProductMargin(e.target.checked)
-                      if (!e.target.checked) setCustomProductMargin('')
-                    }}
-                    className="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <div>
-                    <span className="font-medium text-gray-900">Custom Product Margin</span>
-                    <p className="text-sm text-gray-500">
-                      Override the default {financeSettings?.default_product_margin_percentage || 80}% product margin
-                    </p>
+          {/* Sample Margin - NEW */}
+          <div className="border-b pb-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileBox className="w-5 h-5 text-amber-600" />
+                <label className="text-lg font-semibold text-gray-900">Sample & Tech Pack Margin</label>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-sm text-gray-600">Use Custom</span>
+                <input
+                  type="checkbox"
+                  checked={useCustomSample}
+                  onChange={(e) => {
+                    setUseCustomSample(e.target.checked);
+                    if (e.target.checked && !customSampleMargin) {
+                      setCustomSampleMargin(systemSampleMargin.toString());
+                    }
+                  }}
+                  className="w-5 h-5 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                />
+              </label>
+            </div>
+            
+            <div className="ml-7">
+              {useCustomSample ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      value={customSampleMargin}
+                      onChange={(e) => setCustomSampleMargin(e.target.value)}
+                      className="w-full pl-4 pr-10 py-3 text-lg font-semibold text-gray-900 bg-white border-2 border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                      placeholder="80"
+                      min="0"
+                      max="500"
+                    />
+                    <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
                   </div>
-                </label>
+                  <span className="text-sm text-green-600 font-medium">✓ Custom margin active</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="px-4 py-3 bg-gray-100 rounded-lg">
+                    <span className="text-lg font-semibold text-gray-600">{systemSampleMargin}%</span>
+                  </div>
+                  <span className="text-sm text-gray-500">Using system default</span>
+                </div>
+              )}
+            </div>
+          </div>
 
-                {useCustomProductMargin && (
-                  <div className="ml-8">
-                    <div className="flex items-center gap-2 max-w-xs">
-                      <input
-                        type="number"
-                        value={customProductMargin}
-                        onChange={(e) => setCustomProductMargin(e.target.value)}
-                        placeholder="e.g., 50"
-                        min="0"
-                        max="200"
-                        step="1"
-                        className={inputClassName}
-                      />
-                      <Percent className="w-5 h-5 text-gray-400" />
-                    </div>
-                    {customProductMargin && (
-                      <p className="text-sm text-gray-500 mt-2">
-                        Example: $100 cost → ${(100 * (1 + parseFloat(customProductMargin) / 100)).toFixed(2)} client price
-                      </p>
-                    )}
+          {/* Shipping Margin */}
+          <div className="pb-2">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Truck className="w-5 h-5 text-green-600" />
+                <label className="text-lg font-semibold text-gray-900">Shipping Fee Margin</label>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <span className="text-sm text-gray-600">Use Custom</span>
+                <input
+                  type="checkbox"
+                  checked={useCustomShipping}
+                  onChange={(e) => {
+                    setUseCustomShipping(e.target.checked);
+                    if (e.target.checked && !customShippingMargin) {
+                      setCustomShippingMargin(systemShippingMargin.toString());
+                    }
+                  }}
+                  className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                />
+              </label>
+            </div>
+            
+            <div className="ml-7">
+              {useCustomShipping ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      value={customShippingMargin}
+                      onChange={(e) => setCustomShippingMargin(e.target.value)}
+                      className="w-full pl-4 pr-10 py-3 text-lg font-semibold text-gray-900 bg-white border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                      placeholder="5"
+                      min="0"
+                      max="500"
+                    />
+                    <Percent className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
                   </div>
+                  <span className="text-sm text-green-600 font-medium">✓ Custom margin active</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="px-4 py-3 bg-gray-100 rounded-lg">
+                    <span className="text-lg font-semibold text-gray-600">{systemShippingMargin}%</span>
+                  </div>
+                  <span className="text-sm text-gray-500">Using system default</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Save Button */}
+          <div className="pt-4 border-t">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-blue-600 text-white px-6 py-2.5 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 flex items-center justify-center gap-2 font-medium"
+              >
+                {saving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                Save Settings
+              </button>
+
+              {message && (
+                <div className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm ${
+                  message.includes('success')
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {message.includes('success') ? (
+                    <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <AlertCircle className="w-4 h-4" />
+                  )}
+                  {message}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Current Effective Margins Summary */}
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3">Effective Margins for {clientName}:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-blue-600" />
+                <span className="text-sm text-gray-600">Product:</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {useCustomProduct ? customProductMargin : systemProductMargin}%
+                </span>
+                {useCustomProduct && (
+                  <span className="text-xs text-blue-600">(custom)</span>
                 )}
               </div>
-
-              {/* Shipping Margin */}
-              <div className="border border-gray-200 rounded-lg p-4">
-                <label className="flex items-start gap-3 cursor-pointer mb-3">
-                  <input
-                    type="checkbox"
-                    checked={useCustomShippingMargin}
-                    onChange={(e) => {
-                      setUseCustomShippingMargin(e.target.checked)
-                      if (!e.target.checked) setCustomShippingMargin('')
-                    }}
-                    className="mt-1 w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-                  />
-                  <div>
-                    <span className="font-medium text-gray-900">Custom Shipping Margin</span>
-                    <p className="text-sm text-gray-500">
-                      Override the default {financeSettings?.default_shipping_margin_percentage || 5}% shipping margin
-                    </p>
-                  </div>
-                </label>
-
-                {useCustomShippingMargin && (
-                  <div className="ml-8">
-                    <div className="flex items-center gap-2 max-w-xs">
-                      <input
-                        type="number"
-                        value={customShippingMargin}
-                        onChange={(e) => setCustomShippingMargin(e.target.value)}
-                        placeholder="e.g., 3"
-                        min="0"
-                        max="100"
-                        step="0.5"
-                        className={inputClassName}
-                      />
-                      <Percent className="w-5 h-5 text-gray-400" />
-                    </div>
-                    {customShippingMargin && (
-                      <p className="text-sm text-gray-500 mt-2">
-                        Example: $500 shipping → ${(500 * (1 + parseFloat(customShippingMargin) / 100)).toFixed(2)} client price
-                      </p>
-                    )}
-                  </div>
+              <div className="flex items-center gap-2">
+                <FileBox className="w-4 h-4 text-amber-600" />
+                <span className="text-sm text-gray-600">Sample:</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {useCustomSample ? customSampleMargin : systemSampleMargin}%
+                </span>
+                {useCustomSample && (
+                  <span className="text-xs text-amber-600">(custom)</span>
                 )}
               </div>
-            </div>
-
-            {/* Current Values Summary */}
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-700 mb-2">Current margins for {client.name}:</p>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Product: </span>
-                  <span className="font-medium text-gray-900">
-                    {useCustomProductMargin && customProductMargin 
-                      ? `${customProductMargin}% (custom)` 
-                      : `${financeSettings?.default_product_margin_percentage || 80}% (default)`
-                    }
-                  </span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Shipping: </span>
-                  <span className="font-medium text-gray-900">
-                    {useCustomShippingMargin && customShippingMargin 
-                      ? `${customShippingMargin}% (custom)` 
-                      : `${financeSettings?.default_shipping_margin_percentage || 5}% (default)`
-                    }
-                  </span>
-                </div>
+              <div className="flex items-center gap-2">
+                <Truck className="w-4 h-4 text-green-600" />
+                <span className="text-sm text-gray-600">Shipping:</span>
+                <span className="text-sm font-bold text-gray-900">
+                  {useCustomShipping ? customShippingMargin : systemShippingMargin}%
+                </span>
+                {useCustomShipping && (
+                  <span className="text-xs text-green-600">(custom)</span>
+                )}
               </div>
             </div>
           </div>
-        )}
-
-        {/* Save Button */}
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => router.push('/dashboard/clients')}
-            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save Settings'}
-          </button>
         </div>
       </div>
     </div>
-  )
+  );
 }

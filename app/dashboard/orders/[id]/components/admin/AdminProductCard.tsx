@@ -1,8 +1,9 @@
 /**
  * Admin Product Card Component - FIXED VERSION
  * Product card for Admin/Super Admin users with CLIENT pricing
+ * FIXED: saveAll now checks for actual variant changes, not just editingVariants flag
  * FIXED: Removed all margin calculations - uses client prices directly
- * Last Modified: Nov 2025
+ * Last Modified: December 2025
  */
 
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle, useMemo } from 'react';
@@ -66,7 +67,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       return (productStatus === 'shipped' || productStatus === 'in_transit');
     });
     
-    // State for notes (KEEPING BUT WILL COMMENT OUT DISPLAY)
+    // State for notes
     const [tempNotes, setTempNotes] = useState('');
     const [tempBulkNotes, setTempBulkNotes] = useState('');
     
@@ -133,36 +134,111 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     }, [(product as any)?.product_status, autoCollapse, forceExpanded]);
 
-    // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF
+    // FIXED: Helper function to check if variants have actual changes
+    const hasVariantChanges = (): boolean => {
+      return items.some(item => {
+        const currentNote = variantNotes[item.id] || '';
+        const currentQty = variantQuantities[item.id] ?? item.quantity ?? 0;
+        const originalNote = item.notes || '';
+        const originalQty = item.quantity || 0;
+        return currentNote !== originalNote || currentQty !== originalQty;
+      });
+    };
+
+    // FIXED: Save variants function that can be called directly
+    const saveVariantsIfChanged = async (): Promise<boolean> => {
+      if (!hasVariantChanges()) {
+        console.log('No variant changes to save for product:', (product as any).id);
+        return false;
+      }
+      
+      console.log('Saving variant changes for product:', (product as any).id);
+      setSavingVariants(true);
+      
+      try {
+        for (const item of items) {
+          const newNote = variantNotes[item.id] || '';
+          const newQty = variantQuantities[item.id] ?? item.quantity ?? 0;
+          
+          if (newNote !== (item.notes || '') || newQty !== (item.quantity || 0)) {
+            console.log(`Updating variant ${item.id}: qty=${newQty}, notes="${newNote}"`);
+            
+            const { error } = await supabase
+              .from('order_items')
+              .update({ 
+                notes: newNote,
+                quantity: newQty
+              })
+              .eq('id', item.id);
+              
+            if (error) {
+              console.error('Error updating variant:', error);
+            }
+          }
+        }
+        
+        setEditingVariants(false);
+        setShowAllVariants(false);
+        return true;
+      } catch (error) {
+        console.error('Error saving variants:', error);
+        return false;
+      } finally {
+        setSavingVariants(false);
+      }
+    };
+
+    // EXPOSE SAVE FUNCTIONS TO PARENT VIA REF - FIXED VERSION
     useImperativeHandle(ref, () => ({
       saveAll: async () => {
         console.log('SaveAll called for admin product:', (product as any).id);
         let changesMade = false;
         
-        if (notesSectionDirty || tempNotes) {
+        // Save notes section if dirty or has content
+        if (notesSectionDirty || (tempNotes && tempNotes.trim())) {
+          console.log('Saving notes section...');
           await handleSaveNotesSection();
           changesMade = true;
         }
         
-        if (bulkSectionDirty || tempBulkNotes || pendingBulkFiles.length > 0) {
+        // Save bulk section if dirty or has content/files
+        if (bulkSectionDirty || (tempBulkNotes && tempBulkNotes.trim()) || pendingBulkFiles.length > 0) {
+          console.log('Saving bulk section...');
           await handleSaveBulkSection();
           changesMade = true;
         }
         
-        if (editingVariants) {
-          await handleSaveVariants();
+        // FIXED: Check for actual variant changes, not just editingVariants flag
+        if (hasVariantChanges()) {
+          console.log('Saving variant changes...');
+          await saveVariantsIfChanged();
           changesMade = true;
+        } else {
+          console.log('No variant changes detected');
         }
         
+        console.log('SaveAll completed for product:', (product as any).id, 'changesMade:', changesMade);
         return changesMade;
+      },
+      // Also expose individual save methods
+      saveVariants: saveVariantsIfChanged,
+      hasChanges: () => {
+        return notesSectionDirty || 
+               bulkSectionDirty || 
+               (tempNotes && tempNotes.trim()) ||
+               (tempBulkNotes && tempBulkNotes.trim()) ||
+               pendingBulkFiles.length > 0 ||
+               hasVariantChanges();
       }
     }), [
       notesSectionDirty,
       bulkSectionDirty,
-      editingVariants,
       tempNotes,
       tempBulkNotes,
       pendingBulkFiles,
+      variantNotes,
+      variantQuantities,
+      items,
       (product as any).id
     ]);
     
@@ -208,8 +284,8 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       m.file_type === 'image' || 
       m.file_type === 'product_sample' ||
       m.file_type === 'order_sample' ||
-      m.file_type === 'pdf' ||  // In case someone uses 'pdf' as type
-      !m.file_type // Include files with no type set
+      m.file_type === 'pdf' ||
+      !m.file_type
     );
 
     // Get variant type name
@@ -470,31 +546,11 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       }
     };
 
+    // Keep the original handleSaveVariants for button click (uses saveVariantsIfChanged internally)
     const handleSaveVariants = async () => {
-      setSavingVariants(true);
-      try {
-        for (const item of items) {
-          const newNote = variantNotes[item.id] || '';
-          const newQty = variantQuantities[item.id] || 0;
-          
-          if (newNote !== (item.notes || '') || newQty !== (item.quantity || 0)) {
-            await supabase
-              .from('order_items')
-              .update({ 
-                notes: newNote,
-                quantity: newQty
-              })
-              .eq('id', item.id);
-          }
-        }
-        
-        setEditingVariants(false);
-        setShowAllVariants(false);
+      const saved = await saveVariantsIfChanged();
+      if (saved) {
         await onUpdate();
-      } catch (error) {
-        console.error('Error saving variants:', error);
-      } finally {
-        setSavingVariants(false);
       }
     };
 

@@ -2,8 +2,8 @@
  * Client Orders Page - /dashboard/orders/client
  * Clean, professional dashboard for client order review and approval
  * Features: 4 tabs, media modal, variant expansion, action-required sorting
- * UPDATED: Better top cards, show all products, action required sorting
- * Last Modified: November 30, 2025
+ * UPDATED: Added "Create Order Request" button for clients with can_create_orders permission
+ * Last Modified: December 2025
  */
 
 'use client';
@@ -15,7 +15,8 @@ import {
   Package, CheckCircle, Calendar, 
   Loader2, ChevronDown, ChevronRight,
   FileText, Truck, Check, X, Image as ImageIcon,
-  Layers, Clock, AlertTriangle, Box, MessageSquare, Send
+  Layers, Clock, AlertTriangle, Box, MessageSquare, Send,
+  Plus
 } from 'lucide-react';
 
 interface OrderItem {
@@ -76,6 +77,7 @@ export default function ClientOrdersPage() {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [clientName, setClientName] = useState('');
+  const [canCreateOrders, setCanCreateOrders] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'samples' | 'products' | 'approved'>('orders');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvingProductId, setApprovingProductId] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function ClientOrdersPage() {
 
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
-        .select('id, name, email')
+        .select('id, name, email, can_create_orders')
         .eq('email', email);
 
       if (clientError) {
@@ -160,6 +162,7 @@ export default function ClientOrdersPage() {
 
       const client = clientData[0];
       setClientName(client.name);
+      setCanCreateOrders(client.can_create_orders || false);
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -398,7 +401,8 @@ export default function ClientOrdersPage() {
       'shipped': { label: 'Shipped', classes: 'bg-indigo-100 text-indigo-700' },
       'completed': { label: 'Completed', classes: 'bg-green-100 text-green-700' },
       'approved': { label: 'Approved', classes: 'bg-green-100 text-green-700' },
-      'sent_to_manufacturer': { label: 'With Manufacturer', classes: 'bg-purple-100 text-purple-700' }
+      'sent_to_manufacturer': { label: 'With Manufacturer', classes: 'bg-purple-100 text-purple-700' },
+      'client_request': { label: 'Pending Review', classes: 'bg-teal-100 text-teal-700' }
     };
     
     const config = statusMap[status] || { label: status.replace(/_/g, ' '), classes: 'bg-gray-100 text-gray-600' };
@@ -556,8 +560,24 @@ export default function ClientOrdersPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Orders</h1>
-          <p className="text-gray-500 mt-1 text-sm sm:text-base">Review and approve your orders</p>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Orders</h1>
+              <p className="text-gray-500 mt-1 text-sm sm:text-base">Review and approve your orders</p>
+            </div>
+            
+            {/* Create Request Button - Only show if client has permission */}
+            {canCreateOrders && (
+              <a
+                href="/dashboard/orders/client/create"
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors font-medium text-sm sm:text-base shadow-sm"
+              >
+                <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="hidden sm:inline">Create Order Request</span>
+                <span className="sm:hidden">New</span>
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
@@ -681,6 +701,15 @@ export default function ClientOrdersPage() {
               <p className="text-gray-400 text-xs sm:text-sm mt-1">
                 {(activeTab === 'samples' || activeTab === 'products') && "You're all caught up!"}
               </p>
+              {activeTab === 'orders' && canCreateOrders && (
+                <a
+                  href="/dashboard/orders/client/create"
+                  className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Your First Order Request
+                </a>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
@@ -692,6 +721,7 @@ export default function ClientOrdersPage() {
                 const productCount = order.order_products?.length || 0;
                 const productsToShow = getProductsToShow(order);
                 const needsAction = orderNeedsAction(order);
+                const isClientRequest = order.status === 'client_request';
                 
                 // Get sample media
                 const sampleMedia = order.order_media?.filter(m => 
@@ -703,7 +733,11 @@ export default function ClientOrdersPage() {
                     {/* Order Row */}
                     <div 
                       className={`px-3 sm:px-4 md:px-6 py-3 sm:py-4 cursor-pointer transition-colors relative ${
-                        needsAction ? 'hover:bg-amber-50' : 'hover:bg-gray-50'
+                        isClientRequest 
+                          ? 'hover:bg-teal-50 bg-teal-50/30'
+                          : needsAction 
+                          ? 'hover:bg-amber-50' 
+                          : 'hover:bg-gray-50'
                       }`}
                       onClick={() => toggleOrderExpansion(order.id)}
                     >
@@ -776,14 +810,20 @@ export default function ClientOrdersPage() {
                             Notes
                           </button>
                           
-                          {needsAction && (
+                          {isClientRequest ? (
+                            <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-teal-100 text-teal-700 text-xs font-bold rounded-full flex items-center gap-1 sm:gap-1.5">
+                              <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                              <span className="hidden sm:inline">Pending Review</span>
+                              <span className="sm:hidden">Pending</span>
+                            </span>
+                          ) : needsAction ? (
                             <span className="px-2 sm:px-3 py-1 sm:py-1.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full flex items-center gap-1 sm:gap-1.5">
                               <AlertTriangle className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                               <span className="hidden sm:inline">Action Required</span>
                               <span className="sm:hidden">Action</span>
                             </span>
-                          )}
-                          {!needsAction && sampleApproved && activeTab === 'approved' && (
+                          ) : null}
+                          {!needsAction && !isClientRequest && sampleApproved && activeTab === 'approved' && (
                             <span className="px-2 sm:px-2.5 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
                               <span className="hidden sm:inline">Sample Approved</span>
                               <span className="sm:hidden">Approved</span>
@@ -797,6 +837,21 @@ export default function ClientOrdersPage() {
                     {isExpanded && (
                       <div className="px-3 sm:px-4 md:px-6 pb-4 sm:pb-5 bg-gray-50/50">
                         <div className="ml-8 sm:ml-10 space-y-3">
+                          
+                          {/* Client Request Info Banner */}
+                          {isClientRequest && (
+                            <div className="rounded-xl border border-teal-200 bg-teal-50 p-4">
+                              <div className="flex items-start gap-3">
+                                <Clock className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+                                <div>
+                                  <h4 className="font-semibold text-teal-800">Order Request Submitted</h4>
+                                  <p className="text-sm text-teal-700 mt-1">
+                                    Your order request is being reviewed by our team. We'll configure the details and notify you when it's ready for approval.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           
                           {/* Sample Section */}
                           {hasSampleForClient && (activeTab === 'orders' || activeTab === 'samples' || activeTab === 'approved') && (
@@ -917,21 +972,31 @@ export default function ClientOrdersPage() {
                                         
                                         {/* Pricing Section - Stacked on mobile */}
                                         <div className="w-full sm:w-auto flex flex-col gap-2 sm:gap-0 sm:flex-row sm:items-center sm:gap-4">
-                                          {/* Pricing Info */}
-                                          <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm">
-                                            <div>
+                                          {/* Pricing Info - Only show if not client_request */}
+                                          {!isClientRequest && (
+                                            <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm">
+                                              <div>
+                                                <span className="text-gray-500">Qty:</span>
+                                                <span className="font-semibold text-gray-900 ml-1">{totalQty}</span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-500">Per Item:</span>
+                                                <span className="font-semibold text-gray-900 ml-1">${formatCurrency(unitPrice)}</span>
+                                              </div>
+                                              <div>
+                                                <span className="text-gray-500">Total:</span>
+                                                <span className="font-bold text-gray-900 ml-1">${formatCurrency(total)}</span>
+                                              </div>
+                                            </div>
+                                          )}
+                                          
+                                          {/* Show quantity for client_request orders */}
+                                          {isClientRequest && (
+                                            <div className="flex items-center text-xs sm:text-sm">
                                               <span className="text-gray-500">Qty:</span>
                                               <span className="font-semibold text-gray-900 ml-1">{totalQty}</span>
                                             </div>
-                                            <div>
-                                              <span className="text-gray-500">Per Item:</span>
-                                              <span className="font-semibold text-gray-900 ml-1">${formatCurrency(unitPrice)}</span>
-                                            </div>
-                                            <div>
-                                              <span className="text-gray-500">Total:</span>
-                                              <span className="font-bold text-gray-900 ml-1">${formatCurrency(total)}</span>
-                                            </div>
-                                          </div>
+                                          )}
 
                                           {/* Approve Button or Status */}
                                           {isApproved ? (
@@ -955,7 +1020,7 @@ export default function ClientOrdersPage() {
                                               )}
                                               Approve
                                             </button>
-                                          ) : (
+                                          ) : !isClientRequest && (
                                             <span className="hidden sm:inline text-xs sm:text-sm">
                                               {getStatusBadge(product.product_status)}
                                             </span>
@@ -977,7 +1042,7 @@ export default function ClientOrdersPage() {
                                             View Media ({productMedia.length})
                                           </button>
                                         )}
-                                        {product.order_items && product.order_items.length > 0 && (
+                                        {product.order_items && product.order_items.length > 0 && !isClientRequest && (
                                           <button
                                             onClick={(e) => toggleProductExpansion(product.id, e)}
                                             className="flex items-center gap-1 text-xs sm:text-sm text-gray-500 hover:text-gray-700 font-medium"
@@ -994,7 +1059,7 @@ export default function ClientOrdersPage() {
                                     </div>
 
                                     {/* Expanded Variants */}
-                                    {isProductExpanded && product.order_items && (
+                                    {isProductExpanded && product.order_items && !isClientRequest && (
                                       <div className={`border-t px-3 sm:px-4 py-2 sm:py-3 ${isApproved ? 'border-green-200 bg-white' : 'border-gray-100 bg-gray-50'}`}>
                                         {/* Mobile: Stacked layout */}
                                         <div className="sm:hidden space-y-3">
@@ -1043,7 +1108,7 @@ export default function ClientOrdersPage() {
                           )}
 
                           {/* No content message - only show if truly nothing */}
-                          {!hasSampleForClient && productsToShow.length === 0 && (
+                          {!hasSampleForClient && productsToShow.length === 0 && !isClientRequest && (
                             <div className="text-center py-4 sm:py-6 text-gray-500 text-xs sm:text-sm">
                               No items to display for this order
                             </div>

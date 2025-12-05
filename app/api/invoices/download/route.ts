@@ -1,7 +1,13 @@
 // app/api/invoices/download/route.ts
+// FIXED: Now properly uses invoice_items (including custom items) when available
+// Last Modified: December 2024
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@supabase/supabase-js';
+
+// Use service role for server-side access
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -12,7 +18,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse('Missing parameters', { status: 400 });
   }
 
-  const supabase = createClientComponentClient();
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
     // Fetch order data with all related information
@@ -46,36 +52,108 @@ export async function GET(request: NextRequest) {
       .eq('invoice_number', invoiceNumber)
       .single();
 
-    // Filter for invoiceable products
-    const invoiceableProducts = orderData.order_products.filter((p: any) => {
-      const hasFeesAndRoutedToAdmin = 
-        p.routed_to === 'admin' && 
-        (parseFloat(p.client_product_price || p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
-      
-      return hasFeesAndRoutedToAdmin ||
-             p.product_status === 'approved_for_production' || 
-             p.product_status === 'in_production' ||
-             p.product_status === 'completed';
-    });
-
-    // Calculate totals using CLIENT prices
+    // ========== FIXED: Use invoice_items if they exist ==========
+    let tableRows = '';
     let subtotal = 0;
-    invoiceableProducts.forEach((product: any) => {
-      const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-      subtotal += (product.sample_fee || 0);
-      const clientPrice = product.client_product_price || product.product_price || 0;
-      subtotal += (clientPrice * totalQty);
-      
-      if (product.selected_shipping_method === 'air') {
-        const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
-        subtotal += clientAirPrice;
-      } else if (product.selected_shipping_method === 'boat') {
-        const clientBoatPrice = product.client_shipping_boat_price || product.shipping_boat_price || 0;
-        subtotal += clientBoatPrice;
-      }
-    });
 
-    // Use invoice data if exists, otherwise use defaults
+    if (invoiceData?.invoice_items && invoiceData.invoice_items.length > 0) {
+      // USE SAVED INVOICE ITEMS (includes custom items!)
+      console.log('Using saved invoice_items:', invoiceData.invoice_items.length);
+      
+      invoiceData.invoice_items.forEach((item: any) => {
+        const amount = parseFloat(item.amount) || 0;
+        subtotal += amount;
+        
+        // Parse quantity from description if present (e.g., "Product - Production (Qty: 10)")
+        let qty = 1;
+        let unitPrice = amount;
+        const qtyMatch = item.description?.match(/\(Qty:\s*(\d+)\)/);
+        if (qtyMatch) {
+          qty = parseInt(qtyMatch[1]);
+          unitPrice = amount / qty;
+        }
+        
+        tableRows += `
+          <tr>
+            <td>${item.description || 'Item'}</td>
+            <td class="text-right">${qty}</td>
+            <td class="text-right">$${unitPrice.toFixed(2)}</td>
+            <td class="text-right">$${amount.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    } else {
+      // FALLBACK: Generate from order products (original behavior)
+      console.log('Falling back to order products');
+      
+      const invoiceableProducts = orderData.order_products.filter((p: any) => {
+        const hasFeesAndRoutedToAdmin = 
+          p.routed_to === 'admin' && 
+          (parseFloat(p.client_product_price || p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
+        
+        return hasFeesAndRoutedToAdmin ||
+               p.product_status === 'approved_for_production' || 
+               p.product_status === 'in_production' ||
+               p.product_status === 'completed';
+      });
+
+      invoiceableProducts.forEach((product: any) => {
+        const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        const clientUnitPrice = product.client_product_price || 0;
+        
+        // Sample fee row
+        if (product.sample_fee > 0) {
+          subtotal += product.sample_fee;
+          tableRows += `
+            <tr>
+              <td>${product.description || product.product?.title || 'Product'} - Sample Fee</td>
+              <td class="text-right">1</td>
+              <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
+              <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
+            </tr>
+          `;
+        }
+        
+        // Production row
+        if (clientUnitPrice > 0 && totalQty > 0) {
+          const lineTotal = clientUnitPrice * totalQty;
+          subtotal += lineTotal;
+          tableRows += `
+            <tr>
+              <td>${product.description || product.product?.title || 'Product'} - Production</td>
+              <td class="text-right">${totalQty}</td>
+              <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
+              <td class="text-right">$${lineTotal.toFixed(2)}</td>
+            </tr>
+          `;
+        }
+        
+        // Shipping row
+        if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+          subtotal += product.client_shipping_air_price;
+          tableRows += `
+            <tr>
+              <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
+              <td class="text-right">1</td>
+              <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+              <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+            </tr>
+          `;
+        } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+          subtotal += product.client_shipping_boat_price;
+          tableRows += `
+            <tr>
+              <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
+              <td class="text-right">1</td>
+              <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+              <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+            </tr>
+          `;
+        }
+      });
+    }
+
+    // Use invoice data for totals if exists, otherwise calculate
     const taxRate = invoiceData?.tax_rate || 0;
     const taxAmount = invoiceData?.tax_amount || 0;
     const total = invoiceData?.amount || subtotal;
@@ -379,58 +457,7 @@ export async function GET(request: NextRequest) {
             </tr>
           </thead>
           <tbody>
-            ${invoiceableProducts.map((product: any) => {
-              const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-              const clientUnitPrice = product.client_product_price || 0;
-              let rows = [];
-              
-              // Sample fee row
-              if (product.sample_fee > 0) {
-                rows.push(`
-                  <tr>
-                    <td>${product.description || product.product?.title || 'Product'} - Sample Fee</td>
-                    <td class="text-right">1</td>
-                    <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
-                    <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
-                  </tr>
-                `);
-              }
-              
-              // Production row
-              if (clientUnitPrice > 0 && totalQty > 0) {
-                rows.push(`
-                  <tr>
-                    <td>${product.description || product.product?.title || 'Product'} - Production</td>
-                    <td class="text-right">${totalQty}</td>
-                    <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
-                    <td class="text-right">$${(clientUnitPrice * totalQty).toFixed(2)}</td>
-                  </tr>
-                `);
-              }
-              
-              // Shipping row
-              if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
-                rows.push(`
-                  <tr>
-                    <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
-                    <td class="text-right">1</td>
-                    <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
-                    <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
-                  </tr>
-                `);
-              } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
-                rows.push(`
-                  <tr>
-                    <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
-                    <td class="text-right">1</td>
-                    <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
-                    <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
-                  </tr>
-                `);
-              }
-              
-              return rows.join('');
-            }).join('')}
+            ${tableRows}
           </tbody>
         </table>
 
@@ -487,9 +514,7 @@ export async function GET(request: NextRequest) {
         </a>
 
         <script>
-          // Auto-detect if on mobile and provide better UX
           if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            // On mobile, change button to "Save Invoice"
             const btn = document.querySelector('.download-button');
             if (btn) {
               btn.innerHTML = '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-4 0V3m0 4l-3-3m3 3l3-3"></path></svg> Save Invoice';
@@ -500,7 +525,6 @@ export async function GET(request: NextRequest) {
       </html>
     `;
 
-    // Return the HTML with proper headers
     return new NextResponse(invoiceHTML, {
       status: 200,
       headers: {
