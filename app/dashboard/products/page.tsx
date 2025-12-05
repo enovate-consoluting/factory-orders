@@ -466,84 +466,84 @@ export default function ProductsPage() {
           })}
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Product
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Variants
                 </th>
                 {canManageProducts() && (
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                  <th className="px-3 sm:px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap">
                     Actions
                   </th>
                 )}
               </tr>
             </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredProducts.map(product => {
-                  const variants = getProductVariants(product.id)
-                  
-                  return (
-                    <tr key={product.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900">{product.title}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {variants.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {variants.slice(0, 3).map((v, idx) => (
-                              <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                {v.value}
-                              </span>
-                            ))}
-                            {variants.length > 3 && (
-                              <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">
-                                +{variants.length - 3} more
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-500">No variants</span>
-                        )}
-                      </td>
-                      {canManageProducts() && (
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end space-x-2">
-                            <button
-                              onClick={() => {
-                                setEditingProduct(product)
-                                const currentVariants = productVariants
-                                  .filter(pv => pv.product_id === product.id)
-                                  .map(pv => pv.variant_option_id)
-                                setSelectedVariants(currentVariants)
-                              }}
-                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setProductToDelete(product)
-                                setDeleteModalOpen(true)
-                              }}
-                              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors font-medium"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
+            <tbody className="divide-y divide-gray-200">
+              {filteredProducts.map(product => {
+                const variants = getProductVariants(product.id)
+                
+                return (
+                  <tr key={product.id} className="hover:bg-gray-50">
+                    <td className="px-3 sm:px-4 py-3">
+                      <div className="font-medium text-gray-900 text-sm">{product.title}</div>
+                    </td>
+                    <td className="px-3 sm:px-4 py-3">
+                      {variants.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {variants.slice(0, 3).map((v, idx) => (
+                            <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs whitespace-nowrap">
+                              {v.value}
+                            </span>
+                          ))}
+                          {variants.length > 3 && (
+                            <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs whitespace-nowrap">
+                              +{variants.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-500">No variants</span>
                       )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                    </td>
+                    {canManageProducts() && (
+                      <td className="px-3 sm:px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingProduct(product)
+                              const currentVariants = productVariants
+                                .filter(pv => pv.product_id === product.id)
+                                .map(pv => pv.variant_option_id)
+                              setSelectedVariants(currentVariants)
+                            }}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+                          >
+                            <Edit2 className="w-4 h-4 flex-shrink-0" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setProductToDelete(product)
+                              setDeleteModalOpen(true)
+                            }}
+                            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors font-medium text-sm whitespace-nowrap"
+                          >
+                            <Trash2 className="w-4 h-4 flex-shrink-0" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
