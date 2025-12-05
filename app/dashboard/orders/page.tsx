@@ -6,7 +6,8 @@
  * UPDATED: Ready to Ship tab reads from per-manufacturer settings with Chinese support
  * FIXED: handleDeleteOrder now deletes all related records (invoices, email_history, etc.)
  * ADDED: Client Requests tab for admin to review client-submitted order requests
- * Last Modified: Dec 4 2025
+ * FIXED: My Orders tab hides entire order when sample is approved/in_production (Dec 5 2025)
+ * Last Modified: Dec 5 2025
  */
 
 'use client';
@@ -346,6 +347,14 @@ export default function OrdersPage() {
             // Exclude client requests from my_orders
             if (order.status === 'client_request') return false;
             
+            // If sample is active and in progress (approved/in_production), hide ENTIRE order - find it in Production tab
+            const sampleStillInProgress = isSampleActive(order) && 
+              (order.sample_status === 'sample_approved' || 
+               order.sample_status === 'approved' ||
+               order.sample_status === 'in_production' ||
+               order.sample_status === 'sample_in_production');
+            if (sampleStillInProgress) return false;
+            
             const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
             const hasProductsWithAdmin = order.order_products && order.order_products.some(p => 
               p.routed_to === 'admin' && 
@@ -359,6 +368,14 @@ export default function OrdersPage() {
           });
         } else if (isManufacturerUser) {
           filtered = ordersToFilter.filter(order => {
+            // If sample is active and in progress (approved/in_production), hide ENTIRE order - find it in Production tab
+            const sampleStillInProgress = isSampleActive(order) && 
+              (order.sample_status === 'sample_approved' || 
+               order.sample_status === 'approved' ||
+               order.sample_status === 'in_production' ||
+               order.sample_status === 'sample_in_production');
+            if (sampleStillInProgress) return false;
+            
             const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
             const hasProductsWithManufacturer = order.order_products && order.order_products.some(p => 
               p.routed_to === 'manufacturer' && 
@@ -369,7 +386,7 @@ export default function OrdersPage() {
             );
             return sampleWithManufacturer || hasProductsWithManufacturer;
           });
-        }
+        }   
         break;
 
       // NEW: Client Requests tab - shows orders with status = 'client_request'
@@ -403,9 +420,8 @@ export default function OrdersPage() {
           filtered = ordersToFilter.filter(order => {
             // Exclude client requests
             if (order.status === 'client_request') return false;
-            
             const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
-            const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
+            const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin' && order.sample_status !== 'sample_approved' && order.sample_status !== 'approved' && order.sample_status !== 'in_production' && order.sample_status !== 'sample_in_production';
             const hasProductsRoutedToManufacturer = order.order_products && order.order_products.some(p => 
               p.routed_to === 'manufacturer' &&
               p.product_status !== 'approved_for_production' &&
@@ -594,8 +610,15 @@ export default function OrdersPage() {
       // Skip client requests for other tab counts
       if (order.status === 'client_request') return;
       
-      // Count order-level sample routing ONLY if sample is active
-      if (isSampleActive(order) && order.sample_routed_to) {
+      // Check if sample is in progress (approved or in_production) - if so, skip my_orders counting for this order
+      const sampleInProgress = isSampleActive(order) && 
+        (order.sample_status === 'sample_approved' || 
+         order.sample_status === 'approved' ||
+         order.sample_status === 'in_production' ||
+         order.sample_status === 'sample_in_production');
+      
+      // Count order-level sample routing ONLY if sample is active AND not approved/in_production
+      if (isSampleActive(order) && order.sample_routed_to && !sampleInProgress) {
         if (isAdminUser) {
           if (order.sample_routed_to === 'admin') {
             productCounts.my_orders++;
@@ -624,7 +647,8 @@ export default function OrdersPage() {
       if (!order.order_products) return;
       
       order.order_products.forEach(product => {
-        if (isAdminUser || isClientUser) {
+        // Only count products toward my_orders if sample is NOT in progress
+        if ((isAdminUser || isClientUser) && !sampleInProgress) {
           if (product.routed_to === 'admin' && 
               product.product_status !== 'approved_for_production' &&
               product.product_status !== 'in_production' && 
@@ -645,7 +669,7 @@ export default function OrdersPage() {
               product.product_status !== 'completed') {
             productCounts.sent_to_other++;
           }
-        } else if (isManufacturerUser) {
+        } else if (isManufacturerUser && !sampleInProgress) {
           if (product.routed_to === 'manufacturer' && 
               product.product_status !== 'approved_for_production' &&
               product.product_status !== 'in_production' && 
