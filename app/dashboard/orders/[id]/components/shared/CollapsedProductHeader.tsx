@@ -57,8 +57,114 @@ export function CollapsedProductHeader({
   
   return (
     <div className="bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden hover:shadow-xl transition-shadow">
-      <div className="p-4 bg-gray-50 border-b-2 border-gray-200">
-        <div className="flex items-center justify-between">
+      <div className="p-3 sm:p-4 bg-gray-50 border-b-2 border-gray-200">
+        {/* Mobile Layout */}
+        <div className="sm:hidden">
+          <div className="flex items-start gap-2 mb-2">
+            {/* Left side: Expand button + Icon */}
+            <button
+              onClick={onExpand}
+              className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+              title={t('expandDetails')}
+            >
+              <ChevronRight className="w-5 h-5 text-gray-600" />
+            </button>
+            
+            <div className="flex-shrink-0">
+              {getProductStatusIcon(displayStatus)}
+            </div>
+            
+            {/* Middle: Product info */}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-base text-gray-900 truncate">
+                {translate(product.description || product.product?.title) || t('product')}
+              </h3>
+              <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
+                
+                {!isManufacturerView && product.payment_status === 'paid' && (
+                  <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    {t('paid')}
+                  </span>
+                )}
+                
+                {isManufacturerView && isLocked && (
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    {t('locked')}
+                  </span>
+                )}
+              </div>
+              
+              {/* Product details */}
+              <div className="mt-1 text-xs text-gray-600">
+                <div>{product.product_order_number}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span>{t('qtyLabel')}: {totalQuantity}</span>
+                  {totalPrice && totalPrice > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="text-green-600 font-semibold">
+                        ${formatCurrency(totalPrice)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Right side: Action buttons */}
+            <div className="flex flex-col gap-1.5 flex-shrink-0">
+              {onViewHistory && (
+                <button
+                  onClick={onViewHistory}
+                  className="w-10 h-10 bg-gray-600 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition-colors relative shadow-sm"
+                  title={t('viewHistory')}
+                >
+                  <History className="w-4 h-4" />
+                  {hasNewHistory && (
+                    <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  )}
+                </button>
+              )}
+              
+              {onToggleLock && (
+                <button
+                  onClick={onToggleLock}
+                  disabled={processingLock}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+                    isLocked
+                      ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                      : 'bg-green-50 text-green-600 hover:bg-green-100'
+                  } disabled:opacity-50`}
+                  title={isLocked ? t('unlock') : t('lock')}
+                >
+                  {processingLock ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : isLocked ? (
+                    <Lock className="w-4 h-4" />
+                  ) : (
+                    <Unlock className="w-4 h-4" />
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Route button - full width on mobile */}
+          {onRoute && (
+            <button
+              onClick={onRoute}
+              className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              {t('route')}
+            </button>
+          )}
+        </div>
+
+        {/* Desktop Layout */}
+        <div className="hidden sm:flex items-center justify-between">
           <div className="flex items-center gap-3 flex-1">
             <button
               onClick={onExpand}
@@ -77,7 +183,6 @@ export function CollapsedProductHeader({
                 </h3>
                 <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
 
-                {/* Payment status for admin view */}
                 {!isManufacturerView && product.payment_status === 'paid' && (
                   <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
@@ -85,7 +190,6 @@ export function CollapsedProductHeader({
                   </span>
                 )}
                 
-                {/* Shipping selection needed warning */}
                 {needsShippingSelection && (
                   <span className="px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded-full flex items-center gap-1">
                     <AlertTriangle className="w-3 h-3" />
@@ -93,7 +197,6 @@ export function CollapsedProductHeader({
                   </span>
                 )}
 
-                {/* Locked status for manufacturer */}
                 {isManufacturerView && isLocked && (
                   <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded flex items-center gap-1">
                     <Lock className="w-3 h-3" />
@@ -101,7 +204,6 @@ export function CollapsedProductHeader({
                   </span>
                 )}
 
-                {/* Shipped status */}
                 {product.product_status === 'shipped' && (
                   <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
@@ -115,7 +217,6 @@ export function CollapsedProductHeader({
                 <span>•</span>
                 <span>{t('qtyLabel')}: {totalQuantity}</span>
 
-                {/* Production time for manufacturer */}
                 {isManufacturerView && productionTime && (
                   <>
                     <span>•</span>
@@ -123,7 +224,6 @@ export function CollapsedProductHeader({
                   </>
                 )}
 
-                {/* Total price with shipping indicator - USING formatCurrency */}
                 {totalPrice && totalPrice > 0 && (
                   <>
                     <span>•</span>
@@ -145,7 +245,6 @@ export function CollapsedProductHeader({
                   </>
                 )}
 
-                {/* Tracking number */}
                 {trackingNumber && (
                   <>
                     <span>•</span>
@@ -159,7 +258,6 @@ export function CollapsedProductHeader({
           </div>
           
           <div className="flex items-center gap-2">
-            {/* History button */}
             {onViewHistory && (
               <button
                 onClick={onViewHistory}
@@ -172,7 +270,6 @@ export function CollapsedProductHeader({
               </button>
             )}
             
-            {/* Route button */}
             {onRoute && (
               <button
                 onClick={onRoute}
@@ -182,7 +279,6 @@ export function CollapsedProductHeader({
               </button>
             )}
             
-            {/* Lock button */}
             {onToggleLock && (
               <button
                 onClick={onToggleLock}

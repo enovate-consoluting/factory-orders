@@ -358,87 +358,79 @@ export function ManufacturerControlPanel({
         </div>
 
         {/* Action Buttons Row */}
-        {/* Action Buttons Row */}
-<div className="pt-3 border-t">
+        <div className="pt-3 border-t">
+          <div className="flex flex-col gap-2">
+            {/* Row 1: Print All and Ship Dates (50/50 on mobile) */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onPrintAll}
+                className="px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+              >
+                <Printer className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Print All</span>
+              </button>
 
-  {/* Wrap all buttons inside one main flex container */}
-  <div className="flex flex-col lg:flex-row lg:items-center lg:gap-3 w-full">
+              <button
+                onClick={() => setShowShipDatesModal(true)}
+                className="px-3 py-2.5 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+              >
+                <Calendar className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Ship Dates</span>
+                {productsWithShipDates > 0 && (
+                  <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded flex-shrink-0">
+                    {productsWithShipDates}/{visibleProducts.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
-    {/* Left 2 buttons */}
-    <div className="grid grid-cols-2 gap-2 w-full lg:flex lg:w-auto lg:gap-3">
-      {/* Print All */}
-      <button
-        onClick={onPrintAll}
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 font-medium"
-      >
-        <Printer className="w-4 h-4" />
-        Print All
-      </button>
+            {/* Row 2: Production Days (full width on mobile) */}
+            <button
+              onClick={() => setShowProductionDaysModal(true)}
+              className="w-full px-3 py-2.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+            >
+              <Clock className="w-4 h-4 flex-shrink-0" />
+              <span>Production Days</span>
+              {productsWithProductionDays > 0 && (
+                <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
+                  {productsWithProductionDays}/{visibleProducts.length}
+                </span>
+              )}
+            </button>
 
-      {/* Set Ship Dates */}
-      <button
-        onClick={() => setShowShipDatesModal(true)}
-        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2 font-medium"
-      >
-        <Calendar className="w-4 h-4" />
-        Ship Dates
-        {productsWithShipDates > 0 && (
-          <span className="bg-orange-800 text-orange-100 text-xs px-1.5 py-0.5 rounded">
-            {productsWithShipDates}/{visibleProducts.length}
-          </span>
-        )}
-      </button>
-    </div>
+            {/* Row 3: Save All & Route (full width on mobile) */}
+            <button
+              onClick={onSaveAndRoute}
+              className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+            >
+              <Save className="w-4 h-4 flex-shrink-0" />
+              <span>Save All & Route</span>
+            </button>
 
-    {/* All Media Download */}
-    {allMediaFiles.length > 0 && (
-      <button
-        onClick={openAllMediaModal}
-        disabled={downloadingMedia}
-        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2 font-medium mt-3 lg:mt-0"
-      >
-        {downloadingMedia ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {downloadProgress.current}/{downloadProgress.total}
-          </>
-        ) : (
-          <>
-            <FolderDown className="w-4 h-4" />
-            All Media ({allMediaFiles.length})
-          </>
-        )}
-      </button>
-    )}
-
-    {/* Right side buttons */}
-    <div className="flex flex-col gap-3 mt-4 lg:flex-row lg:mt-0">
-      {/* Production Days */}
-      <button
-        onClick={() => setShowProductionDaysModal(true)}
-        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 font-medium"
-      >
-        <Clock className="w-4 h-4" />
-        Production Days
-        {productsWithProductionDays > 0 && (
-          <span className="bg-indigo-800 text-indigo-100 text-xs px-1.5 py-0.5 rounded">
-            {productsWithProductionDays}/{visibleProducts.length}
-          </span>
-        )}
-      </button>
-
-      {/* Save All & Route */}
-      <button
-        onClick={onSaveAndRoute}
-        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-medium"
-      >
-        <Save className="w-4 h-4" />
-        Save All & Route
-      </button>
-    </div>
-
-  </div>
-</div>
+            {/* Row 4: All Media Download (if media exists, full width) */}
+            {allMediaFiles.length > 0 && (
+              <button
+                onClick={openAllMediaModal}
+                disabled={downloadingMedia}
+                className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+              >
+                {downloadingMedia ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                    <span>
+                      {downloadProgress.current}/{downloadProgress.total}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <FolderDown className="w-4 h-4 flex-shrink-0" />
+                    <span>All Media ({allMediaFiles.length})</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
 
         
       </div>

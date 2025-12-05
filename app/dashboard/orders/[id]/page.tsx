@@ -133,6 +133,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
   const [selectedSubManufacturer, setSelectedSubManufacturer] = useState<string>('');
   const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
+
   
   // History Modal State
   const [historyModal, setHistoryModal] = useState({
