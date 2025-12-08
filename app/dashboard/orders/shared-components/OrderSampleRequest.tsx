@@ -1,17 +1,22 @@
 /**
- * Order Sample Request Component - FIXED VERSION
+ * Order Sample Request Component - UPDATED
  * Order-level sample request with independent routing workflow
- * FIX: Save button now stays visible when changing status
- * FIX: Default status is 'no_sample' when no sample data exists
- * FIX: isDirty no longer resets when props change from user input
- * Last Modified: December 2025
+ * 
+ * UPDATED: Consistent naming "Tech Pack / Sample"
+ * UPDATED: Button styles to match product cards (solid colors)
+ * UPDATED: Route buttons are solid blue, Save is lighter green
+ * FIXED: Removed extra $ sign from fee display
+ * FIXED: Removed flask icons as requested
+ * FIXED: Route modal simplified to just 2 options (Send to Client, Back to Manufacturer)
+ * 
+ * Last Modified: December 8, 2025
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  AlertCircle, Calendar, CreditCard, Upload, X, Save, Loader2, 
+  AlertCircle, Calendar, DollarSign, Upload, X, Save, Loader2, 
   Paperclip, History, Send, Building, User,
-  Factory, Ban, MessageSquare
+  Factory, Ban, MessageSquare, FileText, Users, RotateCcw
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 import { supabase } from '@/lib/supabase';
@@ -55,6 +60,7 @@ interface OrderSampleRequestProps {
   readOnly?: boolean;
   onSave?: (data: SampleSaveData) => Promise<void>;
   saving?: boolean;
+  hideHeader?: boolean;
 }
 
 export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
@@ -86,7 +92,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   userRole = 'admin',
   readOnly = false,
   onSave,
-  saving = false
+  saving = false,
+  hideHeader = false
 }) => {
   const { t } = useTranslation();
 
@@ -94,10 +101,9 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const isInitialMount = useRef(true);
   const userChangedStatus = useRef(false);
 
-  // LOCAL state for form fields - FIXED: Better default for status
+  // LOCAL state for form fields
   const getInitialStatus = () => {
     if (sampleStatus && sampleStatus !== 'pending') return sampleStatus;
-    // If no fee, no eta, no files - default to no_sample
     const hasFee = sampleFee && parseFloat(sampleFee) > 0;
     const hasETA = sampleETA && sampleETA.trim() !== '';
     const hasFiles = existingMedia && existingMedia.length > 0;
@@ -130,8 +136,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     };
   }, [showRouteModal]);
 
-  // FIXED: Only sync on initial mount OR when explicitly saved (isDirty is false)
-  // Don't reset isDirty when user is actively making changes
+  // Sync on initial mount
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
@@ -140,12 +145,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       setLocalStatus(getInitialStatus());
       setIsDirty(false);
     } else if (!isDirty && !userChangedStatus.current) {
-      // Only sync if we're not dirty (just saved) and user didn't just change status
       setLocalFee(sampleFee);
       setLocalETA(sampleETA);
       setLocalStatus(getInitialStatus());
     }
-    // Reset the flag after processing
     userChangedStatus.current = false;
   }, [sampleFee, sampleETA, sampleStatus]);
 
@@ -190,7 +193,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     }
   };
 
-  // FIXED: Mark that user changed status so useEffect doesn't reset isDirty
   const handleStatusChange = (value: string) => {
     userChangedStatus.current = true;
     setLocalStatus(value);
@@ -205,7 +207,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     setIsDirty(true);
   };
 
-  // SAVE: Pass local values directly
   const handleSave = async () => {
     if (onSave) {
       const finalStatus = getAutoStatus();
@@ -234,14 +235,13 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     window.open(fileUrl, '_blank');
   };
 
-  // Route modal handlers
-  const openRouteModal = (destination: 'manufacturer' | 'admin' | 'client') => {
-    setRouteDestination(destination);
+  // Route modal handlers - opens modal for selection
+  const openRouteModal = () => {
+    setRouteDestination(null);
     setRouteNotes('');
     setShowRouteModal(true);
   };
 
-  // Helper function to save note to client_admin_notes table
   const saveNoteToClientAdminNotes = async (note: string) => {
     if (!note.trim() || !orderId) return;
     
@@ -269,7 +269,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const handleRoute = async () => {
     if (!routeDestination) return;
     
-    // SAVE DATA FIRST before routing
     if (onSave && isDirty) {
       const finalStatus = getAutoStatus();
       await onSave({
@@ -282,12 +281,10 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       setLocalStatus(finalStatus);
     }
     
-    // If routing to CLIENT and there's a note, save it to client_admin_notes
     if (routeDestination === 'client' && routeNotes.trim()) {
       await saveNoteToClientAdminNotes(routeNotes);
     }
     
-    // Then route
     let success = false;
     
     if (routeDestination === 'manufacturer' && onRouteToManufacturer) {
@@ -306,10 +303,8 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     }
   };
 
-  // Check if sample is active
   const isSampleActive = localStatus !== 'no_sample' || hasSampleData();
 
-  // Routing status badge
   const getRoutingStatusBadge = () => {
     if (localStatus === 'no_sample' && !hasSampleData()) {
       return (
@@ -337,7 +332,6 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     );
   };
 
-  // Sample status badge
   const getSampleStatusBadge = () => {
     const statuses: Record<string, { bg: string; text: string; label: string }> = {
       no_sample: { bg: 'bg-gray-100', text: 'text-gray-500', label: t('noSample') || 'No Sample' },
@@ -364,112 +358,91 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     );
   };
 
-  // FIXED: Show save button whenever isDirty OR has pending files
   const showSaveButton = isDirty || sampleFiles.length > 0;
   
-  // Determine if user can edit based on routing
   const canEdit = !readOnly && (
     (sampleRoutedTo === 'admin' && (userRole === 'admin' || userRole === 'super_admin')) ||
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
     (sampleRoutedTo === 'client' && isClient)
   );
   
-  // Fee and ETA: ONLY Manufacturer and Super Admin can edit
   const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
   
   const showRoutingButtons = isSampleActive;
+  
+  // Check if any routing option is available
+  const hasAnyRouteOption = canRouteToManufacturer || canRouteToClient || canRouteToAdmin;
 
   return (
-    <div className={`rounded-lg p-2.5 sm:p-4 border mb-2 sm:mb-4 ${
-      isSampleActive ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200'
+    <div className={`${hideHeader ? 'p-3 sm:p-4' : 'rounded-lg p-2.5 sm:p-4 border mb-2 sm:mb-4'} ${
+      hideHeader ? '' : (isSampleActive ? 'bg-amber-50 border-amber-300' : 'bg-gray-50 border-gray-200')
     }`}>
-      {/* Header with routing status */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-        <h3 className={`text-xs sm:text-sm font-semibold flex items-center ${
-          isSampleActive ? 'text-amber-900' : 'text-gray-500'
-        }`}>
-          <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
-          <span>{t('orderSampleRequestTechPack') || 'Order Sample Request / Technical Pack'}</span>
-        </h3>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {getRoutingStatusBadge()}
-          {getSampleStatusBadge()}
+      {/* Header - CONDITIONALLY HIDDEN - NO FLASK ICONS */}
+      {!hideHeader && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+          <h3 className={`text-xs sm:text-sm font-semibold flex items-center ${
+            isSampleActive ? 'text-amber-900' : 'text-gray-500'
+          }`}>
+            <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2 flex-shrink-0" />
+            <span>{t('techPackSample') || 'Tech Pack / Sample'}</span>
+          </h3>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            {getRoutingStatusBadge()}
+            {getSampleStatusBadge()}
+            
+            {/* Fee display - NO extra $ */}
+            {localFee && parseFloat(localFee) > 0 && (
+              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium flex items-center gap-1">
+                <DollarSign className="w-3 h-3" />
+                {parseFloat(localFee).toFixed(2)}
+              </span>
+            )}
+            
+            {/* ETA display */}
+            {localETA && (
+              <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-medium flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                {localETA}
+              </span>
+            )}
 
-          {existingMedia && existingMedia.length > 0 && (
-            <span className="text-xs text-amber-700 whitespace-nowrap">
-              {existingMedia.length} {t('files') || 'files'}
-            </span>
-          )}
+            {existingMedia && existingMedia.length > 0 && (
+              <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium flex items-center gap-1">
+                <Paperclip className="w-3 h-3" />
+                {existingMedia.length} {t('files') || 'files'}
+              </span>
+            )}
 
-          {onViewHistory && (
-            <button
-              onClick={onViewHistory}
-              className="px-2 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-xs font-medium flex items-center gap-1 relative flex-shrink-0"
-              title="View sample history"
-            >
-              <History className="w-3 h-3" />
-              <span className="sm:inline">{t('history') || 'History'}</span>
-              {hasNewHistory && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-              )}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ROUTING BUTTONS */}
-      {showRoutingButtons && (
-        <div className="mb-2 sm:mb-3 p-2 sm:p-3 bg-white rounded-lg border border-amber-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 sm:gap-2">
-            <span className="text-xs font-medium text-gray-700 whitespace-nowrap">{t('sampleRouting') || 'Sample Routing'}:</span>
-
-            <div className="grid grid-cols-2 sm:inline-flex items-stretch sm:items-center gap-2">
-              {canRouteToManufacturer && (
-                <button
-                  onClick={() => openRouteModal('manufacturer')}
-                  disabled={isRouting}
-                  className="px-3 py-2 sm:py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{t('sendToManufacturer') || 'Send to Manufacturer'}</span>
-                </button>
-              )}
-
-              {canRouteToClient && (
-                <button
-                  onClick={() => openRouteModal('client')}
-                  disabled={isRouting}
-                  className="px-3 py-2 sm:py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{t('sendToClient') || 'Send to Client'}</span>
-                </button>
-              )}
-
-              {canRouteToAdmin && (
-                <button
-                  onClick={() => openRouteModal('admin')}
-                  disabled={isRouting}
-                  className="col-span-2 sm:col-span-1 px-3 py-2 sm:py-1.5 bg-purple-600 text-white rounded-lg text-xs font-medium hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>{isManufacturer ? (t('sendToAdmin') || 'Send to Admin') : (t('returnToAdmin') || 'Return to Admin')}</span>
-                </button>
-              )}
-
-              {isRouting && (
-                <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-              )}
-
-              {!canRouteToManufacturer && !canRouteToClient && !canRouteToAdmin && (
-                <span className="text-xs text-gray-500 italic">
-                  {sampleRoutedTo === 'admin' && isManufacturer && (t('waitingAdminSendSample') || 'Waiting for admin to send sample')}
-                  {sampleRoutedTo === 'admin' && isClient && (t('waitingAdminSendApproval') || 'Waiting for admin')}
-                  {sampleRoutedTo === 'manufacturer' && !isManufacturer && (t('withManufacturerPricing') || 'With manufacturer for pricing')}
-                  {sampleRoutedTo === 'client' && !isClient && (t('withClientApproval') || 'With client for approval')}
-                </span>
-              )}
-            </div>
+            {/* History Button */}
+            {onViewHistory && (
+              <button
+                onClick={onViewHistory}
+                className="px-2.5 py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-xs font-medium flex items-center gap-1.5 relative flex-shrink-0"
+                title="View sample history"
+              >
+                <History className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">{t('history') || 'History'}</span>
+                {hasNewHistory && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                )}
+              </button>
+            )}
+            
+            {/* Route Button - Single button that opens modal */}
+            {showRoutingButtons && hasAnyRouteOption && (
+              <button
+                onClick={openRouteModal}
+                disabled={isRouting}
+                className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isRouting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{t('route') || 'Route'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -482,7 +455,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             {!canEditFeeETA && <span className="text-gray-500 font-normal ml-1 text-[10px] sm:text-xs">({t('manufacturerOnly') || 'Manufacturer only'})</span>}
           </label>
           <div className="relative">
-            <CreditCard className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
+            <DollarSign className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-amber-600" />
             <input
               type="number"
               min="0"
@@ -551,7 +524,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {/* ADD NEW NOTE Section */}
       <div className="mb-3">
         <label className="block text-xs font-medium text-amber-800 mb-1">
-          {t('addNote') || 'Add Note'}
+          {t('addNote') || 'Add Note'}...
           {onViewHistory && !existingSampleNotes && (
             <span className="text-gray-500 font-normal ml-2">({t('viewPreviousNotesInHistory') || 'View previous notes in History'})</span>
           )}
@@ -603,7 +576,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       {onFileUpload && canEdit && (
         <div className="mb-3">
           <label className="block text-xs font-medium text-amber-800 mb-1">
-            {t('uploadNewTechPack') || 'Upload New Tech Pack'}
+            {t('uploadNewTechPack') || 'Upload New Technical Pack / Sample Media'}
           </label>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <label className="px-3 py-2 sm:py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm transition-colors w-full sm:w-auto">
@@ -657,20 +630,20 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       )}
 
-      {/* Save Button - FIXED: Now properly shows when isDirty */}
+      {/* Save Button */}
       {showSaveButton && onSave && canEdit && (
         <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t border-amber-200">
           <button
             onClick={handleCancel}
             disabled={saving}
-            className="px-3 sm:px-4 py-2 sm:py-1.5 text-xs sm:text-sm text-amber-700 hover:text-amber-900 border border-amber-300 rounded hover:bg-amber-50 transition-colors disabled:opacity-50"
+            className="px-3 sm:px-4 py-2 sm:py-1.5 text-xs sm:text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
           >
             {t('cancel') || 'Cancel'}
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3 sm:px-4 py-2 sm:py-1.5 bg-amber-600 text-white rounded text-xs sm:text-sm hover:bg-amber-700 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+            className="px-3 sm:px-4 py-2 sm:py-1.5 bg-emerald-500 text-white rounded-lg text-xs sm:text-sm hover:bg-emerald-600 flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
           >
             {saving ? (
               <>
@@ -687,7 +660,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       )}
 
-      {/* ROUTE MODAL */}
+      {/* ROUTE MODAL - Simplified to 2 Options */}
       {showRouteModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
@@ -701,44 +674,129 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         >
           <div className="min-h-screen flex items-center justify-center p-3 sm:p-4">
             <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-3 sm:mb-4 flex items-center gap-2">
-                <Send className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
-                {t('routeSampleRequest') || 'Route Sample Request'}
-              </h3>
-              
-              <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="flex items-center gap-2 text-xs sm:text-sm">
-                  <span className="text-gray-600">{t('sendingTo') || 'Sending to'}:</span>
-                  <span className="font-semibold text-amber-800">
-                    {routeDestination === 'manufacturer' && `🏭 ${t('manufacturer') || 'Manufacturer'}`}
-                    {routeDestination === 'admin' && `👤 ${t('admin') || 'Admin'}`}
-                    {routeDestination === 'client' && `🏢 ${t('client') || 'Client'}`}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Send className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
+                  {t('routeSample') || 'Route Sample'}
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowRouteModal(false);
+                    setRouteNotes('');
+                    setRouteDestination(null);
+                  }}
+                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
               </div>
               
-              <div className="mb-3 sm:mb-4">
+              {/* Route Options - 2 Cards Only */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {/* Send to Client */}
+                {canRouteToClient && (
+                  <button
+                    onClick={() => setRouteDestination('client')}
+                    className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                      routeDestination === 'client'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-full ${routeDestination === 'client' ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                        <Users className={`w-4 h-4 ${routeDestination === 'client' ? 'text-white' : 'text-gray-600'}`} />
+                      </div>
+                      <span className="font-semibold text-sm text-gray-900">{t('sendToClient') || 'Send to Client'}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {t('sendForClientApproval') || 'Send for client approval (routes to client portal)'}
+                    </p>
+                  </button>
+                )}
+
+                {/* Back to Manufacturer */}
+                {canRouteToManufacturer && (
+                  <button
+                    onClick={() => setRouteDestination('manufacturer')}
+                    className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                      routeDestination === 'manufacturer'
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-full ${routeDestination === 'manufacturer' ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+                        <RotateCcw className={`w-4 h-4 ${routeDestination === 'manufacturer' ? 'text-white' : 'text-gray-600'}`} />
+                      </div>
+                      <span className="font-semibold text-sm text-gray-900">{t('backToManufacturer') || 'Back to Manufacturer'}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {t('requestRevisionsFromManufacturer') || 'Request revisions from manufacturer'}
+                    </p>
+                  </button>
+                )}
+
+                {/* Send to Admin (for manufacturer view) */}
+                {canRouteToAdmin && !canRouteToClient && !canRouteToManufacturer && (
+                  <button
+                    onClick={() => setRouteDestination('admin')}
+                    className={`col-span-2 p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                      routeDestination === 'admin'
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-full ${routeDestination === 'admin' ? 'bg-purple-500' : 'bg-gray-200'}`}>
+                        <Send className={`w-4 h-4 ${routeDestination === 'admin' ? 'text-white' : 'text-gray-600'}`} />
+                      </div>
+                      <span className="font-semibold text-sm text-gray-900">{t('sendToAdmin') || 'Send to Admin'}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {t('sendSampleToAdmin') || 'Send sample back to admin for review'}
+                    </p>
+                  </button>
+                )}
+                
+                {/* If both client and manufacturer options available, also show admin */}
+                {canRouteToAdmin && (canRouteToClient || canRouteToManufacturer) && (
+                  <button
+                    onClick={() => setRouteDestination('admin')}
+                    className={`col-span-2 p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                      routeDestination === 'admin'
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-full ${routeDestination === 'admin' ? 'bg-purple-500' : 'bg-gray-200'}`}>
+                        <Send className={`w-4 h-4 ${routeDestination === 'admin' ? 'text-white' : 'text-gray-600'}`} />
+                      </div>
+                      <span className="font-semibold text-sm text-gray-900">{isManufacturer ? (t('sendToAdmin') || 'Send to Admin') : (t('returnToAdmin') || 'Return to Admin')}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {isManufacturer ? (t('sendSampleToAdmin') || 'Send sample back to admin') : (t('returnForAdminReview') || 'Return for admin review')}
+                    </p>
+                  </button>
+                )}
+              </div>
+              
+              {/* Routing Notes */}
+              <div className="mb-4">
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                  {t('addNoteOptional') || 'Add Note (optional)'}
-                  {routeDestination === 'client' && (
-                    <span className="text-blue-600 font-normal ml-1">- {t('willAppearInClientNotes') || 'Will appear in Client Notes'}</span>
-                  )}
+                  {t('routingNotesOptional') || 'Routing Notes (Optional)'}
                 </label>
                 <textarea
                   value={routeNotes}
                   onChange={(e) => setRouteNotes(e.target.value)}
-                  placeholder={
-                    routeDestination === 'manufacturer' 
-                      ? (t('instructionsForManufacturer') || 'Instructions for manufacturer...')
-                      : routeDestination === 'client'
-                      ? (t('messageForClientNotes') || 'Message for client (they will see this in their Notes)...')
-                      : (t('notesForAdmin') || 'Notes for admin...')
-                  }
+                  placeholder={t('addAnyNotesOrInstructions') || 'Add any notes or instructions...'}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 />
               </div>
               
+              {/* Action Buttons */}
               <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={() => {
@@ -747,14 +805,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                     setRouteDestination(null);
                   }}
                   disabled={isRouting}
-                  className="w-full sm:flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm sm:text-base"
+                  className="w-full sm:flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
                 >
                   {t('cancel') || 'Cancel'}
                 </button>
                 <button
                   onClick={handleRoute}
-                  disabled={isRouting}
-                  className="w-full sm:flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
+                  disabled={isRouting || !routeDestination}
+                  className="w-full sm:flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm font-medium"
                 >
                   {isRouting ? (
                     <>
@@ -764,7 +822,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      {t('send') || 'Send'}
+                      {t('submitRouting') || 'Submit Routing'}
                     </>
                   )}
                 </button>

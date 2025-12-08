@@ -7,7 +7,11 @@
  * FIXED: handleDeleteOrder now deletes all related records (invoices, email_history, etc.)
  * ADDED: Client Requests tab for admin to review client-submitted order requests
  * FIXED: My Orders tab hides entire order when sample is approved/in_production (Dec 5 2025)
- * Last Modified: Dec 5 2025
+ * FIXED: Tab counts now count PRODUCTS correctly - products counted regardless of sample status (Dec 8 2025)
+ * FIXED: Badge display shows products + sample separately (Dec 8 2025)
+ * FIXED: Translation fallback when t() returns key itself (Dec 8 2025)
+ * ADDED: Layout toggle for V1 (Classic) vs V2 (New) order detail page (Dec 8 2025)
+ * Last Modified: Dec 8 2025
  */
 
 'use client';
@@ -19,13 +23,12 @@ import {
   Plus, Search, Eye, Package, Users, 
   Calendar, ChevronRight, Edit, Building,
   ChevronDown, AlertCircle, Trash2, DollarSign,
-  EyeOff, Globe
+  EyeOff, FlaskConical
 } from 'lucide-react';
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
 
 // Translation imports
-
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
@@ -51,6 +54,15 @@ const isSampleActive = (order: Order): boolean => {
   return order.sample_required === true && 
          order.sample_status !== 'no_sample' && 
          order.sample_status !== null;
+};
+
+// Helper function to check if sample is in production phase (approved or in_production)
+const isSampleInProductionPhase = (order: Order): boolean => {
+  return isSampleActive(order) && 
+    (order.sample_status === 'sample_approved' || 
+     order.sample_status === 'approved' ||
+     order.sample_status === 'in_production' ||
+     order.sample_status === 'sample_in_production');
 };
 
 // Helper function to check if product is within ready-to-ship threshold
@@ -91,12 +103,41 @@ export default function OrdersPage() {
   const { t, i18n } = useTranslation();
   const { language, setLanguage } = useLanguage();
 
+  // Helper to get label with proper fallback
+  // If t() returns the key itself (like 'sampleInProduction'), use the fallback
+  const getTranslation = (key: string, fallback: string): string => {
+    const translated = t(key);
+    // If translation returns the key itself or is empty, use fallback
+    if (!translated || translated === key) {
+      return fallback;
+    }
+    return translated;
+  };
+
   // Tab state
   const [activeTab, setActiveTab] = useState<TabType>('my_orders');
   const [productionSubTab, setProductionSubTab] = useState<ProductionSubTab>('sample_approved');
 
   // State for showing/hiding prices
   const [showPrices, setShowPrices] = useState(false);
+
+  // State for layout preference (V1 classic vs V2 new)
+  const [useNewLayout, setUseNewLayout] = useState(false);
+
+  // Load layout preference from localStorage
+  useEffect(() => {
+    const savedPreference = localStorage.getItem('orderDetailLayout');
+    if (savedPreference === 'v2') {
+      setUseNewLayout(true);
+    }
+  }, []);
+
+  // Save layout preference when changed
+  const toggleLayoutPreference = () => {
+    const newValue = !useNewLayout;
+    setUseNewLayout(newValue);
+    localStorage.setItem('orderDetailLayout', newValue ? 'v2' : 'v1');
+  };
 
   // State for tracking orders with unread notifications
   const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
@@ -347,13 +388,8 @@ export default function OrdersPage() {
             // Exclude client requests from my_orders
             if (order.status === 'client_request') return false;
             
-            // If sample is active and in progress (approved/in_production), hide ENTIRE order - find it in Production tab
-            const sampleStillInProgress = isSampleActive(order) && 
-              (order.sample_status === 'sample_approved' || 
-               order.sample_status === 'approved' ||
-               order.sample_status === 'in_production' ||
-               order.sample_status === 'sample_in_production');
-            if (sampleStillInProgress) return false;
+            // If sample is in production phase, hide order from My Orders (it's in Production tab)
+            if (isSampleInProductionPhase(order)) return false;
             
             const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
             const hasProductsWithAdmin = order.order_products && order.order_products.some(p => 
@@ -368,13 +404,8 @@ export default function OrdersPage() {
           });
         } else if (isManufacturerUser) {
           filtered = ordersToFilter.filter(order => {
-            // If sample is active and in progress (approved/in_production), hide ENTIRE order - find it in Production tab
-            const sampleStillInProgress = isSampleActive(order) && 
-              (order.sample_status === 'sample_approved' || 
-               order.sample_status === 'approved' ||
-               order.sample_status === 'in_production' ||
-               order.sample_status === 'sample_in_production');
-            if (sampleStillInProgress) return false;
+            // If sample is in production phase, hide order from My Orders
+            if (isSampleInProductionPhase(order)) return false;
             
             const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
             const hasProductsWithManufacturer = order.order_products && order.order_products.some(p => 
@@ -420,45 +451,37 @@ export default function OrdersPage() {
           filtered = ordersToFilter.filter(order => {
             // Exclude client requests
             if (order.status === 'client_request') return false;
-            const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
-            const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin' && order.sample_status !== 'sample_approved' && order.sample_status !== 'approved' && order.sample_status !== 'in_production' && order.sample_status !== 'sample_in_production';
-            const hasProductsRoutedToManufacturer = order.order_products && order.order_products.some(p => 
+            
+            // Check what's with manufacturer (sample not in production phase)
+            const sampleWithManufacturer = isSampleActive(order) && 
+              !isSampleInProductionPhase(order) && 
+              order.sample_routed_to === 'manufacturer';
+            
+            const hasProductsWithManufacturer = order.order_products && order.order_products.some(p => 
               p.routed_to === 'manufacturer' &&
               p.product_status !== 'approved_for_production' &&
               p.product_status !== 'in_production' &&
               p.product_status !== 'shipped' &&
               p.product_status !== 'completed'
             );
-            const hasProductsWithAdmin = order.order_products && order.order_products.some(p => 
-              p.routed_to === 'admin' && 
-              p.product_status !== 'in_production' && 
-              p.product_status !== 'shipped' &&
-              p.product_status !== 'completed'
-            );
-            const somethingWithManufacturer = hasProductsRoutedToManufacturer || sampleWithManufacturer;
-            const nothingWithAdmin = !hasProductsWithAdmin && !sampleWithAdmin;
-            return somethingWithManufacturer && nothingWithAdmin;
+            
+            return sampleWithManufacturer || hasProductsWithManufacturer;
           });
         } else if (isManufacturerUser) {
           filtered = ordersToFilter.filter(order => {
-            const sampleWithAdmin = isSampleActive(order) && order.sample_routed_to === 'admin';
-            const sampleWithManufacturer = isSampleActive(order) && order.sample_routed_to === 'manufacturer';
-            const hasProductsRoutedToAdmin = order.order_products && order.order_products.some(p => 
+            const sampleWithAdmin = isSampleActive(order) && 
+              !isSampleInProductionPhase(order) && 
+              order.sample_routed_to === 'admin';
+            
+            const hasProductsWithAdmin = order.order_products && order.order_products.some(p => 
               p.routed_to === 'admin' &&
               p.product_status !== 'approved_for_production' &&
               p.product_status !== 'in_production' &&
               p.product_status !== 'shipped' &&
               p.product_status !== 'completed'
             );
-            const hasProductsWithManufacturer = order.order_products && order.order_products.some(p => 
-              p.routed_to === 'manufacturer' && 
-              p.product_status !== 'in_production' && 
-              p.product_status !== 'shipped' &&
-              p.product_status !== 'completed'
-            );
-            const somethingWithAdmin = hasProductsRoutedToAdmin || sampleWithAdmin;
-            const nothingWithManufacturer = !hasProductsWithManufacturer && !sampleWithManufacturer;
-            return somethingWithAdmin && nothingWithManufacturer;
+            
+            return sampleWithAdmin || hasProductsWithAdmin;
           });
         }
         break;
@@ -480,7 +503,6 @@ export default function OrdersPage() {
             return false;
           });
         } else if (productionSubTab === 'sample_in_production') {
-          // NEW: Filter for samples in production
           filtered = ordersToFilter.filter(order => {
             // Exclude client requests
             if (order.status === 'client_request') return false;
@@ -562,6 +584,13 @@ export default function OrdersPage() {
     setFilteredOrders(filtered);
   };
 
+  /**
+   * FIXED: Tab counts now properly count PRODUCTS across ALL orders
+   * - my_orders: sum of products with me (across all orders) + samples with me
+   * - sent_to_other: sum of products with other (across all orders) + samples with other
+   * - invoice_approval: count of ORDERS with products needing approval
+   * - Products are counted regardless of sample status (sample status only affects sample count)
+   */
   const getTabCounts = (): TabCounts => {
     const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
     const isManufacturerUser = userRole === 'manufacturer';
@@ -583,7 +612,7 @@ export default function OrdersPage() {
       };
     }
     
-    let productCounts: TabCounts = {
+    let counts: TabCounts = {
       my_orders: 0,
       client_requests: 0,
       invoice_approval: 0,
@@ -597,128 +626,125 @@ export default function OrdersPage() {
       production_total: 0
     };
 
-    // Count client requests (orders with status = 'client_request') - Admin only
-    if (isAdminUser) {
-      orders.forEach(order => {
-        if (order.status === 'client_request') {
-          productCounts.client_requests++;
-        }
-      });
-    }
-
     orders.forEach(order => {
-      // Skip client requests for other tab counts
-      if (order.status === 'client_request') return;
-      
-      // Check if sample is in progress (approved or in_production) - if so, skip my_orders counting for this order
-      const sampleInProgress = isSampleActive(order) && 
-        (order.sample_status === 'sample_approved' || 
-         order.sample_status === 'approved' ||
-         order.sample_status === 'in_production' ||
-         order.sample_status === 'sample_in_production');
-      
-      // Count order-level sample routing ONLY if sample is active AND not approved/in_production
-      if (isSampleActive(order) && order.sample_routed_to && !sampleInProgress) {
+      // Count client requests - Admin only
+      if (order.status === 'client_request') {
         if (isAdminUser) {
-          if (order.sample_routed_to === 'admin') {
-            productCounts.my_orders++;
-          } else if (order.sample_routed_to === 'manufacturer') {
-            productCounts.sent_to_other++;
-          }
-        } else if (isManufacturerUser) {
-          if (order.sample_routed_to === 'manufacturer') {
-            productCounts.my_orders++;
-          } else if (order.sample_routed_to === 'admin') {
-            productCounts.sent_to_other++;
-          }
+          counts.client_requests++;
+        }
+        return; // Skip client requests for other counts
+      }
+      
+      // Check if sample is in production phase
+      const sampleInProdPhase = isSampleInProductionPhase(order);
+      
+      // PRODUCTION TABS: Count orders with sample in progress
+      if (sampleInProdPhase) {
+        if (order.sample_status === 'sample_approved' || order.sample_status === 'approved') {
+          counts.sample_approved++;
+        }
+        if (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') {
+          counts.sample_in_production++;
         }
       }
       
-      // Count ORDER-level sample approved
-      if (order.sample_status === 'sample_approved' || order.sample_status === 'approved') {
-        productCounts.sample_approved++;
-      }
-      
-      // Count ORDER-level sample in production
-      if (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') {
-        productCounts.sample_in_production++;
-      }
-      
-      if (!order.order_products) return;
-      
-      order.order_products.forEach(product => {
-        // Only count products toward my_orders if sample is NOT in progress
-        if ((isAdminUser || isClientUser) && !sampleInProgress) {
-          if (product.routed_to === 'admin' && 
-              product.product_status !== 'approved_for_production' &&
-              product.product_status !== 'in_production' && 
-              product.product_status !== 'shipped' &&
-              product.product_status !== 'completed') {
+      // COUNT PRODUCTS - regardless of sample status
+      // Products should be counted based on their own routed_to and product_status
+      if (order.order_products) {
+        order.order_products.forEach(product => {
+          const isInWorkflow = 
+            product.product_status !== 'approved_for_production' &&
+            product.product_status !== 'in_production' &&
+            product.product_status !== 'shipped' &&
+            product.product_status !== 'completed';
+          
+          if (isAdminUser) {
+            // MY_ORDERS: products with admin (no fees)
+            if (product.routed_to === 'admin' && isInWorkflow && !productHasFees(product)) {
+              // Only count if sample is NOT in production (order would be hidden)
+              if (!sampleInProdPhase) {
+                counts.my_orders++;
+              }
+            }
             
-            if (productHasFees(product)) {
-              productCounts.invoice_approval++;
-            } else if (isAdminUser) {
-              productCounts.my_orders++;
+            // SENT_TO_OTHER: products with manufacturer
+            if (product.routed_to === 'manufacturer' && isInWorkflow) {
+              counts.sent_to_other++;
+            }
+          } else if (isManufacturerUser) {
+            // MY_ORDERS: products with manufacturer
+            if (product.routed_to === 'manufacturer' && isInWorkflow) {
+              // Only count if sample is NOT in production (order would be hidden)
+              if (!sampleInProdPhase) {
+                counts.my_orders++;
+              }
+            }
+            
+            // SENT_TO_OTHER: products with admin
+            if (product.routed_to === 'admin' && isInWorkflow) {
+              counts.sent_to_other++;
             }
           }
           
-          if (isAdminUser && product.routed_to === 'manufacturer' &&
-              product.product_status !== 'approved_for_production' &&
-              product.product_status !== 'in_production' &&
-              product.product_status !== 'shipped' &&
-              product.product_status !== 'completed') {
-            productCounts.sent_to_other++;
-          }
-        } else if (isManufacturerUser && !sampleInProgress) {
-          if (product.routed_to === 'manufacturer' && 
-              product.product_status !== 'approved_for_production' &&
-              product.product_status !== 'in_production' && 
-              product.product_status !== 'shipped' &&
-              product.product_status !== 'completed') {
-            productCounts.my_orders++;
+          // Production counts
+          if (product.product_status === 'approved_for_production' || 
+              product.product_status === 'ready_for_production') {
+            counts.approved_for_production++;
           }
           
-          if (product.routed_to === 'admin' &&
-              product.product_status !== 'approved_for_production' &&
-              product.product_status !== 'in_production' &&
-              product.product_status !== 'shipped' &&
-              product.product_status !== 'completed') {
-            productCounts.sent_to_other++;
+          if (product.product_status === 'in_production') {
+            counts.in_production++;
+            
+            if (isWithinShipThreshold(product.estimated_ship_date, readyToShipDays)) {
+              counts.ready_to_ship++;
+            }
           }
-        }
-        
-        // Count sample approved products (backwards compatibility)
-        if (product.sample_status === 'approved' || product.sample_status === 'sample_approved') {
-          productCounts.sample_approved++;
-        }
-        
-        if (product.product_status === 'approved_for_production' || 
-            product.product_status === 'ready_for_production') {
-          productCounts.approved_for_production++;
-        }
-        
-        if (product.product_status === 'in_production') {
-          productCounts.in_production++;
           
-          // Also count for ready_to_ship if within threshold
-          if (isWithinShipThreshold(product.estimated_ship_date, readyToShipDays)) {
-            productCounts.ready_to_ship++;
+          if (product.product_status === 'shipped' || 
+              product.product_status === 'completed') {
+            counts.shipped++;
+          }
+        });
+      }
+      
+      // COUNT SAMPLES - only if not in production phase
+      if (!sampleInProdPhase && isSampleActive(order)) {
+        if (isAdminUser) {
+          if (order.sample_routed_to === 'admin') {
+            counts.my_orders++;
+          } else if (order.sample_routed_to === 'manufacturer') {
+            counts.sent_to_other++;
+          }
+        } else if (isManufacturerUser) {
+          if (order.sample_routed_to === 'manufacturer') {
+            counts.my_orders++;
+          } else if (order.sample_routed_to === 'admin') {
+            counts.sent_to_other++;
           }
         }
-        
-        if (product.product_status === 'shipped' || 
-            product.product_status === 'completed') {
-          productCounts.shipped++;
+      }
+      
+      // INVOICE_APPROVAL: Count ORDERS (not products) if it has products with fees
+      if (isAdminUser || isClientUser) {
+        const hasProductsWithFees = order.order_products?.some(p => 
+          p.routed_to === 'admin' && 
+          productHasFees(p) &&
+          p.product_status !== 'approved_for_production' &&
+          p.product_status !== 'in_production' &&
+          p.product_status !== 'shipped'
+        );
+        if (hasProductsWithFees) {
+          counts.invoice_approval++;
         }
-      });
+      }
     });
 
-    productCounts.production_total = productCounts.sample_approved +
-                                     productCounts.sample_in_production +
-                                     productCounts.approved_for_production + 
-                                     productCounts.in_production;
+    counts.production_total = counts.sample_approved +
+                              counts.sample_in_production +
+                              counts.approved_for_production + 
+                              counts.in_production;
 
-    return productCounts;
+    return counts;
   };
 
   const toggleOrderExpansion = (orderId: string) => {
@@ -734,7 +760,10 @@ export default function OrdersPage() {
   };
 
   const navigateToOrder = (orderId: string) => {
-    window.open(`/dashboard/orders/${orderId}`, '_blank');
+    const path = useNewLayout 
+      ? `/dashboard/orders/${orderId}/v2`
+      : `/dashboard/orders/${orderId}`;
+    window.open(path, '_blank');
   };
 
   const canDeleteOrder = (order: Order): boolean => {
@@ -747,22 +776,6 @@ export default function OrdersPage() {
 
   /**
    * Delete order and ALL related records in correct order
-   * Tables that reference orders (deleted in dependency order):
-   * 1. invoice_items -> invoices
-   * 2. invoices -> orders
-   * 3. email_history -> orders
-   * 4. order_media -> order_products, orders
-   * 5. order_items -> order_products
-   * 6. order_products -> orders
-   * 7. notifications -> orders
-   * 8. manufacturer_notifications -> orders
-   * 9. manufacturer_views -> orders
-   * 10. workflow_log -> orders
-   * 11. order_margins -> orders
-   * 12. orders_backup_numbers -> orders
-   * 13. client_admin_notes -> orders
-   * 14. audit_log (by target_id)
-   * 15. orders (finally)
    */
   const handleDeleteOrder = async (orderId: string) => {
     try {
@@ -930,27 +943,46 @@ export default function OrdersPage() {
   // Get the display label for Ready to Ship tab (handles language)
   const getReadyToShipDisplayLabel = (): string => {
     if (language === 'zh') {
-      // Return Chinese label (custom or default)
       return readyToShipLabelZh || DEFAULT_SHIP_QUEUE_NAME_ZH;
     }
-    // Return English label (custom or default)
     return readyToShipLabel || DEFAULT_SHIP_QUEUE_NAME;
   };
 
+  /**
+   * Get order routing status for badge display
+   * Returns separate counts for products and sample
+   */
   const getOrderRoutingStatus = (order: Order) => {
     if (!order.order_products || order.order_products.length === 0) {
-      return { status: 'no_products', label: t('products'), color: 'gray' };
+      return { 
+        status: 'no_products', 
+        productCount: 0,
+        productLabel: t('products'),
+        hasSample: false,
+        color: 'gray' 
+      };
     }
 
     const products = order.order_products;
     const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
     
+    // Count products by routing status (excluding production statuses)
     const withAdmin = products.filter(p => 
       p.routed_to === 'admin' && 
       p.product_status !== 'shipped' && 
       p.product_status !== 'completed' &&
       p.product_status !== 'approved_for_production' &&
       p.product_status !== 'in_production'
+    ).length;
+    
+    // For My Orders tab: only count products with admin that have NO fees
+    const withAdminNoFees = products.filter(p => 
+      p.routed_to === 'admin' && 
+      p.product_status !== 'shipped' && 
+      p.product_status !== 'completed' &&
+      p.product_status !== 'approved_for_production' &&
+      p.product_status !== 'in_production' &&
+      !productHasFees(p)
     ).length;
     
     const withManufacturer = products.filter(p => 
@@ -965,72 +997,168 @@ export default function OrdersPage() {
       p.routed_to === 'admin' && productHasFees(p)
     ).length;
     
-    const sampleApproved = products.filter(p => p.sample_status === 'approved').length;
     const approvedForProduction = products.filter(p => 
       p.product_status === 'approved_for_production' || 
       p.product_status === 'ready_for_production'
     ).length;
+    
     const inProduction = products.filter(p => p.product_status === 'in_production').length;
+    
     const shipped = products.filter(p => 
       p.product_status === 'shipped' || p.product_status === 'completed'
     ).length;
     
-    // Count ready to ship
     const readyToShipCount = products.filter(p => 
       p.product_status === 'in_production' &&
       isWithinShipThreshold(p.estimated_ship_date, readyToShipDays)
     ).length;
+
+    // Check sample status (only if not in production)
+    const sampleNotInProd = isSampleActive(order) && !isSampleInProductionPhase(order);
+    const sampleWithAdmin = sampleNotInProd && order.sample_routed_to === 'admin';
+    const sampleWithManufacturer = sampleNotInProd && order.sample_routed_to === 'manufacturer';
     
+    // MY ORDERS tab - use withAdminNoFees (products without fees)
     if (activeTab === 'my_orders') {
       if (isAdminUser) {
-        const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'admin') ? 1 : 0;
-        const totalWithAdmin = withAdmin + sampleCount;
-        return { status: 'with_admin', label: `${totalWithAdmin} ${t('withAdmin')}`, color: 'purple' };
+        return { 
+          status: 'with_admin', 
+          productCount: withAdminNoFees,
+          productLabel: getTranslation('withAdmin', 'with Admin'),
+          hasSample: sampleWithAdmin,
+          color: 'purple' 
+        };
       } else {
-        const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
-        const totalWithManufacturer = withManufacturer + sampleCount;
-        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('needAction')}`, color: 'indigo' };
+        return { 
+          status: 'with_manufacturer', 
+          productCount: withManufacturer,
+          productLabel: getTranslation('needAction', 'Need Action'),
+          hasSample: sampleWithManufacturer,
+          color: 'indigo' 
+        };
       }
-    } else if (activeTab === 'client_requests') {
-      // Client requests tab - show product count with pending review status
-      const productCount = products.length;
+    } 
+    
+    // CLIENT REQUESTS tab
+    else if (activeTab === 'client_requests') {
       return { 
         status: 'client_request', 
-        label: `${productCount} ${t('pendingReview') || 'Pending Review'}`, 
+        productCount: products.length,
+        productLabel: getTranslation('pendingReview', 'Pending Review'),
+        hasSample: false,
         color: 'teal' 
-        };
-       } else if (activeTab === 'sent_to_other') {
+      };
+    } 
+    
+    // SENT TO OTHER tab
+    else if (activeTab === 'sent_to_other') {
       if (isAdminUser) {
-        const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'manufacturer') ? 1 : 0;
-        const totalWithManufacturer = withManufacturer + sampleCount;
-        return { status: 'with_manufacturer', label: `${totalWithManufacturer} ${t('withManufacturer')}`, color: 'indigo' };
+        return { 
+          status: 'with_manufacturer', 
+          productCount: withManufacturer,
+          productLabel: getTranslation('withManufacturer', 'with Manufacturer'),
+          hasSample: sampleWithManufacturer,
+          color: 'indigo' 
+        };
       } else {
-        const sampleCount = (isSampleActive(order) && order.sample_routed_to === 'admin') ? 1 : 0;
-        const totalWithAdmin = withAdmin + sampleCount;
-        return { status: 'with_admin', label: `${totalWithAdmin} ${t('withAdmin')}`, color: 'purple' };
+        return { 
+          status: 'with_admin', 
+          productCount: withAdmin,
+          productLabel: getTranslation('withAdmin', 'with Admin'),
+          hasSample: sampleWithAdmin,
+          color: 'purple' 
+        };
       }
-    } else if (activeTab === 'invoice_approval') {
-      return { status: 'with_fees', label: `${withFees} ${t('productsWithFees')}`, color: 'amber' };
-    } else if (activeTab === 'production_status') {
+    } 
+    
+    // INVOICE APPROVAL tab
+    else if (activeTab === 'invoice_approval') {
+      return { 
+        status: 'with_fees', 
+        productCount: withFees,
+        productLabel: getTranslation('productsWithFees', 'products with fees'),
+        hasSample: false,
+        color: 'amber' 
+      };
+    } 
+    
+    // PRODUCTION STATUS tab
+    else if (activeTab === 'production_status') {
+      
+      // SAMPLE APPROVED sub-tab
       if (productionSubTab === 'sample_approved') {
-        return { status: 'sample_approved', label: `${sampleApproved} ${t('sampleApproved')}`, color: 'amber' };
-      } else if (productionSubTab === 'sample_in_production') {
-        // Count samples in production for this order
-        const sampleInProdCount = (order.sample_status === 'sample_in_production' || order.sample_status === 'in_production') ? 1 : 0;
-        return { status: 'sample_in_production', label: `${sampleInProdCount} ${t('sampleInProduction') || 'Sample In Production'}`, color: 'purple' };
-      } else if (productionSubTab === 'approved_for_production') {
-        return { status: 'approved', label: `${approvedForProduction} ${t('approvedForProd')}`, color: 'green' };
-      } else if (productionSubTab === 'in_production') {
-        return { status: 'in_production', label: `${inProduction} ${t('inProduction')}`, color: 'blue' };
+        return { 
+          status: 'sample_approved', 
+          productCount: 0,
+          productLabel: getTranslation('sampleApproved', 'Sample Approved'),
+          hasSample: false,
+          color: 'amber' 
+        };
+      } 
+      
+      // SAMPLE IN PRODUCTION sub-tab - FIXED: use getTranslation helper
+      else if (productionSubTab === 'sample_in_production') {
+        return { 
+          status: 'sample_in_production', 
+          productCount: 0,
+          productLabel: getTranslation('sampleInProduction', 'Sample In Production'),
+          hasSample: false,
+          color: 'purple' 
+        };
+      } 
+      
+      // APPROVED FOR PRODUCTION sub-tab
+      else if (productionSubTab === 'approved_for_production') {
+        return { 
+          status: 'approved', 
+          productCount: approvedForProduction,
+          productLabel: getTranslation('approvedForProd', 'Approved for Prod'),
+          hasSample: false,
+          color: 'green' 
+        };
+      } 
+      
+      // IN PRODUCTION sub-tab
+      else if (productionSubTab === 'in_production') {
+        return { 
+          status: 'in_production', 
+          productCount: inProduction,
+          productLabel: getTranslation('inProduction', 'In Production'),
+          hasSample: false,
+          color: 'blue' 
+        };
       }
-    } else if (activeTab === 'ready_to_ship') {
-      // Ready to ship status - use display label based on language
-      return { status: 'ready_to_ship', label: `${readyToShipCount} ${getReadyToShipDisplayLabel()}`, color: 'orange' };
-    } else if (activeTab === 'shipped') {
-      return { status: 'shipped', label: `${shipped} ${t('shipped')}`, color: 'green' };
+    } 
+    
+    // READY TO SHIP tab
+    else if (activeTab === 'ready_to_ship') {
+      return { 
+        status: 'ready_to_ship', 
+        productCount: readyToShipCount,
+        productLabel: getReadyToShipDisplayLabel(),
+        hasSample: false,
+        color: 'orange' 
+      };
+    } 
+    
+    // SHIPPED tab
+    else if (activeTab === 'shipped') {
+      return { 
+        status: 'shipped', 
+        productCount: shipped,
+        productLabel: getTranslation('shipped', 'Shipped'),
+        hasSample: false,
+        color: 'green' 
+      };
     }
     
-    return { status: 'mixed', label: `${products.length} ${t('products')}`, color: 'gray' };
+    return { 
+      status: 'mixed', 
+      productCount: products.length,
+      productLabel: t('products'),
+      hasSample: false,
+      color: 'gray' 
+    };
   };
 
   const getProductRoutingBadge = (product: any) => {
@@ -1038,16 +1166,16 @@ export default function OrdersPage() {
                      (userRole !== 'manufacturer' && product.routed_to === 'admin');
 
     if (product.product_status === 'completed') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('completed')}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{getTranslation('completed', 'Completed')}</span>;
     }
     if (product.product_status === 'approved_for_production') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('approvedForProd')}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{getTranslation('approvedForProd', 'Approved for Prod')}</span>;
     }
     if (product.product_status === 'in_production') {
-      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{t('inProduction')}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">{getTranslation('inProduction', 'In Production')}</span>;
     }
     if (product.product_status === 'shipped') {
-      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{t('shipped')}</span>;
+      return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded">{getTranslation('shipped', 'Shipped')}</span>;
     }
     
     return (
@@ -1057,18 +1185,62 @@ export default function OrdersPage() {
         {product.routed_to === 'admin' ? (
           <>
             <Users className="w-3 h-3" />
-            {t('withAdmin')}
+            {getTranslation('withAdmin', 'with Admin')}
           </>
         ) : (
           <>
             <Building className="w-3 h-3" />
-            {t('withManufacturer')}
+            {getTranslation('withManufacturer', 'with Manufacturer')}
           </>
         )}
         {product.product_status === 'question_for_admin' && (
           <AlertCircle className="w-3 h-3 text-amber-500" />
         )}
       </span>
+    );
+  };
+
+  /**
+   * Render the routing status badges for an order
+   * Shows TWO badges when both products and sample are present
+   */
+  const renderRoutingBadges = (order: Order) => {
+    const routingStatus = getOrderRoutingStatus(order);
+    
+    // For production tabs (sample_approved, sample_in_production), just show one badge
+    if (activeTab === 'production_status' && 
+        (productionSubTab === 'sample_approved' || productionSubTab === 'sample_in_production')) {
+      return (
+        <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
+          {routingStatus.productLabel}
+        </span>
+      );
+    }
+    
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {/* Products badge - only show if there are products */}
+        {routingStatus.productCount > 0 && (
+          <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
+            {routingStatus.productCount} {routingStatus.productLabel}
+          </span>
+        )}
+        
+        {/* Sample badge - show separately if sample is with this party */}
+        {routingStatus.hasSample && (
+          <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+            <FlaskConical className="w-3 h-3" />
+            {getTranslation('sample', 'Sample')}
+          </span>
+        )}
+        
+        {/* If no products and no sample, show generic */}
+        {routingStatus.productCount === 0 && !routingStatus.hasSample && (
+          <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
+            {routingStatus.productLabel}
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -1091,11 +1263,9 @@ export default function OrdersPage() {
           (() => {
             const order = orders.find(o => o.id === showDeleteConfirm);
             if (!order) return '';
-            // Translate order name, client name, manufacturer name for modal
             const name = order.order_name ? translate(order.order_name) : t('untitledOrder');
             const client = order.client?.name ? translate(order.client.name) : '';
             const manufacturer = order.manufacturer?.name ? translate(order.manufacturer.name) : '';
-            // Combine for display
             return `${name}${client ? ' • ' + client : ''}${manufacturer ? ' • ' + manufacturer : ''} (${formatOrderNumber(order.order_number)})`;
           })()
         }
@@ -1108,20 +1278,44 @@ export default function OrdersPage() {
 
       {/* Header */}
       <div className="mb-3 sm:mb-4 md:mb-6">
-        <div className="flex flex-col gap-2 sm:gap-3 mb-3 sm:mb-4">
-          {/* New Order Button - Full width on mobile */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
           {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
             <Link
               href="/dashboard/orders/create"
-              className="bg-blue-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base font-medium w-full sm:w-auto sm:self-start transition-colors"
+              className="bg-blue-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base font-medium w-full sm:w-auto transition-colors"
             >
               <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
               <span className="whitespace-nowrap">{t('newOrder')}</span>
             </Link>
           )}
+          
+          {/* Layout Toggle - Super Admin Only */}
+          {userRole === 'super_admin' && (
+            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
+              <span className={`text-xs font-medium transition-colors ${!useNewLayout ? 'text-gray-900' : 'text-gray-400'}`}>
+                Classic
+              </span>
+              <button
+                onClick={toggleLayoutPreference}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
+                  useNewLayout ? 'bg-purple-600' : 'bg-gray-300'
+                }`}
+                role="switch"
+                aria-checked={useNewLayout}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
+                    useNewLayout ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+              <span className={`text-xs font-medium transition-colors ${useNewLayout ? 'text-purple-600' : 'text-gray-400'}`}>
+                New
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Tabs - Using extracted component */}
         {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') && (
           <div className="-mx-4 sm:mx-0">
             <div className="px-2 sm:px-0">
@@ -1141,7 +1335,6 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* Production Sub-Tabs - Only show when production_status is active */}
         {activeTab === 'production_status' && (
           <div className="-mx-4 sm:mx-0">
             <div className="px-2 sm:px-0">
@@ -1155,7 +1348,6 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* Search and Price Toggle */}
         <div className="flex flex-col gap-2 sm:gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1231,7 +1423,6 @@ export default function OrdersPage() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredOrders.map((order) => {
-                  const routingStatus = getOrderRoutingStatus(order);
                   const isExpanded = expandedOrders.has(order.id);
                   const canDelete = canDeleteOrder(order);
                   const orderTotal = calculateOrderTotal(order, userRole);
@@ -1296,9 +1487,7 @@ export default function OrdersPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
-                            {routingStatus.label}
-                          </span>
+                          {renderRoutingBadges(order)}
                         </td>
                         {(userRole === 'admin' || userRole === 'super_admin') && (
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -1345,7 +1534,7 @@ export default function OrdersPage() {
                               </button>
                             )}
                             <Link
-                              href={`/dashboard/orders/${order.id}`}
+                              href={useNewLayout ? `/dashboard/orders/${order.id}/v2` : `/dashboard/orders/${order.id}`}
                               target="_blank"
                               className="text-gray-600 hover:text-gray-800"
                               title={t('viewDetails')}
@@ -1400,10 +1589,9 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          {/* Mobile View - Optimized */}
+          {/* Mobile View */}
           <div className="block lg:hidden divide-y divide-gray-200">
             {filteredOrders.map((order) => {
-              const routingStatus = getOrderRoutingStatus(order);
               const orderTotal = calculateOrderTotal(order, userRole);
               const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
               const canDelete = canDeleteOrder(order);
@@ -1415,7 +1603,6 @@ export default function OrdersPage() {
                   key={order.id}
                   className={`p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors ${hasUnreadNotification ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''} ${isClientRequest ? 'bg-teal-50/30' : ''}`}
                 >
-                  {/* Header Row */}
                   <div className="flex justify-between items-start gap-2 mb-2 sm:mb-3">
                     <div className="flex-1 min-w-0 cursor-pointer" onClick={() => navigateToOrder(order.id)}>
                       <div className="font-semibold text-sm sm:text-base text-gray-900 flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
@@ -1436,12 +1623,11 @@ export default function OrdersPage() {
                         )}
                       </div>
                     </div>
-                    <span className={`px-2 sm:px-2.5 py-0.5 sm:py-1 text-[10px] sm:text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700 flex-shrink-0 whitespace-nowrap`}>
-                      {routingStatus.label}
-                    </span>
+                    <div className="flex-shrink-0">
+                      {renderRoutingBadges(order)}
+                    </div>
                   </div>
 
-                  {/* Client and Manufacturer Info */}
                   <div className="mb-2 sm:mb-3 text-xs sm:text-sm cursor-pointer" onClick={() => navigateToOrder(order.id)}>
                     <div className="flex items-center gap-1.5 text-gray-700 mb-0.5 sm:mb-1">
                       <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0" />
@@ -1455,7 +1641,6 @@ export default function OrdersPage() {
                     )}
                   </div>
 
-                  {/* Footer Row - Date, Total, Actions */}
                   <div className="flex justify-between items-center gap-2">
                     <div className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs text-gray-500 cursor-pointer" onClick={() => navigateToOrder(order.id)}>
                       <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" />
@@ -1470,7 +1655,6 @@ export default function OrdersPage() {
                         </span>
                       )}
 
-                      {/* Action Buttons */}
                       <div className="flex items-center gap-1 sm:gap-1">
                         {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
                           <Link

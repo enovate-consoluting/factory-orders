@@ -8,8 +8,9 @@
  * FIXED: Products no longer disappear when routed - routing is now just a queue indicator
  * ADDED: Client Notes section for client_request orders
  * ADDED: Inline manufacturer selector in manufacturer card (like client card)
+ * ADDED: Product delete functionality with audit logging
  * FIXED: Show all variants including zero quantity ones
- * Last Modified: December 5, 2025
+ * Last Modified: December 8, 2025
  */
 
 'use client';
@@ -20,6 +21,7 @@ import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
 import { useSampleRouting } from './hooks/useSampleRouting';
 import { useBulkRouting } from './hooks/useBulkRouting';
+import { useProductDelete } from './hooks/useProductDelete';  // ADDED: Import delete hook
 
 // Translation imports
 import { useTranslation } from 'react-i18next';
@@ -110,6 +112,9 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
+  
+  // ADDED: Initialize product delete hook
+  const { deleteProduct } = useProductDelete();
 
   // State for editing client
   const [isEditingClient, setIsEditingClient] = useState(false);
@@ -537,6 +542,26 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       alert('Error updating manufacturer. Please try again.');
     } finally {
       setSavingManufacturer(false);
+    }
+  };
+
+  // ADDED: Handler for deleting a product
+  const handleDeleteProduct = async (productId: string) => {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const result = await deleteProduct(
+      productId,
+      id,
+      user.role || userRole || 'admin',
+      user.id,
+      user.name || user.email
+    );
+    
+    if (result.success) {
+      // Refetch order data to update the UI
+      await refetch();
+    } else {
+      // Show error message
+      alert(result.error || 'Failed to delete product');
     }
   };
 
@@ -1070,7 +1095,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       </div>
     );
   }
-
   // ADMIN/MANUFACTURER VIEW
   return (
     <div className="min-h-screen bg-gray-100 overflow-x-hidden">
@@ -1087,8 +1111,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-3 pb-20">
         {/* Client & Manufacturer Info Cards */}
-        {userRole !== 'manufacturer' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
+        {userRole !== 'manufacturer' && ( <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
             {/* Client Card */}
             <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow relative">
               {(isAdmin || isSuperAdmin) && !isEditingClient && (
@@ -1520,6 +1543,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   onUpdate={refetch}
                   onRoute={handleRouteProduct}
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
+                  onDelete={handleDeleteProduct}  // ADDED: Pass delete handler
                   hasNewHistory={hasNewHistory(product.id)}
                   autoCollapse={isClientRequest ? false : shouldAutoCollapse}
                   translate={translate}

@@ -1,18 +1,21 @@
 /**
  * AdminControlPanel - Control panel for admin/super admin order actions
- * Shows order summary, totals, and action buttons (Print, Save All & Route, Client Notes)
- * Includes Client Notes modal for admin-client communication
+ * REDESIGNED: Compact icon-focused buttons, condensed warnings, room for growth
+ * Shows order summary, totals, and action buttons
+ * Includes Client Notes modal and Add Product modal trigger
  * Roles: Admin, Super Admin
- * Last Modified: November 30, 2025
+ * Last Modified: December 2025
  */
 
 import React, { useState, useEffect } from 'react';
 import { 
   Package, Printer, Save, Send, DollarSign, 
-  AlertCircle, Settings, MessageSquare, X, Loader2
+  AlertCircle, Settings, MessageSquare, X, Loader2,
+  Plus, FileText, Truck
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from 'react-i18next';
+import { AddProductModal } from '../modals/AddProductModal';
 
 interface ClientNote {
   id: string;
@@ -40,6 +43,7 @@ export function AdminControlPanel({
   totalAmount = 0
 }: AdminControlPanelProps) {
   const { t } = useTranslation();
+  
   // Notes Modal State
   const [notesModal, setNotesModal] = useState(false);
   const [notes, setNotes] = useState<ClientNote[]>([]);
@@ -47,6 +51,9 @@ export function AdminControlPanel({
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [sendingNote, setSendingNote] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // Add Product Modal State
+  const [addProductModal, setAddProductModal] = useState(false);
 
   // Calculate product distribution
   const productCounts = {
@@ -65,7 +72,6 @@ export function AdminControlPanel({
       const totalQty = product.order_items?.reduce((sum: number, item: any) =>
         sum + (item.quantity || 0), 0) || 0;
 
-      // Use CLIENT prices
       productTotal += (parseFloat(product.client_product_price || 0) * totalQty);
 
       if (product.selected_shipping_method === 'air') {
@@ -92,6 +98,8 @@ export function AdminControlPanel({
   const productsWithoutShipping = visibleProducts.filter(p =>
     !p.selected_shipping_method && !p.shipping_link_note
   ).length;
+
+  const hasWarnings = productsNeedingPricing > 0 || productsWithoutShipping > 0;
 
   // Fetch unread count on mount
   useEffect(() => {
@@ -126,7 +134,6 @@ export function AdminControlPanel({
         .eq('created_by_role', 'client');
       
       if (!error && data) {
-        // For now, show count of client messages (could enhance with read tracking later)
         setUnreadCount(data.length);
       }
     } catch (err) {
@@ -202,156 +209,145 @@ export function AdminControlPanel({
     });
   };
 
+  const handleAddProductSuccess = () => {
+    // Trigger page refresh to show new product
+    window.location.reload();
+  };
+
   return (
     <>
-      <div className="mb-2 sm:mb-4 bg-white rounded-lg shadow-lg border border-gray-300 overflow-hidden">
-        {/* Header */}
-        <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center gap-2">
-          <Settings className="w-4 h-4 text-white flex-shrink-0" />
-          <h3 className="text-sm font-semibold text-white">{t('controlPanel')}</h3>
+      <div className="mb-3 bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+        {/* Compact Header */}
+        <div className="px-3 py-2 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="w-4 h-4 text-white/80" />
+            <span className="text-sm font-medium text-white">{t('controlPanel')}</span>
+          </div>
+          {/* Quick Stats in Header */}
+          <div className="flex items-center gap-3 text-xs text-blue-100">
+            <span>{order.order_number}</span>
+            <span>•</span>
+            <span>{visibleProducts.length} products</span>
+          </div>
         </div>
 
-        <div className="p-2.5 sm:p-4">
-          {/* Order Info Summary - Stacked on mobile */}
-          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-2 sm:mb-3">
-            <div className="text-center sm:text-left">
-              <span className="block text-xs text-gray-500">{t('order')}</span>
-              <p className="font-bold text-sm text-gray-900 truncate">{order.order_number}</p>
-            </div>
-            <div className="text-center sm:text-left">
-              <span className="block text-xs text-gray-500">{t('client')}</span>
-              <p className="font-semibold text-xs sm:text-sm text-gray-900 truncate">{order.client?.name}</p>
-            </div>
-            <div className="text-center sm:text-left">
-              <span className="block text-xs text-gray-500">{t('products')}</span>
-              <p className="font-semibold text-sm text-gray-900">{visibleProducts.length}</p>
-            </div>
-          </div>
-
-          {/* Product Distribution - Wrap on mobile */}
-          {productCounts.total > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
-              {productCounts.withAdmin > 0 && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded whitespace-nowrap">
-                  {productCounts.withAdmin} {t('withAdmin')}
-                </span>
-              )}
-              {productCounts.withManufacturer > 0 && (
-                <span className="px-2 py-1 bg-amber-100 text-amber-700 text-xs font-medium rounded whitespace-nowrap">
-                  {productCounts.withManufacturer} {t('withMfr')}
-                </span>
-              )}
-              {productCounts.withClient > 0 && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs font-medium rounded whitespace-nowrap">
-                  {productCounts.withClient} {t('withClient')}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Totals - Side by side on mobile */}
-          <div className="flex items-center justify-between gap-2 sm:gap-3 mb-2 sm:mb-3 pb-2 sm:pb-3 border-b border-gray-200">
-            {totals.shipping > 0 && (
-              <div>
-                <span className="block text-xs text-gray-500">{t('shipping')}</span>
-                <p className="font-semibold text-sm sm:text-base text-blue-600">${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-              </div>
-            )}
-            <div className="text-right">
-              <span className="block text-xs text-gray-500">{t('clientTotal')}</span>
-              <p className="font-bold text-lg sm:text-xl text-green-600">${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
-            </div>
-          </div>
-
-          {/* Warnings Row */}
-          {(productsNeedingPricing > 0 || productsWithoutShipping > 0) && (
-            <div className="flex gap-1.5 sm:gap-2 mb-2 sm:mb-3 p-2 sm:p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 text-xs sm:text-sm text-amber-800">
-                {productsNeedingPricing > 0 && (
-                  <span>{productsNeedingPricing} {t('productsNeedPricing')}. </span>
-                )}
-                {productsWithoutShipping > 0 && (
-                  <span>{productsWithoutShipping} {t('productsNeedShipping')}.</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons - Desktop: All in one row | Mobile: Notes + Print All 50/50, then Save full width */}
-          <div className="space-y-2 sm:space-y-0">
-            {/* Desktop: All buttons in one row */}
-            <div className="hidden sm:grid sm:grid-cols-3 sm:gap-2">
-              <button
-                onClick={onPrintAll}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-              >
-                <Printer className="w-4 h-4" />
-                <span>{t('printAll')}</span>
-              </button>
-
-              <button
-                onClick={openNotesModal}
-                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2 font-medium relative text-sm"
-              >
-                <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                <span>{t('clientNotes')}</span>
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+        <div className="p-3">
+          {/* Top Row: Client + Distribution + Total */}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            {/* Client & Distribution */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-medium text-gray-900">{order.client?.name}</span>
+              
+              {/* Compact Distribution Badges */}
+              <div className="flex items-center gap-1">
+                {productCounts.withAdmin > 0 && (
+                  <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                    {productCounts.withAdmin} Admin
                   </span>
                 )}
-              </button>
-
-              {productCounts.withAdmin > 0 && (
-                <button
-                  onClick={onSaveAndRoute}
-                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                >
-                  <Save className="w-4 h-4 flex-shrink-0" />
-                  <span className="whitespace-nowrap">{t('saveAllAndRoute')} ({productCounts.withAdmin})</span>
-                </button>
-              )}
-            </div>
-
-            {/* Mobile: Notes + Print All in 50/50 grid, then Save full width below */}
-            <div className="sm:hidden space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={openNotesModal}
-                  className="px-2 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-1.5 font-medium relative text-sm"
-                >
-                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                  <span>{t('notes')}</span>
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                      {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                <button
-                  onClick={onPrintAll}
-                  className="px-2 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 font-medium text-sm"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{t('printAll')}</span>
-                </button>
+                {productCounts.withManufacturer > 0 && (
+                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded">
+                    {productCounts.withManufacturer} Mfr
+                  </span>
+                )}
+                {productCounts.withClient > 0 && (
+                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                    {productCounts.withClient} Client
+                  </span>
+                )}
               </div>
+            </div>
 
-              {productCounts.withAdmin > 0 && (
-                <button
-                  onClick={onSaveAndRoute}
-                  className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                >
-                  <Save className="w-4 h-4 flex-shrink-0" />
-                  <span>{t('save')} ({productCounts.withAdmin})</span>
-                </button>
+            {/* Total */}
+            <div className="text-right">
+              <p className="text-lg font-bold text-green-600">
+                ${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </p>
+              {totals.shipping > 0 && (
+                <p className="text-xs text-gray-500">
+                  incl. ${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })} shipping
+                </p>
               )}
             </div>
+          </div>
+
+          {/* Compact Warning Bar */}
+          {hasWarnings && (
+            <div className="flex items-center gap-2 mb-3 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+              <span>
+                {productsNeedingPricing > 0 && `${productsNeedingPricing} need pricing`}
+                {productsNeedingPricing > 0 && productsWithoutShipping > 0 && ' • '}
+                {productsWithoutShipping > 0 && `${productsWithoutShipping} need shipping`}
+              </span>
+            </div>
+          )}
+
+          {/* Action Buttons - Redesigned */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Notes Button */}
+            <button
+              onClick={openNotesModal}
+              className="relative flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              title="Client Notes"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Notes</span>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Print Button */}
+            <button
+              onClick={onPrintAll}
+              className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              title="Print All"
+            >
+              <Printer className="w-4 h-4" />
+              <span className="hidden sm:inline">Print</span>
+            </button>
+
+            {/* Add Product Button */}
+            <button
+              onClick={() => setAddProductModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+              title="Add Product"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="hidden sm:inline">Add Product</span>
+            </button>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Save All & Route - Primary Action */}
+            {productCounts.withAdmin > 0 && (
+              <button
+                onClick={onSaveAndRoute}
+                className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save & Route</span>
+                <span className="px-1.5 py-0.5 bg-green-500 rounded text-xs">
+                  {productCounts.withAdmin}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Add Product Modal */}
+      <AddProductModal
+        isOpen={addProductModal}
+        onClose={() => setAddProductModal(false)}
+        orderId={order.id}
+        orderNumber={order.order_number}
+        onSuccess={handleAddProductSuccess}
+      />
 
       {/* Client Notes Modal */}
       {notesModal && (

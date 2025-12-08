@@ -3,7 +3,8 @@
  * Sub-navigation for production status filtering on Orders List page
  * Location: app/dashboard/orders/components/ProductionSubTabs.tsx
  * UPDATED: Added Sample In Production tab
- * Last Modified: Dec 4 2025
+ * FIXED: Handle translation fallback when t() returns the key itself (Dec 8 2025)
+ * Last Modified: Dec 8 2025
  */
 
 import React from 'react';
@@ -18,38 +19,49 @@ interface ProductionSubTabsProps {
   onSubTabChange: (tab: ProductionSubTab) => void;
 }
 
+// Helper to get label with proper fallback
+// If t() returns the key itself (like 'sampleInProduction'), use the fallback
+const getLabel = (t: TFunction, key: string, fallback: string): string => {
+  const translated = t(key);
+  // If translation returns the key itself or is empty, use fallback
+  if (!translated || translated === key) {
+    return fallback;
+  }
+  return translated;
+};
+
 export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   activeSubTab,
   tabCounts,
   t,
   onSubTabChange
 }) => {
-  // UPDATED: Added 'sample_in_production' tab
+  // UPDATED: Use getLabel helper for proper fallbacks
   const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
     {
       key: 'sample_approved',
-      label: t('sampleApproved') || 'Sample Approved',
+      label: getLabel(t, 'sampleApproved', 'Sample Approved'),
       count: tabCounts.sample_approved,
       icon: <Award className="w-4 h-4" />,
       color: 'amber'
     },
     {
       key: 'sample_in_production',
-      label: t('sampleInProduction') || 'Sample In Production',
+      label: getLabel(t, 'sampleInProduction', 'Sample In Production'),
       count: tabCounts.sample_in_production,
       icon: <FlaskConical className="w-4 h-4" />,
       color: 'purple'
     },
     {
       key: 'approved_for_production',
-      label: t('approvedForProd') || 'Approved for Production',
+      label: getLabel(t, 'approvedForProd', 'Approved for Production'),
       count: tabCounts.approved_for_production,
       icon: <CheckCircle className="w-4 h-4" />,
       color: 'green'
     },
     {
       key: 'in_production',
-      label: t('inProduction') || 'In Production',
+      label: getLabel(t, 'inProduction', 'In Production'),
       count: tabCounts.in_production,
       icon: <Wrench className="w-4 h-4" />,
       color: 'blue'

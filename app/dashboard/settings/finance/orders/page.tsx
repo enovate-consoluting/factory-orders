@@ -1,9 +1,19 @@
+/**
+ * Finance Orders Page - /dashboard/settings/finance/orders
+ * View and override margin percentages for specific orders and products
+ * FIXED: Now properly recalculates client prices when margins are saved
+ * ADDED: Custom margin badges to identify non-default margins
+ * Roles: Super Admin only
+ * Last Modified: Dec 8 2025
+ */
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { 
   Save, Percent, AlertCircle, CheckCircle, Package, 
-  ChevronDown, ChevronRight, Edit, DollarSign, TrendingUp, Truck
+  ChevronDown, ChevronRight, Edit, DollarSign, TrendingUp, Truck,
+  Star, Sparkles
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -33,6 +43,7 @@ interface OrderWithMargins {
     product_margin_override: number | null;
     shipping_margin_override: number | null;
     margin_applied: number;
+    margin_percentage: number | null;
     shipping_air_price?: number;
     shipping_boat_price?: number;
     selected_shipping_method?: string;
@@ -41,7 +52,6 @@ interface OrderWithMargins {
     product?: {
       title: string;
     };
-    // Need to fetch order_items for quantities
     order_items?: Array<{
       quantity: number;
     }>;
@@ -60,7 +70,7 @@ export default function FinanceOrdersPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState<Record<string, string>>({});
   const [defaultProductMargin, setDefaultProductMargin] = useState(80);
-  const [defaultShippingMargin, setDefaultShippingMargin] = useState(0);
+  const [defaultShippingMargin, setDefaultShippingMargin] = useState(5);
 
   useEffect(() => {
     checkUserRole();
@@ -92,7 +102,7 @@ export default function FinanceOrdersPage() {
           if (config.config_key === 'default_margin_percentage') {
             setDefaultProductMargin(parseFloat(config.config_value) || 80);
           } else if (config.config_key === 'default_shipping_margin_percentage') {
-            setDefaultShippingMargin(parseFloat(config.config_value) || 0);
+            setDefaultShippingMargin(parseFloat(config.config_value) || 5);
           }
         });
       }
@@ -121,6 +131,7 @@ export default function FinanceOrdersPage() {
             product_margin_override,
             shipping_margin_override,
             margin_applied,
+            margin_percentage,
             shipping_air_price,
             shipping_boat_price,
             selected_shipping_method,
@@ -198,6 +209,19 @@ export default function FinanceOrdersPage() {
     });
   };
 
+  // Check if order has custom margins (different from defaults)
+  const hasCustomOrderMargin = (order: OrderWithMargins): boolean => {
+    if (!order.order_margin) return false;
+    const productMargin = order.order_margin.margin_percentage;
+    const shippingMargin = order.order_margin.shipping_margin_percentage;
+    return productMargin !== defaultProductMargin || shippingMargin !== defaultShippingMargin;
+  };
+
+  // Check if any product has custom margin override
+  const hasCustomProductMargin = (order: OrderWithMargins): boolean => {
+    return order.order_products?.some(p => p.product_margin_override !== null) || false;
+  };
+
   // Calculate order totals including quantities
   const calculateOrderTotals = (order: OrderWithMargins) => {
     let mfrTotal = 0;
@@ -205,14 +229,11 @@ export default function FinanceOrdersPage() {
     let shippingTotal = 0;
 
     order.order_products?.forEach(product => {
-      // Get total quantity for this product
       const totalQuantity = product.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
       
-      // Calculate product totals
       mfrTotal += (product.product_price || 0) * totalQuantity;
       clientTotal += (product.client_product_price || 0) * totalQuantity;
       
-      // Add shipping (not multiplied by quantity, shipping is per product not per unit)
       if (product.selected_shipping_method === 'air') {
         shippingTotal += product.client_shipping_air_price || 0;
       } else if (product.selected_shipping_method === 'boat') {
@@ -226,6 +247,9 @@ export default function FinanceOrdersPage() {
     return { mfrTotal, clientTotal, shippingTotal, grandTotal, margin };
   };
 
+  /**
+   * Save order-level margin AND recalculate all client prices
+   */
   const handleSaveOrderMargin = async (orderId: string) => {
     setSaving(orderId);
     setMessage({});
@@ -247,8 +271,8 @@ export default function FinanceOrdersPage() {
         return;
       }
 
-      // Save order margin
-      const { error } = await supabase
+      // 1. Save/update order margin record
+      const { error: marginError } = await supabase
         .from('order_margins')
         .upsert({
           order_id: orderId,
@@ -259,36 +283,62 @@ export default function FinanceOrdersPage() {
           onConflict: 'order_id'
         });
 
-      if (error) throw error;
+      if (marginError) throw marginError;
 
-      // Clear product-level overrides for this order
-      const { error: clearError } = await supabase
+      // 2. Get all products for this order to recalculate prices
+      const { data: products, error: fetchError } = await supabase
         .from('order_products')
-        .update({
-          product_margin_override: null,
-          shipping_margin_override: null
-        })
+        .select('id, product_price, shipping_air_price, shipping_boat_price, product_margin_override')
         .eq('order_id', orderId);
 
-      if (clearError) throw clearError;
+      if (fetchError) throw fetchError;
 
-      // Force recalculation of all products in this order
-      const { error: recalcError } = await supabase
-        .from('order_products')
-        .update({
-          margin_percentage: productMargin
-        })
-        .eq('order_id', orderId);
+      // 3. Recalculate and update each product's client prices
+      for (const product of products || []) {
+        // Use product override if exists, otherwise use order margin
+        const effectiveProductMargin = product.product_margin_override ?? productMargin;
+        
+        const updates: any = {
+          margin_percentage: effectiveProductMargin,
+          // Clear overrides when setting order-level margin (unless product has its own override)
+          product_margin_override: product.product_margin_override, // Keep if already set
+          shipping_margin_override: null // Clear shipping override
+        };
 
-      if (recalcError) throw recalcError;
+        // Recalculate client_product_price if product_price exists
+        if (product.product_price && product.product_price > 0) {
+          updates.client_product_price = Math.round(product.product_price * (1 + effectiveProductMargin / 100) * 100) / 100;
+        }
 
-      setMessage({ [orderId]: 'Saved!' });
+        // Recalculate client_shipping_air_price if shipping_air_price exists
+        if (product.shipping_air_price && product.shipping_air_price > 0) {
+          updates.client_shipping_air_price = Math.round(product.shipping_air_price * (1 + shippingMargin / 100) * 100) / 100;
+        }
+
+        // Recalculate client_shipping_boat_price if shipping_boat_price exists
+        if (product.shipping_boat_price && product.shipping_boat_price > 0) {
+          updates.client_shipping_boat_price = Math.round(product.shipping_boat_price * (1 + shippingMargin / 100) * 100) / 100;
+        }
+
+        const { error: updateError } = await supabase
+          .from('order_products')
+          .update(updates)
+          .eq('id', product.id);
+
+        if (updateError) {
+          console.error('Error updating product:', product.id, updateError);
+        }
+      }
+
+      console.log(`✅ Order ${orderId}: Updated margins and recalculated ${products?.length || 0} products`);
+      
+      setMessage({ [orderId]: 'Saved & Recalculated!' });
       setEditingOrder(null);
       await fetchOrders();
       
       setTimeout(() => {
         setMessage({});
-      }, 2000);
+      }, 3000);
     } catch (error) {
       console.error('Error saving margin:', error);
       setMessage({ [orderId]: 'Error saving' });
@@ -297,6 +347,9 @@ export default function FinanceOrdersPage() {
     }
   };
 
+  /**
+   * Save product-level margin override AND recalculate client price
+   */
   const handleSaveProductMargin = async (productId: string, orderId: string) => {
     setSaving(productId);
     setMessage({});
@@ -310,16 +363,47 @@ export default function FinanceOrdersPage() {
         return;
       }
 
-      // Save product-specific margin override and trigger recalculation
+      // 1. Get current product data
+      const { data: product, error: fetchError } = await supabase
+        .from('order_products')
+        .select('product_price, shipping_air_price, shipping_boat_price')
+        .eq('id', productId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // 2. Get order's shipping margin for shipping calculation
+      const order = orders.find(o => o.id === orderId);
+      const shippingMargin = order?.order_margin?.shipping_margin_percentage ?? defaultShippingMargin;
+
+      // 3. Calculate new client prices
+      const updates: any = {
+        product_margin_override: margin,
+        margin_percentage: margin
+      };
+
+      // Recalculate client_product_price
+      if (product.product_price && product.product_price > 0) {
+        updates.client_product_price = Math.round(product.product_price * (1 + margin / 100) * 100) / 100;
+      }
+
+      // Also update shipping with order's shipping margin (in case it wasn't set)
+      if (product.shipping_air_price && product.shipping_air_price > 0) {
+        updates.client_shipping_air_price = Math.round(product.shipping_air_price * (1 + shippingMargin / 100) * 100) / 100;
+      }
+      if (product.shipping_boat_price && product.shipping_boat_price > 0) {
+        updates.client_shipping_boat_price = Math.round(product.shipping_boat_price * (1 + shippingMargin / 100) * 100) / 100;
+      }
+
+      // 4. Save to database
       const { error } = await supabase
         .from('order_products')
-        .update({
-          product_margin_override: margin,
-          margin_percentage: margin
-        })
+        .update(updates)
         .eq('id', productId);
 
       if (error) throw error;
+
+      console.log(`✅ Product ${productId}: Set margin to ${margin}%, client price to $${updates.client_product_price}`);
 
       setMessage({ [productId]: 'Saved!' });
       setEditingProduct(null);
@@ -360,6 +444,16 @@ export default function FinanceOrdersPage() {
         <p className="text-sm sm:text-base text-gray-600">
           View and override margin percentages for specific orders and products
         </p>
+        
+        {/* Default margins info */}
+        <div className="mt-3 flex flex-wrap gap-3 text-xs sm:text-sm">
+          <span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-700">
+            Default Product Margin: <strong>{defaultProductMargin}%</strong>
+          </span>
+          <span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-700">
+            Default Shipping Margin: <strong>{defaultShippingMargin}%</strong>
+          </span>
+        </div>
       </div>
 
       {/* Orders List */}
@@ -379,6 +473,8 @@ export default function FinanceOrdersPage() {
             const isEditingOrder = editingOrder === order.id;
             const totalProducts = order.order_products?.length || 0;
             const totals = calculateOrderTotals(order);
+            const hasCustomOrder = hasCustomOrderMargin(order);
+            const hasCustomProduct = hasCustomProductMargin(order);
             
             return (
               <div key={order.id} className="hover:bg-gray-50">
@@ -400,18 +496,31 @@ export default function FinanceOrdersPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-col gap-1">
                           <div>
-                            <div className="font-medium text-gray-900 text-sm sm:text-base">
+                            <div className="font-medium text-gray-900 text-sm sm:text-base flex items-center gap-2 flex-wrap">
                               {formatOrderNumber(order.order_number)}
                               {order.order_name && (
-                                <span className="text-xs sm:text-sm text-gray-500 ml-2">
+                                <span className="text-xs sm:text-sm text-gray-500">
                                   {order.order_name}
+                                </span>
+                              )}
+                              {/* Custom margin badges */}
+                              {hasCustomOrder && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium rounded">
+                                  <Sparkles className="w-3 h-3" />
+                                  Custom Order
+                                </span>
+                              )}
+                              {hasCustomProduct && !hasCustomOrder && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] sm:text-xs font-medium rounded">
+                                  <Star className="w-3 h-3" />
+                                  Custom Products
                                 </span>
                               )}
                             </div>
                             <div className="text-xs sm:text-sm text-gray-500">
                               {order.client?.name} • {totalProducts} products
                             </div>
-                            {/* NEW: Detailed totals display */}
+                            {/* Detailed totals display */}
                             <div className="text-xs text-gray-600 mt-1 flex flex-wrap items-center gap-1 sm:gap-3">
                               <span className="flex items-center gap-1">
                                 <span className="text-gray-500">Mfr Cost:</span>
@@ -455,13 +564,21 @@ export default function FinanceOrdersPage() {
                           <div className="flex items-center gap-2 sm:gap-4">
                             <div className="text-xs sm:text-sm">
                               <span className="text-gray-500">Product Margin:</span>
-                              <span className="ml-1 sm:ml-2 font-semibold text-gray-900">
+                              <span className={`ml-1 sm:ml-2 font-semibold ${
+                                hasCustomOrder && order.order_margin?.margin_percentage !== defaultProductMargin
+                                  ? 'text-purple-600'
+                                  : 'text-gray-900'
+                              }`}>
                                 {orderMargins[order.id]?.product || defaultProductMargin}%
                               </span>
                             </div>
                             <div className="text-xs sm:text-sm">
                               <span className="text-gray-500">Shipping:</span>
-                              <span className="ml-1 sm:ml-2 font-semibold text-gray-900">
+                              <span className={`ml-1 sm:ml-2 font-semibold ${
+                                hasCustomOrder && order.order_margin?.shipping_margin_percentage !== defaultShippingMargin
+                                  ? 'text-purple-600'
+                                  : 'text-gray-900'
+                              }`}>
                                 {orderMargins[order.id]?.shipping || defaultShippingMargin}%
                               </span>
                             </div>
@@ -528,7 +645,7 @@ export default function FinanceOrdersPage() {
 
                           {message[order.id] && (
                             <span className={`text-xs sm:text-sm font-medium whitespace-nowrap flex-shrink-0 ${
-                              message[order.id] === 'Saved!' ? 'text-green-600' : 'text-red-600'
+                              message[order.id].includes('Saved') ? 'text-green-600' : 'text-red-600'
                             }`}>
                               {message[order.id]}
                             </span>
@@ -546,17 +663,26 @@ export default function FinanceOrdersPage() {
                       {order.order_products.map(product => {
                         const isEditingProduct = editingProduct === product.id;
                         const effectiveMargin = product.product_margin_override || 
-                                               orderMargins[order.id]?.product || '80';
+                                               orderMargins[order.id]?.product || defaultProductMargin.toString();
                         const totalQuantity = product.order_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+                        const hasOverride = product.product_margin_override !== null;
                         
                         return (
-                          <div key={product.id} className="bg-white p-2 sm:p-3 rounded border border-gray-200">
+                          <div key={product.id} className={`bg-white p-2 sm:p-3 rounded border ${
+                            hasOverride ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'
+                          }`}>
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                               <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
                                 <Package className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400 flex-shrink-0 mt-0.5" />
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-xs sm:text-sm font-medium text-gray-700 truncate">
+                                  <div className="text-xs sm:text-sm font-medium text-gray-700 truncate flex items-center gap-2">
                                     {product.product_order_number}
+                                    {hasOverride && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-medium rounded">
+                                        <Star className="w-2.5 h-2.5" />
+                                        Custom
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-gray-500 truncate">
                                     {product.description || product.product?.title}
@@ -585,14 +711,9 @@ export default function FinanceOrdersPage() {
                                     <div className="text-xs sm:text-sm">
                                       <span className="text-gray-500">Margin:</span>
                                       <span className={`ml-1 sm:ml-2 font-semibold ${
-                                        product.product_margin_override
-                                          ? 'text-orange-600'
-                                          : 'text-gray-900'
+                                        hasOverride ? 'text-orange-600' : 'text-gray-900'
                                       }`}>
                                         {effectiveMargin}%
-                                        {product.product_margin_override && (
-                                          <span className="text-xs text-orange-500 ml-1">(custom)</span>
-                                        )}
                                       </span>
                                     </div>
                                     <button
@@ -678,9 +799,17 @@ export default function FinanceOrdersPage() {
             <ul className="list-disc ml-4 sm:ml-5 space-y-1">
               <li><strong>Order-level margins:</strong> Click Edit on any order to set margins for ALL products in that order</li>
               <li><strong>Product-level margins:</strong> Expand an order and edit individual products for custom margins</li>
-              <li><strong>Orange text:</strong> Indicates a custom product margin that overrides the order default</li>
-              <li><strong>Totals:</strong> Show manufacturer cost, client price (with margins), shipping, and grand total</li>
-              <li><strong>Changes are instant:</strong> Margins recalculate client prices immediately upon saving</li>
+              <li>
+                <span className="inline-flex items-center gap-1 px-1 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-medium rounded">
+                  <Sparkles className="w-2.5 h-2.5" />Custom Order
+                </span> = Order has margins different from defaults ({defaultProductMargin}% product, {defaultShippingMargin}% shipping)
+              </li>
+              <li>
+                <span className="inline-flex items-center gap-1 px-1 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-medium rounded">
+                  <Star className="w-2.5 h-2.5" />Custom
+                </span> = Product has its own margin override
+              </li>
+              <li><strong>Changes are instant:</strong> Saving margins now automatically recalculates all client prices!</li>
             </ul>
           </div>
         </div>
