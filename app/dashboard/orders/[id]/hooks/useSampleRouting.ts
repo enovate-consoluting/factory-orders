@@ -2,8 +2,12 @@
  * useSampleRouting Hook
  * Handles independent sample request routing
  * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
- * FIX: Notes no longer accumulate - routing notes go to audit log only
- * Last Modified: Nov 26 2025
+ * 
+ * UPDATED Dec 9, 2024:
+ * - Added sampleApproved function to mark sample as approved
+ * - Notes go to audit log only (not accumulated)
+ * 
+ * Last Modified: December 9, 2024
  */
 
 import { useState } from 'react';
@@ -23,9 +27,11 @@ interface UseSampleRoutingReturn {
   routeToManufacturer: (notes?: string) => Promise<boolean>;
   routeToAdmin: (notes?: string) => Promise<boolean>;
   routeToClient: (notes?: string) => Promise<boolean>;
+  sampleApproved: (notes?: string) => Promise<boolean>;
   canRouteToManufacturer: boolean;
   canRouteToAdmin: boolean;
   canRouteToClient: boolean;
+  canApproveSample: boolean;
 }
 
 export function useSampleRouting(
@@ -50,13 +56,15 @@ export function useSampleRouting(
   };
 
   // ROUTING RULES:
-  // - Admin can route to: Manufacturer, Client
+  // - Admin can route to: Manufacturer, Client, or Approve
   // - Manufacturer can route to: Admin ONLY
   // - Client can route to: Admin ONLY (approve/reject)
   // - NEVER: Manufacturer ↔ Client direct
 
+  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin';
+
   const canRouteToManufacturer = 
-    (userRole === 'admin' || userRole === 'super_admin') && 
+    isAdminOrSuper && 
     currentRouting.routed_to === 'admin';
 
   const canRouteToAdmin = 
@@ -64,7 +72,11 @@ export function useSampleRouting(
     (userRole === 'client' && currentRouting.routed_to === 'client');
 
   const canRouteToClient = 
-    (userRole === 'admin' || userRole === 'super_admin') && 
+    isAdminOrSuper && 
+    currentRouting.routed_to === 'admin';
+
+  const canApproveSample = 
+    isAdminOrSuper && 
     currentRouting.routed_to === 'admin';
 
   const routeSample = async (
@@ -208,6 +220,93 @@ export function useSampleRouting(
     return routeSample('client', 'sent_to_client', notes);
   };
 
+  /**
+   * Mark sample as approved
+   * Only admin/super_admin can approve when sample is with them
+   */
+  const sampleApproved = async (notes?: string): Promise<boolean> => {
+    if (!canApproveSample) {
+      setError('Cannot approve sample from current state');
+      return false;
+    }
+
+    setIsRouting(true);
+    setError(null);
+
+    try {
+      const user = getCurrentUser();
+      const timestamp = new Date().toISOString();
+
+      // Update order with approved status
+      // Sample stays with admin but status changes to approved
+      const updateData: any = {
+        sample_status: 'sample_approved',
+        sample_workflow_status: 'sample_approved',
+        sample_routed_at: timestamp,
+        sample_routed_by: user.id
+        // sample_routed_to stays as 'admin' - sample doesn't move
+      };
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (updateError) throw updateError;
+
+      // Log to audit
+      const roleName = userRole === 'super_admin' ? 'Admin' : 'Admin';
+      
+      await supabase.from('audit_log').insert({
+        user_id: user.id,
+        user_name: user.name,
+        action_type: 'order_sample_approved',
+        target_type: 'order',
+        target_id: orderId,
+        old_value: `status: ${currentRouting.workflow_status}`,
+        new_value: notes && notes.trim() 
+          ? `Sample Approved | Note from ${roleName}: "${notes.trim()}"`
+          : 'Sample Approved',
+        timestamp
+      });
+
+      // Get order info for notification
+      const { data: orderInfo } = await supabase
+        .from('orders')
+        .select('order_number, manufacturer_id')
+        .eq('id', orderId)
+        .single();
+
+      // Notify manufacturer that sample was approved
+      if (orderInfo) {
+        const { data: mfgUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('manufacturer_id', orderInfo.manufacturer_id)
+          .single();
+
+        if (mfgUser) {
+          await supabase.from('notifications').insert({
+            user_id: mfgUser.id,
+            type: 'sample_approved',
+            message: `Sample approved for order ${orderInfo.order_number}`,
+            order_id: orderId
+          });
+        }
+      }
+
+      onUpdate();
+      return true;
+
+    } catch (err: any) {
+      console.error('Error approving sample:', err);
+      setError(err.message || 'Failed to approve sample');
+      return false;
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
   return {
     routing: currentRouting,
     isRouting,
@@ -215,8 +314,10 @@ export function useSampleRouting(
     routeToManufacturer,
     routeToAdmin,
     routeToClient,
+    sampleApproved,
     canRouteToManufacturer,
     canRouteToAdmin,
-    canRouteToClient
+    canRouteToClient,
+    canApproveSample
   };
 }

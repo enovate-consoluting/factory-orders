@@ -15,6 +15,7 @@
 5. Preserve all existing props and interfaces
 6. Use Windows commands (no rm, use del)
 7. Use Propoer standard text not database tags (eg Sample Tech and not sampletech)
+8. DEBUG displays (margins, prices, internal info) - SUPER ADMIN ONLY, never visible to manufacturers or clients
 
 ## User Roles
 - super_admin: Full access, sees costs + client prices

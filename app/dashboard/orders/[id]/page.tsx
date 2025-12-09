@@ -10,6 +10,7 @@
  * ADDED: Inline manufacturer selector in manufacturer card (like client card)
  * ADDED: Product delete functionality with audit logging
  * FIXED: Show all variants including zero quantity ones
+ * UPDATED: Replaced RouteModal with ProductRouteModal import and usages
  * Last Modified: December 8, 2025
  */
 
@@ -44,7 +45,7 @@ import { ManufacturerControlPanel } from './components/manufacturer/Manufacturer
 
 // Modals
 import { HistoryModal } from './components/modals/HistoryModal';
-import { RouteModal } from './components/modals/RouteModal';
+import { ProductRouteModal } from './components/modals/ProductRouteModal';
 import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
 
 // Utilities
@@ -156,8 +157,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     productName: ''
   });
 
-  // Route Modal State
-  const [routeModal, setRouteModal] = useState<{
+  // Product Route Modal State
+  const [productRouteModal, setProductRouteModal] = useState<{
     isOpen: boolean;
     product: any;
   }>({
@@ -652,6 +653,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const roleName = userRole === 'super_admin' ? 'Admin' : 
                       userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
+
+      // Fetch sample margin from system config (with client priority)
+      let sampleMarginPercent = 80; // default
+      
+      // First try to get client-specific margin
+      if (order.client_id) {
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('custom_sample_margin_percentage')
+          .eq('id', order.client_id)
+          .single();
+        
+        if (clientData?.custom_sample_margin_percentage !== null && clientData?.custom_sample_margin_percentage !== undefined) {
+          sampleMarginPercent = parseFloat(clientData.custom_sample_margin_percentage);
+        } else {
+          // Fall back to system default
+          const { data: configData } = await supabase
+            .from('system_config')
+            .select('config_value')
+            .eq('config_key', 'default_sample_margin_percentage')
+            .single();
+          
+          if (configData?.config_value) {
+            sampleMarginPercent = parseFloat(configData.config_value);
+          }
+        }
+      }
       
       const changes: string[] = [];
       
@@ -691,9 +719,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         changes.push(`${orderSampleFiles.length} file(s) uploaded`);
       }
       
+      // Calculate client fee with margin
+      const clientSampleFee = newFee ? Math.round(newFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
+
       const updateData: any = {
         sample_required: true,
         sample_fee: newFee,
+        client_sample_fee: clientSampleFee,
         sample_eta: data.eta || null,
         sample_status: data.status || 'pending',
         sample_workflow_status: data.status || 'pending'
@@ -849,7 +881,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleRouteProduct = (product: any) => {
-    setRouteModal({
+    setProductRouteModal({
       isOpen: true,
       product
     });
@@ -1556,10 +1588,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       </div>
       
       {/* Modals */}
-      <RouteModal
-        isOpen={routeModal.isOpen}
-        onClose={() => setRouteModal({ isOpen: false, product: null })}
-        product={routeModal.product}
+      <ProductRouteModal
+        isOpen={productRouteModal.isOpen}
+        onClose={() => setProductRouteModal({ isOpen: false, product: null })}
+        product={productRouteModal.product}
         onUpdate={refetch}
         userRole={userRole || undefined}
       />

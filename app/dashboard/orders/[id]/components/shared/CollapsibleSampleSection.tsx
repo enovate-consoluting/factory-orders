@@ -9,13 +9,13 @@
  * - Expands to show full OrderSampleRequest form
  * - Matches product card visual style
  * 
- * UPDATED Dec 8, 2025:
- * - Button styles match product cards (solid colors)
- * - "To Mfr" button on collapsed view like products
- * - Consistent naming "Tech Pack / Sample"
- * - Flask/beaker icon (amber color) for sample section
+ * UPDATED Dec 9, 2024:
+ * - Changed direct route buttons to single "Route" button
+ * - Route button opens SampleRouteModal with 3 options
+ * - Route button stays visible when expanded (like product cards)
+ * - Consistent with product card behavior
  * 
- * Last Modified: December 8, 2025
+ * Last Modified: December 9, 2024
  */
 
 import React, { useState } from 'react';
@@ -32,6 +32,7 @@ import {
   History,
   FlaskConical
 } from 'lucide-react';
+import { SampleRouteModal } from '../modals/SampleRouteModal';
 
 interface CollapsibleSampleSectionProps {
   orderId: string;
@@ -56,9 +57,10 @@ interface CollapsibleSampleSectionProps {
   onExistingFileDelete: (mediaId: string) => void;
   onViewHistory: () => void;
   onSave: (data: any) => void;
-  onRouteToManufacturer: () => void;
-  onRouteToAdmin: () => void;
-  onRouteToClient: () => void;
+  onRouteToManufacturer: (notes?: string) => Promise<boolean>;
+  onRouteToAdmin: (notes?: string) => Promise<boolean>;
+  onRouteToClient: (notes?: string) => Promise<boolean>;
+  onSampleApproved?: (notes?: string) => Promise<boolean>;
   canRouteToManufacturer: boolean;
   canRouteToAdmin: boolean;
   canRouteToClient: boolean;
@@ -77,6 +79,7 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
   sampleRoutedTo,
   sampleWorkflowStatus,
   isManufacturer,
+  isClient,
   userRole,
   hasNewHistory = false,
   existingMedia,
@@ -84,13 +87,42 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
   onViewHistory,
   onRouteToManufacturer,
   onRouteToAdmin,
+  onRouteToClient,
+  onSampleApproved,
   canRouteToManufacturer,
   canRouteToAdmin,
+  canRouteToClient,
   isRouting,
   t = (key) => key,
   defaultExpanded = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [showRouteModal, setShowRouteModal] = useState(false);
+
+  // Determine if user can route at all (show Route button)
+  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin';
+  
+  // Admin can always see Route button when sample is with them
+  // Manufacturer can see Route button when sample is with them
+  // Client can see Route button when sample is with them
+  const canShowRouteButton = 
+    (isAdminOrSuper && sampleRoutedTo === 'admin') ||
+    (isManufacturer && sampleRoutedTo === 'manufacturer') ||
+    (isClient && sampleRoutedTo === 'client');
+
+  // Admin can approve sample when it's with them
+  const canApproveSample = isAdminOrSuper && sampleRoutedTo === 'admin';
+
+  // Handle sample approved - update status to approved
+  const handleSampleApproved = async (notes?: string): Promise<boolean> => {
+    if (onSampleApproved) {
+      return onSampleApproved(notes);
+    }
+    // Fallback: If no onSampleApproved provided, we need to handle it
+    // This will be implemented in the parent component
+    console.warn('onSampleApproved not provided');
+    return false;
+  };
 
   // Determine routing badge
   const getRoutingBadge = () => {
@@ -255,30 +287,36 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
               </div>
               
               {/* Quick Stats Row */}
-              <div className="flex items-center gap-3 mt-1.5 text-xs text-gray-600 flex-wrap">
+              <div className="flex items-center gap-4 mt-1.5 text-sm text-gray-600 flex-wrap">
                 {sampleFee && parseFloat(sampleFee) > 0 && (
-                  <span className="flex items-center gap-1">
-                    <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="font-medium">{parseFloat(sampleFee).toLocaleString()}</span>
+                  <span className="flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4 text-green-500" />
+                    <span className="font-medium text-gray-700">${parseFloat(sampleFee).toLocaleString()}</span>
                   </span>
                 )}
                 {sampleETA && (
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{sampleETA}</span>
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-blue-500" />
+                    <span className="font-medium text-gray-700">
+                      {new Date(sampleETA + 'T00:00:00').toLocaleDateString('en-US', { 
+                        month: '2-digit', 
+                        day: '2-digit', 
+                        year: 'numeric' 
+                      })}
+                    </span>
                   </span>
                 )}
                 {existingMedia.length > 0 && (
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3.5 h-3.5 text-gray-400" />
-                    <span>{existingMedia.length} file{existingMedia.length !== 1 ? 's' : ''}</span>
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-purple-500" />
+                    <span className="font-medium text-gray-700">{existingMedia.length} file{existingMedia.length !== 1 ? 's' : ''}</span>
                   </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Right: Action Buttons - Match Product Card Style */}
+          {/* Right: Action Buttons - ALWAYS VISIBLE (collapsed and expanded) */}
           <div className="flex items-center gap-2 flex-shrink-0 ml-2">
             {/* History Button - Solid gray like product cards */}
             <button
@@ -295,36 +333,19 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
               )}
             </button>
 
-            {/* Route Buttons - Solid blue like product cards */}
-            {!isExpanded && (
-              <>
-                {canRouteToManufacturer && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRouteToManufacturer();
-                    }}
-                    disabled={isRouting}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    <Send className="w-4 h-4" />
-                    To Mfr
-                  </button>
-                )}
-                {canRouteToAdmin && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRouteToAdmin();
-                    }}
-                    disabled={isRouting}
-                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                  >
-                    <Send className="w-4 h-4" />
-                    To Admin
-                  </button>
-                )}
-              </>
+            {/* Route Button - Opens Modal - VISIBLE COLLAPSED AND EXPANDED */}
+            {canShowRouteButton && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRouteModal(true);
+                }}
+                disabled={isRouting}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                <Send className="w-4 h-4" />
+                Route
+              </button>
             )}
           </div>
         </div>
@@ -336,6 +357,20 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
           </div>
         )}
       </div>
+
+      {/* Route Modal */}
+      <SampleRouteModal
+        isOpen={showRouteModal}
+        onClose={() => setShowRouteModal(false)}
+        onRouteToManufacturer={onRouteToManufacturer}
+        onRouteToClient={onRouteToClient}
+        onSampleApproved={handleSampleApproved}
+        canRouteToManufacturer={canRouteToManufacturer}
+        canRouteToClient={canRouteToClient}
+        canApproveSample={canApproveSample}
+        currentRoutedTo={sampleRoutedTo}
+        isRouting={isRouting}
+      />
     </div>
   );
 };

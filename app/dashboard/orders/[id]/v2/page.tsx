@@ -42,7 +42,7 @@ import { ManufacturerProductCard } from '../components/manufacturer/Manufacturer
 
 // Modals (kept)
 import { HistoryModal } from '../components/modals/HistoryModal';
-import { RouteModal } from '../components/modals/RouteModal';
+import { ProductRouteModal } from '../components/modals/ProductRouteModal';
 import { SaveAllRouteModal } from '../components/modals/SaveAllRouteModal';
 
 // Utilities
@@ -133,7 +133,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
   });
 
   // Route Modal State
-  const [routeModal, setRouteModal] = useState<{ isOpen: boolean; product: any }>({
+  const [productRouteModal, setProductRouteModal] = useState<{ isOpen: boolean; product: any }>({
     isOpen: false,
     product: null
   });
@@ -499,9 +499,41 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const roleName = userRole === 'super_admin' ? 'Admin' : userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
 
+      // Fetch sample margin from system config (with client priority)
+      let sampleMarginPercent = 80; // default
+      
+      // First try to get client-specific margin
+      if (order.client_id) {
+        const { data: clientData } = await supabase
+          .from('clients')
+          .select('custom_sample_margin_percentage')
+          .eq('id', order.client_id)
+          .single();
+        
+        if (clientData?.custom_sample_margin_percentage !== null && clientData?.custom_sample_margin_percentage !== undefined) {
+          sampleMarginPercent = parseFloat(clientData.custom_sample_margin_percentage);
+        } else {
+          // Fall back to system default
+          const { data: configData } = await supabase
+            .from('system_config')
+            .select('config_value')
+            .eq('config_key', 'default_sample_margin_percentage')
+            .single();
+          
+          if (configData?.config_value) {
+            sampleMarginPercent = parseFloat(configData.config_value);
+          }
+        }
+      }
+
+      // Calculate fees
+      const mfgSampleFee = data.fee ? parseFloat(data.fee) : null;
+      const clientSampleFee = mfgSampleFee ? Math.round(mfgSampleFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
+
       const updateData: any = {
         sample_required: true,
-        sample_fee: data.fee ? parseFloat(data.fee) : null,
+        sample_fee: mfgSampleFee,
+        client_sample_fee: clientSampleFee,
         sample_eta: data.eta || null,
         sample_status: data.status || 'pending',
         sample_workflow_status: data.status || 'pending'
@@ -576,7 +608,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
 
   // Route product
   const handleRouteProduct = (product: any) => {
-    setRouteModal({ isOpen: true, product });
+    setProductRouteModal({ isOpen: true, product });
   };
 
   // Save all and route
@@ -960,10 +992,10 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
       </div>
 
       {/* Modals */}
-      <RouteModal
-        isOpen={routeModal.isOpen}
-        onClose={() => setRouteModal({ isOpen: false, product: null })}
-        product={routeModal.product}
+      <ProductRouteModal
+        isOpen={productRouteModal.isOpen}
+        onClose={() => setProductRouteModal({ isOpen: false, product: null })}
+        product={productRouteModal.product}
         onUpdate={refetch}
         userRole={userRole || undefined}
       />

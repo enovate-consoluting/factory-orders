@@ -10,7 +10,7 @@ import { X, Send, Package, AlertCircle, CheckCircle, RotateCcw, Loader2, Factory
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from 'react-i18next';
 
-interface RouteModalProps {
+interface ProductRouteModalProps {
   isOpen: boolean;
   onClose: () => void;
   product: any;
@@ -18,7 +18,7 @@ interface RouteModalProps {
   userRole?: string;
 }
 
-export function RouteModal({ isOpen, onClose, product, onUpdate, userRole }: RouteModalProps) {
+export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole }: ProductRouteModalProps) {
   const { t } = useTranslation();
   const [selectedRoute, setSelectedRoute] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
