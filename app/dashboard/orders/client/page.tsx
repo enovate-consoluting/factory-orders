@@ -272,7 +272,7 @@ export default function ClientOrdersPage() {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('order_products')
         .update({
           product_status: 'client_approved',
@@ -282,15 +282,24 @@ export default function ClientOrdersPage() {
           routed_at: new Date().toISOString(),
           routed_by: user.id
         })
-        .eq('id', productId);
+        .eq('id', productId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error details:', JSON.stringify(error, null, 2));
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        throw error;
+      }
+
+      console.log('Update successful, data:', data);
 
       if (user.email) {
         await fetchOrders(user.email);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error approving product:', error);
+      console.error('Error stringified:', JSON.stringify(error, null, 2));
       alert('Failed to approve product. Please try again.');
     } finally {
       setApprovingProductId(null);

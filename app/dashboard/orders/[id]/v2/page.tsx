@@ -37,7 +37,7 @@ import { CollapsibleSampleSection } from '../components/shared/CollapsibleSample
 
 // Existing Components (kept)
 import { OrderSampleRequest } from '../../shared-components/OrderSampleRequest';
-import { AdminProductCard } from '../components/admin/AdminProductCard';
+import { AdminProductCardV2 } from './components/AdminProductCardV2';
 import { ManufacturerProductCard } from '../components/manufacturer/ManufacturerProductCard';
 
 // Modals (kept)
@@ -611,6 +611,51 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
     setProductRouteModal({ isOpen: true, product });
   };
 
+  // Delete product handler
+  const handleDeleteProduct = async (productId: string) => {
+    if (!order) return;
+    
+    try {
+      // Delete order_items first
+      await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_product_id', productId);
+      
+      // Delete order_media
+      await supabase
+        .from('order_media')
+        .delete()
+        .eq('order_product_id', productId);
+      
+      // Delete the product itself
+      const { error } = await supabase
+        .from('order_products')
+        .delete()
+        .eq('id', productId);
+      
+      if (error) throw error;
+      
+      // Log to audit
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await supabase.from('audit_log').insert({
+        user_id: user.id || crypto.randomUUID(),
+        user_name: user.name || user.email || 'Admin User',
+        action_type: 'product_deleted',
+        target_type: 'order_product',
+        target_id: productId,
+        old_value: JSON.stringify({ order_id: order.id }),
+        new_value: null,
+        timestamp: new Date().toISOString()
+      });
+      
+      await refetch();
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      alert('Error deleting product. Please try again.');
+    }
+  };
+
   // Save all and route
   const handleSaveAllAndRoute = () => {
     setSaveAllRouteModal({ isOpen: true, isSaving: false });
@@ -770,7 +815,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
           ) : (
             <div className="space-y-3">
               {clientProducts.map((product: any) => (
-                <AdminProductCard
+                <AdminProductCardV2
                   key={product.id}
                   product={product}
                   items={product.order_items || []}
@@ -968,7 +1013,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
               }
 
               return (
-                <AdminProductCard
+                <AdminProductCardV2
                   key={product.id}
                   ref={(ref: any) => {
                     if (ref) adminCardRefs.current.set(product.id, ref);
@@ -980,6 +1025,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
                   onUpdate={refetch}
                   onRoute={handleRouteProduct}
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
+                  onDelete={handleDeleteProduct}
                   hasNewHistory={hasNewHistory(product.id)}
                   autoCollapse={isClientRequest ? false : shouldAutoCollapse}
                   translate={translate}
