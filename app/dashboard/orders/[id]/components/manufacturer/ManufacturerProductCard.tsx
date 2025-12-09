@@ -1334,10 +1334,12 @@ export const ManufacturerProductCard = forwardRef<
                 <span className="break-all">{(product as any).product_order_number}</span>
                 <span className="hidden sm:inline">•</span>
                 <span>Qty: {totalQuantity}</span>
-                {/* DEBUG: Show current margins */}
-                <span className="text-blue-600 font-medium">
-                  [Margins: P:{productMargin}% S:{shippingMargin}% Sample:{sampleMargin}%]
-                </span>
+                {/* DEBUG: Show current margins - SUPER ADMIN ONLY */}
+                {isSuperAdminView && (
+                  <span className="text-blue-600 font-medium">
+                    [Margins: P:{productMargin}% S:{shippingMargin}% Sample:{sampleMargin}%]
+                  </span>
+                )}
               </div>
             </div>
           </div>

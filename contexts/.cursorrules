@@ -1,0 +1,34 @@
+# Factory Orders Project
+
+## Tech Stack
+- Next.js 15.5.6 (App Router)
+- TypeScript
+- Tailwind CSS
+- Supabase (PostgreSQL)
+- Vercel deployment
+
+## Code Rules
+1. NEVER remove existing functionality - only ADD
+2. Every file needs header comment with name, description, roles, date
+3. Always run `npm run build` before pushing to git
+4. Ask before removing any code/imports
+5. Preserve all existing props and interfaces
+6. Use Windows commands (no rm, use del)
+7. Use Propoer standard text not database tags (eg Sample Tech and not sampletech)
+
+## User Roles
+- super_admin: Full access, sees costs + client prices
+- admin: Manage orders, sees client prices only
+- manufacturer: Pricing, production, sees costs only
+- client: View/approve orders
+
+## Key Folders
+- app/dashboard/orders/[id]/components/ - Order detail components
+- app/dashboard/orders/shared-components/ - Shared components
+- app/dashboard/orders/[id]/hooks/ - Custom hooks
+- lib/ - Utilities and Supabase client
+
+## When Modifying Files
+- Don't rewrite entire files - make targeted changes
+- Show what changed, not the whole file
+- Test build locally before suggesting git push
