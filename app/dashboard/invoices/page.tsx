@@ -17,7 +17,7 @@ import {
   FileText, Calendar, Search, CheckCircle, Clock, Send, 
   AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
   ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
-  Package, Shield, Inbox, Play, FileX, Ban
+  Package, Shield, Inbox, Play, FileX, Ban, CreditCard, Loader2
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 
@@ -42,6 +42,7 @@ interface Invoice {
   sent_at?: string;
   order_id?: string;
   pdf_url?: string;
+  pay_link?: string;
   voided?: boolean;
   voided_at?: string;
   void_reason?: string;
@@ -120,6 +121,9 @@ export default function InvoicesPage() {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  
+  // Pay link regeneration
+  const [regeneratingPayLink, setRegeneratingPayLink] = useState<string | null>(null);
   
   // Void Invoice Modal
   const [voidModal, setVoidModal] = useState<{
@@ -726,6 +730,66 @@ export default function InvoicesPage() {
     return false;
   };
 
+  // Check if user can regenerate pay link
+  const canRegeneratePayLink = (invoice: Invoice): boolean => {
+    if (invoice.voided) return false;
+    if (invoice.status === 'paid') return false;
+    if (invoice.status !== 'sent') return false;
+    return user?.role === 'super_admin' || user?.role === 'admin';
+  };
+
+  // Regenerate Square payment link
+  const handleRegeneratePayLink = async (invoice: Invoice) => {
+    if (!invoice.id || !invoice.amount) {
+      notify.error('Invalid invoice data');
+      return;
+    }
+
+    setRegeneratingPayLink(invoice.id);
+
+    try {
+      const response = await fetch('/api/square/create-payment-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoice_number,
+          amount: parseFloat(invoice.amount.toString()),
+          clientName: invoice.client?.name || 'Client',
+          clientEmail: invoice.client?.email || '',
+          description: `Invoice ${invoice.invoice_number}${invoice.order?.order_name ? ` - ${invoice.order.order_name}` : ''}`
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create payment link');
+      }
+
+      // Update invoice with new pay_link
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({ pay_link: result.paymentLink })
+        .eq('id', invoice.id);
+
+      if (updateError) {
+        console.error('Error updating invoice with pay link:', updateError);
+        notify.error('Payment link created but failed to save');
+        return;
+      }
+
+      notify.success('Payment link generated successfully');
+      fetchData();
+
+    } catch (error) {
+      console.error('Error regenerating pay link:', error);
+      notify.error(error instanceof Error ? error.message : 'Failed to generate payment link');
+    } finally {
+      setRegeneratingPayLink(null);
+    }
+  };
+
   // Render Order List View (shared between Approval and In Production tabs)
   const renderOrderListView = (orders: OrderForApproval[], tabType: 'approval' | 'inproduction') => {
     const isProductionTab = tabType === 'inproduction';
@@ -1075,6 +1139,25 @@ export default function InvoicesPage() {
                             <Eye className="w-4 h-4" />
                           </Link>
                         )}
+                        {/* Regenerate Pay Link Button */}
+                        {!isClient && canRegeneratePayLink(invoice) && (
+                          <button
+                            onClick={() => handleRegeneratePayLink(invoice)}
+                            disabled={regeneratingPayLink === invoice.id}
+                            className={`p-2 rounded-lg transition-colors ${
+                              invoice.pay_link 
+                                ? 'text-green-500 hover:text-green-700 hover:bg-green-50' 
+                                : 'text-blue-500 hover:text-blue-700 hover:bg-blue-50'
+                            } disabled:opacity-50`}
+                            title={invoice.pay_link ? 'Regenerate Pay Link' : 'Generate Pay Link'}
+                          >
+                            {regeneratingPayLink === invoice.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <CreditCard className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                         {/* Void Button */}
                         {!isClient && canVoid(invoice) && (
                           <button
@@ -1180,6 +1263,25 @@ export default function InvoicesPage() {
                       >
                         <Eye className="w-4 h-4" />
                       </Link>
+                    )}
+                    {/* Regenerate Pay Link Button - Mobile */}
+                    {!isClient && canRegeneratePayLink(invoice) && (
+                      <button
+                        onClick={() => handleRegeneratePayLink(invoice)}
+                        disabled={regeneratingPayLink === invoice.id}
+                        className={`p-2 rounded-lg transition-colors ${
+                          invoice.pay_link 
+                            ? 'text-green-500 hover:text-green-700 hover:bg-green-50' 
+                            : 'text-blue-500 hover:text-blue-700 hover:bg-blue-50'
+                        } disabled:opacity-50`}
+                        title={invoice.pay_link ? 'Regenerate Pay Link' : 'Generate Pay Link'}
+                      >
+                        {regeneratingPayLink === invoice.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <CreditCard className="w-4 h-4" />
+                        )}
+                      </button>
                     )}
                     {/* PDF Download Button */}
                     {invoice.pdf_url && (
