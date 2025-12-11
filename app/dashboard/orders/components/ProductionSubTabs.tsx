@@ -37,34 +37,38 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   onSubTabChange
 }) => {
   // UPDATED: Use getLabel helper for proper fallbacks
-  const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string }[] = [
+  const subTabs: { key: ProductionSubTab; label: string; count: number; icon: React.ReactNode; color: string; badgeColor: string }[] = [
     {
       key: 'sample_approved',
       label: getLabel(t, 'sampleApproved', 'Sample Approved'),
       count: tabCounts.sample_approved,
       icon: <Award className="w-4 h-4" />,
-      color: 'amber'
-    },
-    {
-      key: 'sample_in_production',
-      label: getLabel(t, 'sampleInProduction', 'Sample In Production'),
-      count: tabCounts.sample_in_production,
-      icon: <FlaskConical className="w-4 h-4" />,
-      color: 'purple'
+      color: 'amber',
+      badgeColor: 'green'
     },
     {
       key: 'approved_for_production',
       label: getLabel(t, 'approvedForProd', 'Approved for Production'),
       count: tabCounts.approved_for_production,
       icon: <CheckCircle className="w-4 h-4" />,
-      color: 'green'
+      color: 'green',
+      badgeColor: 'green'
+    },
+    {
+      key: 'sample_in_production',
+      label: getLabel(t, 'sampleInProduction', 'Sample In Production'),
+      count: tabCounts.sample_in_production,
+      icon: <FlaskConical className="w-4 h-4" />,
+      color: 'blue',
+      badgeColor: 'blue'
     },
     {
       key: 'in_production',
       label: getLabel(t, 'inProduction', 'In Production'),
       count: tabCounts.in_production,
       icon: <Wrench className="w-4 h-4" />,
-      color: 'blue'
+      color: 'blue',
+      badgeColor: 'blue'
     }
   ];
 
@@ -87,21 +91,15 @@ export const ProductionSubTabs: React.FC<ProductionSubTabsProps> = ({
   };
 
   const getBadgeStyles = (tab: typeof subTabs[0], isActive: boolean) => {
-    if (isActive) {
-      switch (tab.color) {
-        case 'amber':
-          return 'bg-amber-200 text-amber-800';
-        case 'purple':
-          return 'bg-purple-200 text-purple-800';
-        case 'green':
-          return 'bg-green-200 text-green-800';
-        case 'blue':
-          return 'bg-blue-200 text-blue-800';
-        default:
-          return 'bg-gray-200 text-gray-800';
-      }
+    // Use badgeColor for the number circle (separate from tab background color)
+    switch (tab.badgeColor) {
+      case 'green':
+        return isActive ? 'bg-green-200 text-green-800' : 'bg-green-100 text-green-700';
+      case 'blue':
+        return isActive ? 'bg-blue-200 text-blue-800' : 'bg-blue-100 text-blue-700';
+      default:
+        return isActive ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-600';
     }
-    return 'bg-gray-100 text-gray-600';
   };
 
   return (

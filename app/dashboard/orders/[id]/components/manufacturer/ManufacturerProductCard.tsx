@@ -915,12 +915,20 @@ export const ManufacturerProductCard = forwardRef<
         ? "in_production"
         : "pending_manufacturer";
 
+      // Build update data
+      const updateData: any = {
+        is_locked: newLockStatus,
+        product_status: newProductStatus,
+      };
+
+      // Set production_start_date when locking (starting production)
+      if (newLockStatus) {
+        updateData.production_start_date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      }
+
       await supabase
         .from("order_products")
-        .update({
-          is_locked: newLockStatus,
-          product_status: newProductStatus,
-        })
+        .update(updateData)
         .eq("id", (product as any).id);
 
       if (newLockStatus && !forceExpanded) {

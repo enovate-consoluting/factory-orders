@@ -1289,8 +1289,8 @@ export default function OrdersPage() {
             </Link>
           )}
           
-          {/* Layout Toggle - Super Admin Only */}
-          {(userRole === 'super_admin' || userRole === 'admin') && (
+          {/* Layout Toggle - Admin, Super Admin, and Manufacturer */}
+          {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manufacturer') && (
             <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
               <span className={`text-xs font-medium transition-colors ${!useNewLayout ? 'text-gray-900' : 'text-gray-400'}`}>
                 Classic

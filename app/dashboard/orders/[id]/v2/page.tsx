@@ -39,6 +39,8 @@ import { CollapsibleSampleSection } from '../components/shared/CollapsibleSample
 import { OrderSampleRequest } from '../../shared-components/OrderSampleRequest';
 import { AdminProductCardV2 } from './components/AdminProductCardV2';
 import { ManufacturerProductCard } from '../components/manufacturer/ManufacturerProductCard';
+import { ManufacturerProductCardV2 } from './components/ManufacturerProductCardV2';
+import { ManufacturerControlPanelV2 } from './components/ManufacturerControlPanelV2';
 
 // Modals (kept)
 import { HistoryModal } from '../components/modals/HistoryModal';
@@ -837,23 +839,38 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
   // ADMIN/MANUFACTURER VIEW
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* CONSOLIDATED HEADER */}
-      <OrderHeaderV2
-        order={order}
-        totalAmount={totalAmount}
-        userRole={userRole}
-        visibleProducts={isManufacturer ? manufacturerProducts : adminProducts}
-        availableClients={availableClients}
-        availableManufacturers={availableManufacturers}
-        onEditDraft={() => router.push(`/dashboard/orders/edit/${order.id}`)}
-        onTogglePaid={handleTogglePaid}
-        onClientChange={handleClientChange}
-        onManufacturerChange={handleManufacturerChange}
-        onSaveAndRoute={handleSaveAllAndRoute}
-        onPrintAll={handlePrintAll}
-        onRefetch={refetch}
-        sampleNeedsRouting={order?.sample_routed_to === 'admin'}
-      />
+      {/* MANUFACTURER CONTROL PANEL - V2 */}
+      {isManufacturer && (
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 pt-4">
+          <ManufacturerControlPanelV2
+            order={order}
+            visibleProducts={visibleProducts}
+            onSaveAndRoute={handleSaveAllAndRoute}
+            onPrintAll={handlePrintAll}
+            onUpdate={refetch}
+          />
+        </div>
+      )}
+
+      {/* CONSOLIDATED HEADER - Admin/Super Admin only */}
+      {!isManufacturer && (
+        <OrderHeaderV2
+          order={order}
+          totalAmount={totalAmount}
+          userRole={userRole}
+          visibleProducts={isManufacturer ? manufacturerProducts : adminProducts}
+          availableClients={availableClients}
+          availableManufacturers={availableManufacturers}
+          onEditDraft={() => router.push(`/dashboard/orders/edit/${order.id}`)}
+          onTogglePaid={handleTogglePaid}
+          onClientChange={handleClientChange}
+          onManufacturerChange={handleManufacturerChange}
+          onSaveAndRoute={handleSaveAllAndRoute}
+          onPrintAll={handlePrintAll}
+          onRefetch={refetch}
+          sampleNeedsRouting={order?.sample_routed_to === 'admin'}
+        />
+      )}
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 pb-20">
         {/* Client Notes (for client_request orders) */}
@@ -990,7 +1007,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
 
               if (isManufacturer) {
                 return (
-                  <ManufacturerProductCard
+                  <ManufacturerProductCardV2
                     key={product.id}
                     ref={(ref: any) => {
                       if (ref) manufacturerCardRefs.current.set(product.id, ref);

@@ -16,7 +16,7 @@ import {
   Loader2, ChevronDown, ChevronRight,
   FileText, Truck, Check, X, Image as ImageIcon,
   Layers, Clock, AlertTriangle, Box, MessageSquare, Send,
-  Plus
+  Plus, FlaskConical
 } from 'lucide-react';
 
 interface OrderItem {
@@ -41,6 +41,10 @@ interface OrderProduct {
   sample_required?: boolean;
   order_items?: OrderItem[];
   order_media?: any[];
+  // ETA fields
+  production_start_date?: string;
+  production_days?: number;
+  estimated_ship_date?: string;
 }
 
 interface Order {
@@ -69,6 +73,63 @@ interface ClientNote {
   created_by_role: 'client' | 'admin';
   created_at: string;
 }
+
+// ETA Calculation Helper
+// Priority:
+// 1. If in production: production_start_date + production_days + shipping_days (accurate)
+// 2. If production_days set but not in production: today + production_days + shipping_days (estimate)
+// 3. Otherwise: no ETA
+// Shipping days: Air = 15, Boat = 25, No selection = 25 (use longer estimate)
+const calculateProductETA = (product: OrderProduct): { eta: Date | null; shippingNotSelected: boolean; isEstimate: boolean } => {
+  const productAny = product as any;
+  
+  // Need production_days at minimum to calculate any ETA
+  if (!productAny.production_days) {
+    return { eta: null, shippingNotSelected: false, isEstimate: false };
+  }
+
+  const productionDays = parseInt(productAny.production_days) || 0;
+  
+  // Determine shipping days
+  let shippingDays = 25; // Default to boat (longer estimate)
+  let shippingNotSelected = false;
+  
+  if (productAny.selected_shipping_method === 'air') {
+    shippingDays = 15;
+  } else if (productAny.selected_shipping_method === 'boat') {
+    shippingDays = 25;
+  } else {
+    // No shipping method selected - use boat estimate and flag it
+    shippingNotSelected = true;
+  }
+
+  let startDate: Date;
+  let isEstimate = false;
+
+  // Priority 1: Use production_start_date if in production
+  if (productAny.production_start_date && productAny.product_status === 'in_production') {
+    startDate = new Date(productAny.production_start_date);
+  } else {
+    // Priority 2: Use today as estimate start date
+    startDate = new Date();
+    isEstimate = true;
+  }
+
+  // Calculate ETA
+  const eta = new Date(startDate);
+  eta.setDate(eta.getDate() + productionDays + shippingDays);
+
+  return { eta, shippingNotSelected, isEstimate };
+};
+
+// Format ETA for display
+const formatETA = (date: Date): string => {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
 
 export default function ClientOrdersPage() {
   const router = useRouter();
@@ -192,6 +253,9 @@ export default function ClientOrdersPage() {
             selected_shipping_method,
             sample_fee,
             sample_required,
+            production_start_date,
+            production_days,
+            estimated_ship_date,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
           )
@@ -403,9 +467,11 @@ export default function ClientOrdersPage() {
     const statusMap: Record<string, { label: string; classes: string }> = {
       'draft': { label: 'Draft', classes: 'bg-gray-100 text-gray-600' },
       'pending': { label: 'Pending', classes: 'bg-amber-100 text-amber-700' },
+      'pending_admin': { label: 'Pending Admin', classes: 'bg-amber-100 text-amber-700' },
       'in_progress': { label: 'In Progress', classes: 'bg-blue-100 text-blue-700' },
       'pending_client_approval': { label: 'Awaiting Approval', classes: 'bg-amber-100 text-amber-700' },
       'client_approved': { label: 'Approved', classes: 'bg-green-100 text-green-700' },
+      'approved_for_production': { label: 'Approved For Production', classes: 'bg-green-100 text-green-700' },
       'in_production': { label: 'In Production', classes: 'bg-purple-100 text-purple-700' },
       'shipped': { label: 'Shipped', classes: 'bg-indigo-100 text-indigo-700' },
       'completed': { label: 'Completed', classes: 'bg-green-100 text-green-700' },
@@ -414,7 +480,9 @@ export default function ClientOrdersPage() {
       'client_request': { label: 'Pending Review', classes: 'bg-teal-100 text-teal-700' }
     };
     
-    const config = statusMap[status] || { label: status.replace(/_/g, ' '), classes: 'bg-gray-100 text-gray-600' };
+    // Fallback: capitalize each word properly
+    const formatStatus = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const config = statusMap[status] || { label: formatStatus(status), classes: 'bg-gray-100 text-gray-600' };
     return (
       <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${config.classes}`}>
         {config.label}
@@ -624,7 +692,7 @@ export default function ClientOrdersPage() {
           >
             <div className="flex flex-col items-center">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-amber-100 mb-2 sm:mb-3">
-                <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
+                <FlaskConical className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
               </div>
               <p className="text-2xl sm:text-3xl font-bold text-gray-900">{samplesAwaitingApproval}</p>
               <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600 leading-tight">Samples Awaiting Approval</p>
@@ -801,6 +869,45 @@ export default function ClientOrdersPage() {
                                   1 sample
                                 </span>
                               )}
+                              {/* Sample ETA Badge */}
+                              {order.sample_eta && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                                  <Clock className="w-3 h-3" />
+                                  Sample ETA: {formatDate(order.sample_eta)}
+                                </span>
+                              )}
+                              {/* Product ETA Badge(s) */}
+                              {(() => {
+                                const productsWithETA = order.order_products?.filter(p => {
+                                  const { eta } = calculateProductETA(p);
+                                  return eta !== null;
+                                }) || [];
+                                
+                                if (productsWithETA.length === 0) return null;
+                                
+                                if (productsWithETA.length === 1) {
+                                  const { eta, shippingNotSelected, isEstimate } = calculateProductETA(productsWithETA[0]);
+                                  if (!eta) return null;
+                                  return (
+                                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      isEstimate ? 'bg-purple-100 text-purple-700' :
+                                      shippingNotSelected ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
+                                    }`}>
+                                      <Truck className="w-3 h-3" />
+                                      {isEstimate ? 'Est. ' : ''}ETA: {formatETA(eta)}
+                                      {shippingNotSelected && !isEstimate && <span className="text-orange-500">*</span>}
+                                    </span>
+                                  );
+                                }
+                                
+                                // Multiple products - show count
+                                return (
+                                  <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                    <Truck className="w-3 h-3" />
+                                    {productsWithETA.length} ETAs
+                                  </span>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -862,71 +969,106 @@ export default function ClientOrdersPage() {
                             </div>
                           )}
                           
-                          {/* Sample Section */}
-                          {hasSampleForClient && (activeTab === 'orders' || activeTab === 'samples' || activeTab === 'approved') && (
-                            <div className={`rounded-xl border p-3 sm:p-4 ${
-                              sampleApproved
-                                ? 'bg-green-50 border-green-200'
-                                : 'bg-white border-amber-200'
+                          {/* Sample Card - Shows for ALL orders with sample_required */}
+                          {order.sample_required && (
+                            <div className={`rounded-xl border-2 overflow-hidden bg-white ${
+                              order.sample_status === 'approved'
+                                ? 'border-green-400'
+                                : 'border-amber-400'
                             }`}>
-                              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
-                                <div className="flex-1 w-full sm:w-auto">
-                                  <div className="flex items-center gap-2 sm:gap-3">
-                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                      sampleApproved ? 'bg-green-500' : 'bg-amber-500'
+                              {/* Sample Header */}
+                              <div className="px-3 sm:px-4 py-2 sm:py-3">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                                  {/* Sample Info */}
+                                  <div className="flex items-start gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
+                                    <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                      order.sample_status === 'approved' ? 'bg-green-500' : 'bg-amber-500'
                                     }`}>
-                                      <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+                                      <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <h4 className="font-semibold text-gray-900 text-sm sm:text-base">Sample Request</h4>
-                                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-600">
-                                        {order.sample_fee && (
-                                          <span>Fee: <span className="font-semibold">${formatCurrency(order.sample_fee)}</span></span>
-                                        )}
-                                        {order.sample_eta && (
-                                          <span className="flex items-center gap-1">
-                                            <Truck className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                            ETA: {formatDate(order.sample_eta)}
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-semibold text-gray-900 text-sm sm:text-base">
+                                          Sample Request
+                                        </h4>
+                                        {order.sample_status === 'approved' ? (
+                                          <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                            Approved
+                                          </span>
+                                        ) : order.sample_routed_to === 'client' ? (
+                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                                            Awaiting Approval
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                                            With Manufacturer
                                           </span>
                                         )}
-                                        {sampleMedia.length > 0 && (
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              openMediaModal(sampleMedia, 'Sample Media');
-                                            }}
-                                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium"
-                                          >
-                                            <ImageIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                            Media ({sampleMedia.length})
-                                          </button>
+                                      </div>
+                                      <p className="text-xs text-gray-500 mt-0.5">Tech Pack / Sample</p>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Sample Pricing & Actions */}
+                                  <div className="w-full sm:w-auto flex flex-col gap-2 sm:gap-0 sm:flex-row sm:items-center sm:gap-4">
+                                    {/* Sample Details - Only show if not client_request */}
+                                    {!isClientRequest && (
+                                      <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm flex-wrap">
+                                        {order.sample_fee && (
+                                          <div>
+                                            <span className="text-gray-500">Fee:</span>
+                                            <span className="font-semibold text-gray-900 ml-1">${formatCurrency(order.sample_fee)}</span>
+                                          </div>
+                                        )}
+                                        {order.sample_eta && (
+                                          <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                            <Truck className="w-3 h-3" />
+                                            <span>ETA: {formatDate(order.sample_eta)}</span>
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
+                                    )}
+
+                                    {/* Approve Button or Status */}
+                                    {order.sample_status === 'approved' ? (
+                                      <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 justify-center">
+                                        <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        Approved
+                                      </span>
+                                    ) : order.sample_routed_to === 'client' ? (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleApproveSample(order.id);
+                                        }}
+                                        disabled={approvingId === order.id}
+                                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-sm justify-center"
+                                      >
+                                        {approvingId === order.id ? (
+                                          <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
+                                        ) : (
+                                          <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        )}
+                                        Approve Sample
+                                      </button>
+                                    ) : null}
                                   </div>
                                 </div>
 
-                                {sampleApproved ? (
-                                  <span className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-100 text-green-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-center">
-                                    <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                    Sample Approved
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleApproveSample(order.id);
-                                    }}
-                                    disabled={approvingId === order.id}
-                                    className="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white text-xs sm:text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-sm w-full sm:w-auto justify-center"
-                                  >
-                                    {approvingId === order.id ? (
-                                      <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
-                                    ) : (
-                                      <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                    )}
-                                    Approve Sample
-                                  </button>
+                                {/* Sample Media Row */}
+                                {sampleMedia.length > 0 && (
+                                  <div className="flex items-center gap-3 sm:gap-4 mt-2 ml-10 sm:ml-12 flex-wrap">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openMediaModal(sampleMedia, 'Sample Media');
+                                      }}
+                                      className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                    >
+                                      <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                      View Media ({sampleMedia.length})
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </div>
@@ -945,13 +1087,7 @@ export default function ClientOrdersPage() {
                                 return (
                                   <div 
                                     key={product.id}
-                                    className={`rounded-xl border overflow-hidden ${
-                                      isApproved
-                                        ? 'bg-green-50 border-green-200'
-                                        : needsApproval
-                                        ? 'bg-white border-blue-200'
-                                        : 'bg-white border-gray-200'
-                                    }`}
+                                    className="rounded-xl border overflow-hidden bg-white border-gray-200"
                                   >
                                     {/* Product Header - Compact */}
                                     <div className="px-3 sm:px-4 py-2 sm:py-3">
@@ -983,7 +1119,7 @@ export default function ClientOrdersPage() {
                                         <div className="w-full sm:w-auto flex flex-col gap-2 sm:gap-0 sm:flex-row sm:items-center sm:gap-4">
                                           {/* Pricing Info - Only show if not client_request */}
                                           {!isClientRequest && (
-                                            <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm">
+                                            <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm flex-wrap">
                                               <div>
                                                 <span className="text-gray-500">Qty:</span>
                                                 <span className="font-semibold text-gray-900 ml-1">{totalQty}</span>
@@ -996,6 +1132,23 @@ export default function ClientOrdersPage() {
                                                 <span className="text-gray-500">Total:</span>
                                                 <span className="font-bold text-gray-900 ml-1">${formatCurrency(total)}</span>
                                               </div>
+                                              {/* Product ETA */}
+                                              {(() => {
+                                                const { eta, shippingNotSelected, isEstimate } = calculateProductETA(product);
+                                                if (!eta) return null;
+                                                return (
+                                                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                    isEstimate ? 'bg-purple-100 text-purple-700' :
+                                                    shippingNotSelected ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                                                  }`}>
+                                                    <Truck className="w-3 h-3" />
+                                                    <span>{isEstimate ? 'Est. ' : ''}ETA: {formatETA(eta)}</span>
+                                                    {shippingNotSelected && !isEstimate && (
+                                                      <span className="text-orange-500" title="Shipping method not selected - using sea estimate">*</span>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
                                             </div>
                                           )}
                                           
