@@ -293,6 +293,8 @@ export default function UsersPage() {
         return 'bg-green-100 text-green-700'
       case 'order_approver':
         return 'bg-purple-100 text-purple-700'
+      case 'warehouse':
+        return 'bg-amber-100 text-amber-700'
       default:
         return 'bg-gray-100 text-gray-700'
     }
@@ -534,6 +536,7 @@ export default function UsersPage() {
               <li>• <strong>Admin:</strong> Can manage orders, products, variants, and view reports</li>
               <li>• <strong>Order Creator:</strong> Can create and manage their own orders</li>
               <li>• <strong>Order Approver:</strong> Can approve and edit any order in the system</li>
+              <li>• <strong>Warehouse:</strong> Can manage inventory - receive shipments, track stock, and archive picked up items</li>
             </ul>
             <p className="text-xs text-blue-700 mt-2 sm:mt-3">
               <strong>Note:</strong> Clients and Manufacturers are managed in their respective sections with their own login access.
@@ -661,6 +664,7 @@ export default function UsersPage() {
                       <option value="super_admin">Super Admin</option>
                       <option value="order_creator">Order Creator</option>
                       <option value="order_approver">Order Approver</option>
+                      <option value="warehouse">Warehouse</option>
                     </select>
                   )}
                 </div>

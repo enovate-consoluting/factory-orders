@@ -22,7 +22,10 @@ import {
   AlertCircle,
   DollarSign,
   Settings,
-  Globe
+  Globe,
+  ChevronDown,
+  ChevronRight,
+  Warehouse
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from 'react-i18next';
@@ -74,6 +77,7 @@ export default function DashboardLayout({
     production: 0
   });
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const { t } = useTranslation();
@@ -495,6 +499,14 @@ export default function DashboardLayout({
 
   // ADMIN/MANUFACTURER MENU
   const menuItems = [
+    // Dashboard - for Admin/Super Admin
+    {
+      href: '/dashboard',
+      label: 'Dashboard',
+      icon: LayoutGrid,
+      roles: ['super_admin', 'admin'],
+      notificationKey: null,
+    },
     {
       type: 'section',
       label: 'Operations',
@@ -513,6 +525,13 @@ export default function DashboardLayout({
       icon: FileText,
       roles: ['super_admin', 'admin', 'order_approver'],
       notificationKey: 'invoices',
+    },
+    {
+      href: '/dashboard/inventory',
+      label: 'Inventory',
+      icon: Warehouse,
+      roles: ['super_admin', 'admin', 'warehouse'],
+      notificationKey: null,
     },
     {
       type: 'section',
@@ -534,55 +553,43 @@ export default function DashboardLayout({
       notificationKey: 'products',
     },
     {
-      type: 'section',
-      label: 'System Configuration',
-      roles: ['super_admin', 'admin', 'manufacturer'],
-    },
-    {
-      href: '/dashboard/settings/manufacturer',
+      type: 'collapsible',
       label: 'Settings',
       icon: Settings,
-      roles: ['super_admin', 'manufacturer'],
-      description: 'Manufacturer settings',
-      notificationKey: null,
+      roles: ['super_admin', 'admin', 'manufacturer'],
+      children: [
+        {
+          href: '/dashboard/settings/manufacturer',
+          label: 'Manufacturer Settings',
+          icon: Factory,
+          roles: ['super_admin', 'manufacturer'],
+        },
+        {
+          href: '/dashboard/clients',
+          label: 'Clients',
+          icon: Users,
+          roles: ['super_admin', 'admin'],
+        },
+        {
+          href: '/dashboard/manufacturers',
+          label: 'Manufacturers',
+          icon: Factory,
+          roles: ['super_admin', 'admin'],
+        },
+        {
+          href: '/dashboard/users',
+          label: 'Users',
+          icon: UserCheck,
+          roles: ['super_admin', 'manufacturer'],
+        },
+        {
+          href: '/dashboard/settings/finance',
+          label: 'Finance Settings',
+          icon: DollarSign,
+          roles: ['super_admin'],
+        },
+      ],
     },
-    {
-      href: '/dashboard/clients',
-      label: 'Clients',
-      icon: Users,
-      roles: ['super_admin', 'admin'],
-      description: 'Manage client emails',
-      notificationKey: null,
-    },
-    {
-      href: '/dashboard/manufacturers',
-      label: 'Manufacturers',
-      icon: Factory,
-      roles: ['super_admin', 'admin'],
-      description: 'Manage manufacturer emails',
-      notificationKey: null,
-    },
-    {
-      href: '/dashboard/users',
-      label: 'Users',
-      icon: UserCheck,
-      roles: ['super_admin', 'manufacturer'],
-      description: 'Manage system users',
-      notificationKey: null,
-    },
-    {
-      type: 'section',
-      label: 'Finance',
-      roles: ['super_admin'],
-    },
-    {
-      href: '/dashboard/settings/finance',
-      label: 'Finance Settings',
-      icon: DollarSign,
-      roles: ['super_admin'],
-      description: 'Configure profit margins',
-      notificationKey: null,
-    }
   ];
 
   // CLIENT MENU - FIXED: Invoices now goes to /dashboard/invoices/client
@@ -674,6 +681,8 @@ export default function DashboardLayout({
           getInitial={getInitial}
           formatRole={formatRole}
           handleLogout={handleLogout}
+          expandedSections={expandedSections}
+          setExpandedSections={setExpandedSections}
         />
       </aside>
 
@@ -694,6 +703,8 @@ export default function DashboardLayout({
             handleLogout={handleLogout}
             onLinkClick={() => setShowMobileMenu(false)}
             onClose={() => setShowMobileMenu(false)}
+            expandedSections={expandedSections}
+            setExpandedSections={setExpandedSections}
           />
         </aside>
       </div>
@@ -886,7 +897,9 @@ function SidebarContent({
   formatRole,
   handleLogout,
   onLinkClick,
-  onClose
+  onClose,
+  expandedSections,
+  setExpandedSections
 }: {
   user: User | null;
   visibleMenuItems: any[];
@@ -897,9 +910,51 @@ function SidebarContent({
   handleLogout: () => void;
   onLinkClick?: () => void;
   onClose?: () => void;
+  expandedSections: Set<string>;
+  setExpandedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   // Debug log
   console.log('SidebarContent - User role:', user?.role, 'Notification counts:', notificationCounts);
+  
+  const toggleSection = (label: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(label)) {
+        newSet.delete(label);
+      } else {
+        newSet.add(label);
+      }
+      return newSet;
+    });
+  };
+
+  // Auto-expand section if a child is active
+  useEffect(() => {
+    const sectionsToExpand: string[] = [];
+    visibleMenuItems.forEach((item) => {
+      if (item.type === 'collapsible' && item.children) {
+        const hasActiveChild = item.children.some(
+          (child: any) => pathname === child.href || pathname.startsWith(child.href + '/')
+        );
+        if (hasActiveChild) {
+          sectionsToExpand.push(item.label);
+        }
+      }
+    });
+    if (sectionsToExpand.length > 0) {
+      setExpandedSections(prev => {
+        const newSet = new Set(prev);
+        let changed = false;
+        sectionsToExpand.forEach(label => {
+          if (!newSet.has(label)) {
+            newSet.add(label);
+            changed = true;
+          }
+        });
+        return changed ? newSet : prev;
+      });
+    }
+  }, [pathname]);
   
   return (
     <div className="flex flex-col h-full">
@@ -975,6 +1030,7 @@ function SidebarContent({
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
         {visibleMenuItems.map((item, index) => {
+          // Section header
           if (item.type === 'section') {
             return (
               <div key={`section-${index}`} className="px-6 py-3">
@@ -985,6 +1041,72 @@ function SidebarContent({
             );
           }
 
+          // Collapsible section (Settings)
+          if (item.type === 'collapsible') {
+            const Icon = item.icon!;
+            const isExpanded = expandedSections.has(item.label);
+            const visibleChildren = item.children?.filter((child: any) => 
+              child.roles?.includes(user?.role || '')
+            ) || [];
+            
+            if (visibleChildren.length === 0) return null;
+
+            const hasActiveChild = visibleChildren.some((child: any) => 
+              pathname === child.href || pathname.startsWith(child.href + '/')
+            );
+
+            return (
+              <div key={`collapsible-${item.label}`} className="mb-1">
+                {/* Collapsible Header */}
+                <button
+                  onClick={() => toggleSection(item.label)}
+                  className={`w-full flex items-center justify-between px-6 pl-10 py-2.5 text-sm transition-colors ${
+                    hasActiveChild
+                      ? 'text-blue-600 bg-blue-50'
+                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className={`w-5 h-5 flex-shrink-0 ${hasActiveChild ? 'text-blue-600' : 'text-gray-400'}`} />
+                    <span className="font-medium truncate">{item.label}</span>
+                  </div>
+                  {isExpanded ? (
+                    <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  )}
+                </button>
+
+                {/* Collapsible Children */}
+                {isExpanded && (
+                  <div className="ml-4 border-l border-gray-200">
+                    {visibleChildren.map((child: any) => {
+                      const ChildIcon = child.icon;
+                      const isChildActive = pathname === child.href || pathname.startsWith(child.href + '/');
+                      
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={onLinkClick}
+                          className={`flex items-center gap-3 px-6 pl-8 py-2 text-sm transition-colors ${
+                            isChildActive
+                              ? 'text-blue-600 bg-blue-50 border-r-2 border-blue-600'
+                              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                          }`}
+                        >
+                          <ChildIcon className={`w-4 h-4 flex-shrink-0 ${isChildActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                          <span className="truncate">{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          // Regular menu item
           const Icon = item.icon!;
           const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
           
@@ -1020,12 +1142,6 @@ function SidebarContent({
                   </span>
                 )}
               </Link>
-              
-              {item.description && (
-                <p className="px-6 pl-14 py-1 text-xs text-gray-500">
-                  {item.description}
-                </p>
-              )}
             </div>
           );
         })}
