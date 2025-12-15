@@ -778,7 +778,7 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                 hasShipping ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
               }`}>
                 <DollarSign className="w-3 h-3" />
-                <span>Client: ${clientTotal.toFixed(2)}</span>
+                <span>Client: ${formatCurrency(clientTotal)}</span>
                 {!hasShipping && <span className="text-red-600">(no ship)</span>}
                 {hasShipping && <span className="text-green-600">(+ ship)</span>}
               </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { SetShipDatesModal } from '../../components/modals/SetShipDatesModal';
 import { SetProductionDaysModal } from '../../components/modals/SetProductionDaysModal';
+import { formatCurrency } from '../../../utils/orderCalculations';
 
 interface ManufacturerControlPanelV2Props {
   order: any;
@@ -217,7 +218,7 @@ export function ManufacturerControlPanelV2({
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-500">Mfg Total</p>
-                <p className="text-2xl font-bold text-green-600">${totals.total.toFixed(2)}</p>
+                <p className="text-2xl font-bold text-green-600">${formatCurrency(totals.total)}</p>
               </div>
             </div>
           </div>
@@ -233,12 +234,12 @@ export function ManufacturerControlPanelV2({
         {/* Totals Breakdown - Compact inline */}
         <div className="px-3 sm:px-4 py-2 border-b border-gray-100 bg-white">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-            <span className="text-gray-500">Products: <span className="font-semibold text-gray-900">${totals.product.toFixed(2)}</span></span>
+            <span className="text-gray-500">Products: <span className="font-semibold text-gray-900">${formatCurrency(totals.product)}</span></span>
             {totals.sample > 0 && (
-              <span className="text-gray-500">Samples: <span className="font-semibold text-amber-600">${totals.sample.toFixed(2)}</span></span>
+              <span className="text-gray-500">Samples: <span className="font-semibold text-amber-600">${formatCurrency(totals.sample)}</span></span>
             )}
             {totals.shipping > 0 && (
-              <span className="text-gray-500">Shipping: <span className="font-semibold text-blue-600">${totals.shipping.toFixed(2)}</span></span>
+              <span className="text-gray-500">Shipping: <span className="font-semibold text-blue-600">${formatCurrency(totals.shipping)}</span></span>
             )}
           </div>
         </div>

@@ -8,8 +8,10 @@
  * FIXED: Removed extra $ sign from fee display
  * FIXED: Removed flask icons as requested
  * FIXED: Route modal simplified to just 2 options (Send to Client, Back to Manufacturer)
+ * FIXED: Currency formatting always shows 2 decimal places ($1,537.50 not $1,537.5)
+ * FIXED: Status dropdown unlocked for Manufacturer and Super Admin after approval
  * 
- * Last Modified: December 8, 2025
+ * Last Modified: December 15, 2025
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -360,9 +362,16 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
   const showSaveButton = isDirty || sampleFiles.length > 0;
   
+  // canEdit: Who can edit status and notes
+  // - Super Admin can ALWAYS edit (regardless of routing)
+  // - Manufacturer can edit when sample is with them OR when updating status (e.g., to "In Production")
+  // - Admin can edit when sample is with admin
+  // - Client can edit when sample is with client
   const canEdit = !readOnly && (
-    (sampleRoutedTo === 'admin' && (userRole === 'admin' || userRole === 'super_admin')) ||
+    userRole === 'super_admin' ||
+    (sampleRoutedTo === 'admin' && userRole === 'admin') ||
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
+    (isManufacturer && ['sample_approved', 'in_production', 'ready', 'shipped', 'delivered'].includes(localStatus)) ||
     (sampleRoutedTo === 'client' && isClient)
   );
   
@@ -390,11 +399,11 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             {getRoutingStatusBadge()}
             {getSampleStatusBadge()}
             
-            {/* Fee display - NO extra $ */}
+            {/* Fee display - NO extra $, always 2 decimal places */}
             {localFee && parseFloat(localFee) > 0 && (
               <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium flex items-center gap-1">
                 <DollarSign className="w-3 h-3" />
-                {parseFloat(localFee).toFixed(2)}
+                {parseFloat(localFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             )}
             

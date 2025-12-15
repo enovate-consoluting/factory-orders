@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { SetShipDatesModal } from "../modals/SetShipDatesModal";
 import { SetProductionDaysModal } from "../modals/SetProductionDaysModal";
+import { formatCurrency } from '../../../utils/orderCalculations';
 
 interface ManufacturerControlPanelProps {
   order: any;
@@ -351,7 +352,7 @@ export function ManufacturerControlPanel({
                 <Package className="w-4 h-4 text-gray-400" />
                 <span className="text-xs text-gray-500 uppercase">Products</span>
               </div>
-              <p className="text-lg font-bold text-gray-900">${totals.product.toFixed(2)}</p>
+              <p className="text-lg font-bold text-gray-900">${formatCurrency(totals.product)}</p>
             </div>
 
             {/* Samples Total */}
@@ -360,7 +361,7 @@ export function ManufacturerControlPanel({
                 <FileImage className="w-4 h-4 text-amber-500" />
                 <span className="text-xs text-gray-500 uppercase">Samples</span>
               </div>
-              <p className="text-lg font-bold text-amber-600">${totals.sample.toFixed(2)}</p>
+              <p className="text-lg font-bold text-amber-600">${formatCurrency(totals.sample)}</p>
             </div>
 
             {/* Shipping Total */}
@@ -369,7 +370,7 @@ export function ManufacturerControlPanel({
                 <Truck className="w-4 h-4 text-blue-500" />
                 <span className="text-xs text-gray-500 uppercase">Shipping</span>
               </div>
-              <p className="text-lg font-bold text-blue-600">${totals.shipping.toFixed(2)}</p>
+              <p className="text-lg font-bold text-blue-600">${formatCurrency(totals.shipping)}</p>
             </div>
 
             {/* Grand Total */}
@@ -378,7 +379,7 @@ export function ManufacturerControlPanel({
                 <DollarSign className="w-4 h-4 text-white/80" />
                 <span className="text-xs text-white/80 uppercase">Total</span>
               </div>
-              <p className="text-xl font-bold">${totals.total.toFixed(2)}</p>
+              <p className="text-xl font-bold">${formatCurrency(totals.total)}</p>
             </div>
           </div>
         </div>

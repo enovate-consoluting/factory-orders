@@ -1,6 +1,7 @@
 // ManufacturerOrderSummary.tsx - With collapsible product breakdown
 import React, { useState } from 'react';
 import { Calculator, Package, DollarSign, Plane, Ship, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { formatCurrency } from '../../../utils/orderCalculations';
 
 interface ManufacturerOrderSummaryProps {
   order: any;
@@ -104,7 +105,7 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-500">Order #{order.order_number}</p>
-          <p className="text-2xl font-bold text-green-600">${totals.grandTotal.toFixed(2)}</p>
+          <p className="text-2xl font-bold text-green-600">${formatCurrency(totals.grandTotal)}</p>
         </div>
       </div>
       
@@ -141,13 +142,13 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
                         {product.productCost > 0 && (
                           <div className="flex items-center gap-1">
                             <Package className="w-3 h-3" />
-                            <span>{product.quantity} units × ${product.unitPrice.toFixed(2)} = ${product.productCost.toFixed(2)}</span>
+                            <span>{product.quantity} units × ${formatCurrency(product.unitPrice)} = ${formatCurrency(product.productCost)}</span>
                           </div>
                         )}
                         {product.sampleFee > 0 && (
                           <div className="flex items-center gap-1">
                             <AlertCircle className="w-3 h-3 text-amber-500" />
-                            <span>Sample: ${product.sampleFee.toFixed(2)}</span>
+                            <span>Sample: ${formatCurrency(product.sampleFee)}</span>
                           </div>
                         )}
                         {product.shippingCost > 0 && (
@@ -158,14 +159,14 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
                               <Ship className="w-3 h-3 text-cyan-500" />
                             )}
                             <span>
-                              {product.shippingMethod === 'air' ? 'Air' : 'Boat'} Shipping: ${product.shippingCost.toFixed(2)}
+                              {product.shippingMethod === 'air' ? 'Air' : 'Boat'} Shipping: ${formatCurrency(product.shippingCost)}
                             </span>
                           </div>
                         )}
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="font-semibold text-gray-900">${product.total.toFixed(2)}</span>
+                      <span className="font-semibold text-gray-900">${formatCurrency(product.total)}</span>
                     </div>
                   </div>
                 </div>
@@ -184,7 +185,7 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
                 <Package className="w-4 h-4 text-gray-400" />
                 Products Total
               </span>
-              <span className="font-semibold text-gray-900">${totals.productTotal.toFixed(2)}</span>
+              <span className="font-semibold text-gray-900">${formatCurrency(totals.productTotal)}</span>
             </div>
           )}
           
@@ -194,7 +195,7 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
                 <AlertCircle className="w-4 h-4 text-amber-500" />
                 Sample Fees
               </span>
-              <span className="font-semibold text-gray-900">${totals.sampleTotal.toFixed(2)}</span>
+              <span className="font-semibold text-gray-900">${formatCurrency(totals.sampleTotal)}</span>
             </div>
           )}
           
@@ -204,14 +205,14 @@ export function ManufacturerOrderSummary({ order, visibleProducts }: Manufacture
                 <Ship className="w-4 h-4 text-blue-500" />
                 Shipping Total
               </span>
-              <span className="font-semibold text-gray-900">${totals.shippingTotal.toFixed(2)}</span>
+              <span className="font-semibold text-gray-900">${formatCurrency(totals.shippingTotal)}</span>
             </div>
           )}
           
           <div className="pt-3 border-t-2 border-green-300">
             <div className="flex justify-between items-center">
               <span className="text-lg font-bold text-green-800">Manufacturing Total</span>
-              <span className="text-xl font-bold text-green-600">${totals.grandTotal.toFixed(2)}</span>
+              <span className="text-xl font-bold text-green-600">${formatCurrency(totals.grandTotal)}</span>
             </div>
           </div>
         </div>

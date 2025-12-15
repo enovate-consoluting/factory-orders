@@ -27,40 +27,37 @@ interface Order {
 
 /**
  * Format currency with proper accounting format
+ * ALWAYS shows 2 decimal places and commas for proper money display
  * @param amount - The number to format
- * @param includeZeroCents - Whether to show .00 (default false)
- * @returns Formatted string with commas and optional cents
+ * @returns Formatted string with commas and 2 decimal places (e.g., "15,150.60")
  */
-export function formatCurrency(amount: number, includeZeroCents: boolean = false): string {
+export function formatCurrency(amount: number | string | null | undefined): string {
+  // Handle null/undefined/empty
+  if (amount === null || amount === undefined || amount === '') return '0.00';
+  
+  // Convert string to number if needed
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  
+  // Handle NaN
+  if (isNaN(num)) return '0.00';
+  
   // Round to 2 decimal places to avoid floating point issues
-  const rounded = Math.round(amount * 100) / 100;
+  const rounded = Math.round(num * 100) / 100;
   
-  // Check if we have cents
-  const hasCents = rounded % 1 !== 0;
-  
-  if (hasCents || includeZeroCents) {
-    // Format with 2 decimal places and commas
-    return rounded.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-  } else {
-    // Format without decimal places but with commas
-    return Math.floor(rounded).toLocaleString('en-US', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    });
-  }
+  // ALWAYS format with 2 decimal places and commas for proper accounting
+  return rounded.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 }
 
 /**
  * Format currency with dollar sign
  * @param amount - The number to format
- * @param includeZeroCents - Whether to show .00 (default false)
- * @returns Formatted string with $ and proper formatting
+ * @returns Formatted string with $ and proper formatting (e.g., "$15,150.60")
  */
-export function formatDollar(amount: number, includeZeroCents: boolean = false): string {
-  return `$${formatCurrency(amount, includeZeroCents)}`;
+export function formatDollar(amount: number | string | null | undefined): string {
+  return `$${formatCurrency(amount)}`;
 }
 
 export function calculateOrderTotal(
