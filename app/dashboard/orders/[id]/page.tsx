@@ -684,15 +684,22 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       const changes: string[] = [];
       
       const newFee = data.fee ? parseFloat(data.fee) : null;
-      const oldFee = order.sample_fee;
+      const oldFee = order.sample_fee ? parseFloat(order.sample_fee) : null;
+      
+      // ALWAYS log fee if it has a value (even if unchanged) for audit trail
       if (newFee !== oldFee) {
         if (oldFee && newFee) {
-          changes.push(`Fee: $${oldFee} → $${newFee}`);
+          changes.push(`Sample Fee changed: $${oldFee.toFixed(2)} → $${newFee.toFixed(2)}`);
         } else if (newFee) {
-          changes.push(`Fee set to $${newFee}`);
+          changes.push(`Sample Fee set: $${newFee.toFixed(2)}`);
         } else if (oldFee) {
-          changes.push(`Fee removed (was $${oldFee})`);
+          changes.push(`Sample Fee removed (was $${oldFee.toFixed(2)})`);
         }
+      }
+      
+      // Log the actual fee value being saved for complete audit trail
+      if (newFee) {
+        console.log(`📝 Audit: Sample fee being saved: $${newFee.toFixed(2)} for order ${order.order_number}`);
       }
       
       const oldEta = order.sample_eta || '';
@@ -783,17 +790,42 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       }
       
+      // ALWAYS log sample saves with full details (not just when changes detected)
+      const auditData: any = {
+        user_id: user.id || crypto.randomUUID(),
+        user_name: user.name || user.email || 'Unknown User',
+        action_type: 'order_sample_updated',
+        target_type: 'order',
+        target_id: order.id,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Capture old values for complete audit trail
+      const oldValues = {
+        sample_fee: oldFee ? `$${oldFee.toFixed(2)}` : 'none',
+        sample_eta: order.sample_eta || 'none',
+        sample_status: order.sample_status || 'none'
+      };
+      
+      // Capture new values
+      const newValues = {
+        sample_fee: newFee ? `$${newFee.toFixed(2)}` : 'none',
+        client_sample_fee: clientSampleFee ? `$${clientSampleFee.toFixed(2)}` : 'none',
+        sample_eta: data.eta || 'none',
+        sample_status: data.status || 'pending'
+      };
+      
       if (changes.length > 0) {
-        await supabase.from('audit_log').insert({
-          user_id: user.id || crypto.randomUUID(),
-          user_name: user.name || user.email || 'Unknown User',
-          action_type: 'order_sample_updated',
-          target_type: 'order',
-          target_id: order.id,
-          new_value: changes.join(' | '),
-          timestamp: new Date().toISOString()
-        });
+        auditData.old_value = JSON.stringify(oldValues);
+        auditData.new_value = `${changes.join(' | ')} [Full: ${JSON.stringify(newValues)}]`;
+      } else {
+        // Even if no changes detected, log the save action with current values
+        auditData.new_value = `Sample saved (no changes) [Values: ${JSON.stringify(newValues)}]`;
       }
+      
+      await supabase.from('audit_log').insert(auditData);
+      
+      console.log('📝 Audit log created:', auditData.new_value);
       
       setOrderSampleFiles([]);
       setOrderSampleNotes('');
