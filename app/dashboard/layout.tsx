@@ -80,6 +80,7 @@ export default function DashboardLayout({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const [canCreateOrders, setCanCreateOrders] = useState(false);
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
 
@@ -132,7 +133,7 @@ export default function DashboardLayout({
       // Get client ID from clients table using email
       const { data: client, error: clientError } = await supabase
         .from('clients')
-        .select('id, name, email')
+        .select('id, name, email, can_create_orders')
         .eq('email', user.email)
         .single();
 
@@ -145,6 +146,7 @@ export default function DashboardLayout({
 
       console.log('Found client ID:', client.id);
       setClientId(client.id);
+      setCanCreateOrders(client.can_create_orders || false);
 
       // Load client notifications (pending products count)
       await loadClientNotifications(client.id);
@@ -607,6 +609,13 @@ export default function DashboardLayout({
       roles: ['client'],
       notificationKey: 'orders',
     },
+    // My Clients - Only show for clients with can_create_orders permission
+    ...(canCreateOrders ? [{
+      href: '/dashboard/my-clients',
+      label: 'My Clients',
+      icon: Users,
+      roles: ['client'],
+    }] : []),
     {
       href: '/dashboard/invoices/client',
       label: 'Invoices',
