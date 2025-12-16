@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -80,6 +80,7 @@ export default function DashboardLayout({
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [manufacturerId, setManufacturerId] = useState<string | null>(null);
   const [clientId, setClientId] = useState<string | null>(null);
+  const isLoadingNotificationsRef = useRef(false);
   const [canCreateOrders, setCanCreateOrders] = useState(false);
   const { t } = useTranslation();
   const { language, setLanguage } = useLanguage();
@@ -272,6 +273,14 @@ export default function DashboardLayout({
   };
 
   const loadManufacturerNotifications = async (manufacturerId: string) => {
+    // Prevent concurrent loads that can cause infinite loops
+    if (isLoadingNotificationsRef.current) {
+      console.log('Skipping notification load - already in progress');
+      return;
+    }
+    
+    isLoadingNotificationsRef.current = true;
+    
     try {
       console.log('Loading notifications for manufacturer ID:', manufacturerId);
       
@@ -315,6 +324,8 @@ export default function DashboardLayout({
       setNotificationCounts(newCounts);
     } catch (error) {
       console.error('Error loading manufacturer notifications:', error);
+    } finally {
+      isLoadingNotificationsRef.current = false;
     }
   };
 

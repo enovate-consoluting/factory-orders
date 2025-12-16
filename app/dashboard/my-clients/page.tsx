@@ -26,7 +26,8 @@ import {
   Info,
   Trash2,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  FileText
 } from 'lucide-react';
 
 interface SubClient {
@@ -595,16 +596,33 @@ export default function MyClientsPage() {
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div className="flex items-center gap-4 flex-shrink-0">
-                    <div className="text-center">
-                      <p className="font-semibold text-gray-900 text-sm">{client.order_count || 0}</p>
-                      <p className="text-xs text-gray-400">Orders</p>
-                    </div>
-                    <div className="text-center">
+                  {/* Stats & Actions */}
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    {/* Orders - Clickable to view filtered orders */}
+                    <a
+                      href={`/dashboard/orders/client?viewAs=${client.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-center px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors group"
+                      title="View orders for this client"
+                    >
+                      <p className="font-semibold text-gray-900 text-sm group-hover:text-blue-600">{client.order_count || 0}</p>
+                      <p className="text-xs text-gray-400 group-hover:text-blue-500">Orders</p>
+                    </a>
+                    
+                    <div className="text-center px-2">
                       <p className="font-semibold text-gray-900 text-sm">${formatCurrency(client.total_amount || 0)}</p>
                       <p className="text-xs text-gray-400">Total</p>
                     </div>
+                    
+                    {/* Create Order Button */}
+                    <a
+                      href={`/dashboard/orders/client/create?forClient=${client.id}`}
+                      className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                      title="Create order for this client"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <FileText className="w-4 h-4" />
+                    </a>
                     
                     {/* Remove Button */}
                     <button

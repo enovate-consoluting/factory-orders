@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   ArrowLeft, ArrowRight, Search, Package, Check, 
@@ -167,6 +167,8 @@ function LoadingOverlay({
 
 export default function ClientCreateOrderPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const forClientId = searchParams.get('forClient');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
@@ -176,6 +178,7 @@ export default function ClientCreateOrderPage() {
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
   const [canCreateOrders, setCanCreateOrders] = useState(false);
+  const [forClientName, setForClientName] = useState<string | null>(null);
   
   // Products
   const [products, setProducts] = useState<Product[]>([]);
@@ -251,9 +254,33 @@ export default function ClientCreateOrderPage() {
         return;
       }
 
-      setClientId(clientData.id);
-      setClientName(clientData.name);
       setCanCreateOrders(true);
+
+      // Check if creating order for a sub-client
+      if (forClientId) {
+        // Verify this sub-client belongs to the current user
+        const { data: subClient, error: subClientError } = await supabase
+          .from('clients')
+          .select('id, name, parent_client_id')
+          .eq('id', forClientId)
+          .eq('parent_client_id', clientData.id)
+          .single();
+        
+        if (subClientError || !subClient) {
+          showNotification('error', 'You do not have permission to create orders for this client');
+          router.push('/dashboard/my-clients');
+          return;
+        }
+        
+        // Use sub-client's info for the order
+        setClientId(subClient.id);
+        setClientName(subClient.name);
+        setForClientName(subClient.name);
+      } else {
+        // Use current user's client info
+        setClientId(clientData.id);
+        setClientName(clientData.name);
+      }
 
       const { data: productsData, error: productsError } = await supabase
         .from('products')
@@ -708,13 +735,18 @@ export default function ClientCreateOrderPage() {
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
           <button
-            onClick={() => router.push('/dashboard/orders/client')}
+            onClick={() => forClientId ? router.push('/dashboard/my-clients') : router.push('/dashboard/orders/client')}
             className="flex items-center text-gray-600 hover:text-gray-900 mb-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Orders
+            {forClientId ? 'Back to My Clients' : 'Back to Orders'}
           </button>
           <h1 className="text-xl font-bold text-gray-900">Create Order Request</h1>
+          {forClientName && (
+            <p className="text-sm text-blue-600 mt-1">
+              Creating order for: <span className="font-semibold">{forClientName}</span>
+            </p>
+          )}
         </div>
       </div>
 
