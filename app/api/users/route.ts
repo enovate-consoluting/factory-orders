@@ -89,6 +89,10 @@ export async function POST(request: Request) {
     };
     if (createdBy) {
       userInsertData.created_by = createdBy;
+      // For manufacturer-created roles, also set manufacturer_id so they can access manufacturer data
+      if (['manufacturer_team_member', 'sub_manufacturer', 'manufacturer_inventory_manager'].includes(role)) {
+        userInsertData.manufacturer_id = createdBy;
+      }
     }
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')

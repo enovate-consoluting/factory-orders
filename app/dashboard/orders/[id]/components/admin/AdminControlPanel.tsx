@@ -52,6 +52,9 @@ export function AdminControlPanel({
   const [sendingNote, setSendingNote] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Totals for sample and accessories
+  const [accessoriesTotal, setAccessoriesTotal] = useState(0);
+
   // Add Product Modal State
   const [addProductModal, setAddProductModal] = useState(false);
 
@@ -81,10 +84,14 @@ export function AdminControlPanel({
       }
     });
 
+    // Get sample fee from ORDER level (use client_sample_fee if available)
+    const sampleTotal = parseFloat(order?.client_sample_fee || order?.sample_fee || 0);
+
     return {
       product: productTotal,
       shipping: shippingTotal,
-      total: productTotal + shippingTotal
+      sample: sampleTotal,
+      total: productTotal + shippingTotal + sampleTotal
     };
   };
 
@@ -106,6 +113,29 @@ export function AdminControlPanel({
     if (order?.id) {
       fetchUnreadCount();
     }
+  }, [order?.id]);
+
+  // Fetch accessories total for this order (using CLIENT fees)
+  useEffect(() => {
+    const fetchAccessoriesTotal = async () => {
+      if (!order?.id) return;
+      try {
+        const { data, error } = await supabase
+          .from('order_accessories')
+          .select('client_total_fee, total_fee')
+          .eq('order_id', order.id);
+        
+        if (!error && data) {
+          // Use client_total_fee if available, otherwise fall back to total_fee
+          const total = data.reduce((sum: number, acc: any) => 
+            sum + parseFloat(acc.client_total_fee || acc.total_fee || 0), 0);
+          setAccessoriesTotal(total);
+        }
+      } catch (err) {
+        console.error('Error fetching accessories total:', err);
+      }
+    };
+    fetchAccessoriesTotal();
   }, [order?.id]);
 
   // Prevent body scroll when modal is open
@@ -261,13 +291,19 @@ export function AdminControlPanel({
             {/* Total */}
             <div className="text-right">
               <p className="text-lg font-bold text-green-600">
-                ${totals.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                ${(totals.total + accessoriesTotal).toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </p>
-              {totals.shipping > 0 && (
-                <p className="text-xs text-gray-500">
-                  incl. ${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })} shipping
-                </p>
-              )}
+              <div className="text-xs text-gray-500 space-x-2">
+                {totals.sample > 0 && (
+                  <span className="text-amber-600">Sample: ${totals.sample.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                )}
+                {accessoriesTotal > 0 && (
+                  <span className="text-purple-600">Acc: ${accessoriesTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                )}
+                {totals.shipping > 0 && (
+                  <span>Ship: ${totals.shipping.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                )}
+              </div>
             </div>
           </div>
 

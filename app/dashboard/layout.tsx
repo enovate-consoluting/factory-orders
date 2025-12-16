@@ -99,8 +99,8 @@ export default function DashboardLayout({
       setUser(parsedUser);
 
       // Load notifications based on role
-      if (parsedUser.role === 'manufacturer') {
-        console.log('User is manufacturer, loading manufacturer data...');
+      if (parsedUser.role === 'manufacturer' || parsedUser.role === 'manufacturer_inventory_manager') {
+        console.log('User is manufacturer or inventory manager, loading manufacturer data...');
         loadManufacturerData(parsedUser).then((cleanupFn) => {
           cleanup = cleanupFn;
         });
@@ -200,39 +200,64 @@ export default function DashboardLayout({
     }
   };
 
-  // Load manufacturer specific data
+  // Load manufacturer specific data - handles main manufacturer and linked roles
   const loadManufacturerData = async (user: User) => {
     try {
-      console.log('Loading manufacturer data for email:', user.email);
+      console.log('Loading manufacturer data for user:', user.email, 'role:', user.role);
 
-      // Get manufacturer ID from manufacturers table using email
-      const { data: manufacturer, error: manError } = await supabase
-        .from('manufacturers')
-        .select('id, name, email')
-        .eq('email', user.email)
-        .single();
+      let manufacturerIdToUse: string | null = null;
 
-      console.log('Manufacturer query result:', manufacturer, 'Error:', manError);
+      // For main manufacturer role, lookup by email in manufacturers table
+      if (user.role === 'manufacturer') {
+        const { data: manufacturer, error: manError } = await supabase
+          .from('manufacturers')
+          .select('id, name, email')
+          .eq('email', user.email)
+          .single();
 
-      if (!manufacturer) {
-        console.error('No manufacturer found for email:', user.email);
+        console.log('Manufacturer query result:', manufacturer, 'Error:', manError);
+
+        if (!manufacturer) {
+          console.error('No manufacturer found for email:', user.email);
+          return;
+        }
+        manufacturerIdToUse = manufacturer.id;
+      } else {
+        // For inventory managers and team members - get manufacturer_id from users table
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('manufacturer_id')
+          .eq('email', user.email)
+          .single();
+
+        console.log('User manufacturer_id query result:', userData, 'Error:', userError);
+
+        if (!userData?.manufacturer_id) {
+          console.error('No manufacturer_id found for user:', user.email);
+          return;
+        }
+        manufacturerIdToUse = userData.manufacturer_id;
+      }
+
+      if (!manufacturerIdToUse) {
+        console.error('Could not determine manufacturer ID');
         return;
       }
 
-      console.log('Found manufacturer ID:', manufacturer.id);
-      setManufacturerId(manufacturer.id);
+      console.log('Found manufacturer ID:', manufacturerIdToUse);
+      setManufacturerId(manufacturerIdToUse);
 
       // Load manufacturer notifications
-      await loadManufacturerNotifications(manufacturer.id);
+      await loadManufacturerNotifications(manufacturerIdToUse);
 
       // Subscribe to real-time updates and return cleanup function
-      const subscriptionCleanup = subscribeToManufacturerNotifications(manufacturer.id);
+      const subscriptionCleanup = subscribeToManufacturerNotifications(manufacturerIdToUse);
 
       // FALLBACK: Poll for notifications every 5 seconds as backup
       console.log('🔄 Setting up polling fallback (every 5s)...');
       const pollInterval = setInterval(() => {
         console.log('🔄 Polling for notification updates (fallback)...');
-        loadManufacturerNotifications(manufacturer.id);
+        loadManufacturerNotifications(manufacturerIdToUse);
       }, 5000);
 
       // Return combined cleanup function
@@ -509,6 +534,7 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin'],
       notificationKey: null,
     },
+    // OPERATIONS SECTION
     {
       type: 'section',
       label: 'Operations',
@@ -535,6 +561,20 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin', 'warehouse'],
       notificationKey: null,
     },
+    // INVENTORY SECTION - For manufacturers and inventory managers
+    {
+      type: 'section',
+      label: 'Inventory',
+      roles: ['manufacturer', 'manufacturer_inventory_manager'],
+    },
+    {
+      href: '/dashboard/manufacturer/inventory',
+      label: 'Accessories',
+      icon: Warehouse,
+      roles: ['manufacturer', 'super_admin', 'manufacturer_inventory_manager'],
+      notificationKey: null,
+    },
+    // PRODUCT CONFIGURATION SECTION
     {
       type: 'section',
       label: 'Product Configuration',
@@ -554,17 +594,38 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin'],
       notificationKey: 'products',
     },
+    // SETTINGS SECTION - As section header for manufacturer (not collapsible)
+    {
+      type: 'section',
+      label: 'Settings',
+      roles: ['manufacturer'],
+    },
+    {
+      href: '/dashboard/settings/manufacturer',
+      label: 'Manufacturer Settings',
+      icon: Settings,
+      roles: ['manufacturer'],
+      notificationKey: null,
+    },
+    {
+      href: '/dashboard/users',
+      label: 'Users',
+      icon: UserCheck,
+      roles: ['manufacturer'],
+      notificationKey: null,
+    },
+    // SETTINGS SECTION - Collapsible for Admin/Super Admin only
     {
       type: 'collapsible',
       label: 'Settings',
       icon: Settings,
-      roles: ['super_admin', 'admin', 'manufacturer'],
+      roles: ['super_admin', 'admin'],
       children: [
         {
           href: '/dashboard/settings/manufacturer',
           label: 'Manufacturer Settings',
           icon: Factory,
-          roles: ['super_admin', 'manufacturer'],
+          roles: ['super_admin'],
         },
         {
           href: '/dashboard/clients',
@@ -582,7 +643,7 @@ export default function DashboardLayout({
           href: '/dashboard/users',
           label: 'Users',
           icon: UserCheck,
-          roles: ['super_admin', 'manufacturer'],
+          roles: ['super_admin'],
         },
         {
           href: '/dashboard/settings/finance',
@@ -640,9 +701,13 @@ export default function DashboardLayout({
       'order_creator': 'Order Creator',
       'order_approver': 'Order Approver',
       'manufacturer': 'Manufacturer',
-      'client': 'Client'
+      'client': 'Client',
+      'manufacturer_inventory_manager': 'Inventory Manager',
+      'warehouse': 'Warehouse',
+      'manufacturer_team_member': 'Team Member',
+      'sub_manufacturer': 'Sub Manufacturer'
     };
-    return roleDisplay[role] || role.replace('_', ' ');
+    return roleDisplay[role] || role.replace(/_/g, ' ');
   };
 
   // MERGED: Gurri's translations + your new client invoice route
@@ -665,6 +730,7 @@ export default function DashboardLayout({
     if (pathname === '/dashboard/settings/finance') return t('financeSettings');
     if (pathname === '/dashboard/settings/finance/orders') return t('orderMargins');
     if (pathname === '/dashboard/settings/manufacturer') return t('manufacturerSettings');
+    if (pathname === '/dashboard/manufacturer/inventory') return 'Accessories';
     if (pathname.startsWith('/dashboard/orders/') && !pathname.includes('create') && !pathname.includes('edit') && !pathname.includes('client')) return t('orderDetails');
     if (pathname.startsWith('/dashboard/invoices/') && !pathname.includes('create') && !pathname.includes('client')) return t('invoiceDetails');
     return t('dashboard');

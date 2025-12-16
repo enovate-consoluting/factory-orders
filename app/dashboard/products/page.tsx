@@ -24,6 +24,7 @@ type Product = {
   id: string
   title: string
   created_at: string
+  is_clothing: boolean
 }
 
 type VariantType = {
@@ -57,6 +58,7 @@ export default function ProductsPage() {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newProductTitle, setNewProductTitle] = useState('')
   const [newProductVariants, setNewProductVariants] = useState<string[]>([])
+  const [newProductIsClothing, setNewProductIsClothing] = useState(false)
   
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [selectedVariants, setSelectedVariants] = useState<string[]>([])
@@ -135,11 +137,12 @@ export default function ProductsPage() {
     }
     
     try {
-      // Create the product (NO DESCRIPTION FIELD)
+      // Create the product
       const { data: product, error: productError } = await supabase
         .from('products')
         .insert({
-          title: newProductTitle
+          title: newProductTitle,
+          is_clothing: newProductIsClothing
         })
         .select()
         .single()
@@ -177,11 +180,12 @@ export default function ProductsPage() {
     }
     
     try {
-      // Update the product (NO DESCRIPTION FIELD)
+      // Update the product
       const { error: updateError } = await supabase
         .from('products')
         .update({
-          title: editingProduct.title
+          title: editingProduct.title,
+          is_clothing: editingProduct.is_clothing
         })
         .eq('id', editingProduct.id)
       
@@ -255,6 +259,7 @@ export default function ProductsPage() {
   const resetForm = () => {
     setNewProductTitle('')
     setNewProductVariants([])
+    setNewProductIsClothing(false)
   }
 
   const toggleVariantType = (typeId: string) => {
@@ -407,12 +412,19 @@ export default function ProductsPage() {
               <div key={product.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
                 <div className="p-4">
                   <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-lg font-semibold text-gray-900">{product.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-gray-900">{product.title}</h3>
+                      {product.is_clothing && (
+                        <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                          Clothing
+                        </span>
+                      )}
+                    </div>
                     {canManageProducts() && (
                       <div className="flex space-x-1">
                         <button
                           onClick={() => {
-                            setEditingProduct(product)
+                            setEditingProduct({ ...product, is_clothing: product.is_clothing || false })
                             const currentVariants = productVariants
                               .filter(pv => pv.product_id === product.id)
                               .map(pv => pv.variant_option_id)
@@ -490,7 +502,14 @@ export default function ProductsPage() {
                 return (
                   <tr key={product.id} className="hover:bg-gray-50">
                     <td className="px-3 sm:px-4 py-3">
-                      <div className="font-medium text-gray-900 text-sm">{product.title}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900 text-sm">{product.title}</span>
+                        {product.is_clothing && (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                            Clothing
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 sm:px-4 py-3">
                       {variants.length > 0 ? (
@@ -515,7 +534,7 @@ export default function ProductsPage() {
                         <div className="flex justify-end gap-2">
                           <button
                             onClick={() => {
-                              setEditingProduct(product)
+                              setEditingProduct({ ...product, is_clothing: product.is_clothing || false })
                               const currentVariants = productVariants
                                 .filter(pv => pv.product_id === product.id)
                                 .map(pv => pv.variant_option_id)
@@ -587,6 +606,31 @@ export default function ProductsPage() {
                       placeholder="Enter product title"
                       required
                     />
+                  </div>
+
+                  {/* Clothing Product Checkbox */}
+                  <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <input
+                      type="checkbox"
+                      id="is_clothing"
+                      checked={editingProduct ? editingProduct.is_clothing : newProductIsClothing}
+                      onChange={(e) => {
+                        if (editingProduct) {
+                          setEditingProduct({ ...editingProduct, is_clothing: e.target.checked })
+                        } else {
+                          setNewProductIsClothing(e.target.checked)
+                        }
+                      }}
+                      className="w-5 h-5 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <div>
+                      <label htmlFor="is_clothing" className="text-sm font-semibold text-gray-900 cursor-pointer">
+                        Clothing Product
+                      </label>
+                      <p className="text-xs text-gray-600">
+                        Uses flat fee pricing instead of percentage margin
+                      </p>
+                    </div>
                   </div>
 
                   <div>

@@ -49,6 +49,7 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
 
   const isManufacturer = userRole === 'manufacturer';
   const isInProduction = product?.is_locked || product?.product_status === 'in_production';
+  const isShipped = product?.product_status === 'shipped' || product?.product_status === 'in_transit' || product?.product_status === 'delivered';
 
   // Helper function to create admin notification
   const createAdminNotification = async (
@@ -352,8 +353,28 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
           </button>
         </div>
 
+        {/* Warning for shipped products */}
+        {isShipped && (
+          <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-amber-800">Product Already Shipped</h3>
+                <p className="text-sm text-amber-700 mt-1">
+                  This product has been shipped and cannot be re-routed. The shipping information is locked.
+                </p>
+                {product?.tracking_number && (
+                  <p className="text-sm text-amber-700 mt-2">
+                    <strong>Tracking:</strong> {product.tracking_number}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Routing Options */}
-        {isManufacturer ? (
+        {isShipped ? null : isManufacturer ? (
           // MANUFACTURER OPTIONS - 3 OPTIONS
           <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <button
@@ -591,7 +612,7 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
           </button>
           <button
             onClick={handleRoute}
-            disabled={!selectedRoute || sending}
+            disabled={!selectedRoute || sending || isShipped}
             className={`w-full sm:w-auto px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
               selectedRoute === 'shipped'
                 ? 'bg-purple-600 hover:bg-purple-700'

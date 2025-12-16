@@ -121,23 +121,7 @@ export default function OrdersPage() {
   // State for showing/hiding prices
   const [showPrices, setShowPrices] = useState(false);
 
-  // State for layout preference (V1 classic vs V2 new)
-  const [useNewLayout, setUseNewLayout] = useState(false);
-
-  // Load layout preference from localStorage
-  useEffect(() => {
-    const savedPreference = localStorage.getItem('orderDetailLayout');
-    if (savedPreference === 'v2') {
-      setUseNewLayout(true);
-    }
-  }, []);
-
-  // Save layout preference when changed
-  const toggleLayoutPreference = () => {
-    const newValue = !useNewLayout;
-    setUseNewLayout(newValue);
-    localStorage.setItem('orderDetailLayout', newValue ? 'v2' : 'v1');
-  };
+  // Layout toggle removed - V2 is now permanent
 
   // State for tracking orders with unread notifications
   const [ordersWithUnreadNotifications, setOrdersWithUnreadNotifications] = useState<Set<string>>(new Set());
@@ -760,9 +744,8 @@ export default function OrdersPage() {
   };
 
   const navigateToOrder = (orderId: string) => {
-    const path = useNewLayout 
-      ? `/dashboard/orders/${orderId}/v2`
-      : `/dashboard/orders/${orderId}`;
+    // Navigate to order detail
+    const path = `/dashboard/orders/${orderId}`;
     window.open(path, '_blank');
   };
 
@@ -1289,31 +1272,7 @@ export default function OrdersPage() {
             </Link>
           )}
           
-          {/* Layout Toggle - Admin, Super Admin, and Manufacturer */}
-          {(userRole === 'super_admin' || userRole === 'admin' || userRole === 'manufacturer') && (
-            <div className="flex items-center gap-2 sm:gap-3 self-end sm:self-auto">
-              <span className={`text-xs font-medium transition-colors ${!useNewLayout ? 'text-gray-900' : 'text-gray-400'}`}>
-                Classic
-              </span>
-              <button
-                onClick={toggleLayoutPreference}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 ${
-                  useNewLayout ? 'bg-purple-600' : 'bg-gray-300'
-                }`}
-                role="switch"
-                aria-checked={useNewLayout}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform ${
-                    useNewLayout ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-xs font-medium transition-colors ${useNewLayout ? 'text-purple-600' : 'text-gray-400'}`}>
-                New
-              </span>
-            </div>
-          )}
+          {/* Layout toggle removed - V2 is now permanent */}
         </div>
 
         {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') && (
@@ -1534,7 +1493,7 @@ export default function OrdersPage() {
                               </button>
                             )}
                             <Link
-                              href={useNewLayout ? `/dashboard/orders/${order.id}/v2` : `/dashboard/orders/${order.id}`}
+                              href={`/dashboard/orders/${order.id}`}
                               target="_blank"
                               className="text-gray-600 hover:text-gray-800"
                               title={t('viewDetails')}

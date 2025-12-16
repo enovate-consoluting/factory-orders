@@ -1,16 +1,18 @@
 /**
- * Order Detail Page - /dashboard/orders/[id]
- * UPDATED: Products now visible to both Admin and Manufacturer regardless of routing
- * UPDATED: Control Panel and Product Distribution moved ABOVE Sample Request
- * UPDATED: Passes sample data to useBulkRouting for save & route
- * UPDATED: Admin redirects to orders list after routing
- * FIXED: Sample section saves and routes with products
- * FIXED: Products no longer disappear when routed - routing is now just a queue indicator
- * ADDED: Client Notes section for client_request orders
- * ADDED: Inline manufacturer selector in manufacturer card (like client card)
- * ADDED: Product delete functionality with audit logging
- * FIXED: Show all variants including zero quantity ones
- * UPDATED: Replaced RouteModal with ProductRouteModal import and usages
+ * Order Detail Page V2 - /dashboard/orders/[id]/v2
+ * REDESIGNED: Clean, consolidated layout
+ * 
+ * Changes from V1:
+ * - OrderHeaderV2: Merged header + client/mfr cards + control panel
+ * - CollapsibleSampleSection: Sample request now collapses like products
+ * - Cleaner text formatting (no camelCase)
+ * 
+ * Structure:
+ * 1. OrderHeaderV2 - Title, client/mfr, total, actions (all in one)
+ * 2. Sample Request - Collapsible with header
+ * 3. Order Products - Collapsible cards
+ * 
+ * Roles: Admin, Super Admin, Manufacturer, Client
  * Last Modified: December 8, 2025
  */
 
@@ -22,7 +24,6 @@ import { useOrderData } from './hooks/useOrderData';
 import { getUserRole, usePermissions } from './hooks/usePermissions';
 import { useSampleRouting } from './hooks/useSampleRouting';
 import { useBulkRouting } from './hooks/useBulkRouting';
-import { useProductDelete } from './hooks/useProductDelete';  // ADDED: Import delete hook
 
 // Translation imports
 import { useTranslation } from 'react-i18next';
@@ -30,33 +31,33 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
 import '../../../i18n';
 
-// Shared Components
-import { OrderHeader } from './components/shared/OrderHeader';
+// NEW Consolidated Components
+import { OrderHeaderV2 } from './components/shared/OrderHeader';
+import { CollapsibleSampleSection } from './components/shared/CollapsibleSampleSection';
+
+// Existing Components (kept)
 import { OrderSampleRequest } from '../shared-components/OrderSampleRequest';
-import { ProductDistributionBar } from './components/shared/ProductDistributionBar';
+import { AdminProductCardV2 } from './components/admin/AdminProductCard';
+// ManufacturerProductCard removed - using V2 version only
+import { ManufacturerProductCardV2 } from './components/manufacturer/ManufacturerProductCard';
+import { ManufacturerControlPanelV2 } from './components/manufacturer/ManufacturerControlPanel';
 
-// Product Cards
-import { AdminProductCard } from './components/admin/AdminProductCard';
-import { ManufacturerProductCard } from './components/manufacturer/ManufacturerProductCard';
-
-// Control Panels
-import { AdminControlPanel } from './components/admin/AdminControlPanel';
-import { ManufacturerControlPanel } from './components/manufacturer/ManufacturerControlPanel';
-
-// Modals
+// Modals (kept)
 import { HistoryModal } from './components/modals/HistoryModal';
 import { ProductRouteModal } from './components/modals/ProductRouteModal';
 import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
+import { AccessoriesCard } from './components/shared/AccessoriesCard';
 
 // Utilities
 import { getProductCounts } from '../utils/orderCalculations';
 import { printManufacturingSheets } from '../utils/printManufacturingSheet';
 
 import { supabase } from '@/lib/supabase';
-import { Building, Mail, Package, Loader2, Edit2, Eye, EyeOff, X, Check, User, Clock, CheckCircle, MessageSquare } from 'lucide-react';
+import { Package, MessageSquare, CheckCircle, Tag } from 'lucide-react';
 
 // Calculate order total based on user role
-const calculateOrderTotal = (order: any, userRole: string): number => {
+// Now includes sample fee and accessories
+const calculateOrderTotal = (order: any, userRole: string, accessoriesTotal: number = 0): number => {
   if (!order?.order_products) return 0;
   
   let total = 0;
@@ -90,10 +91,20 @@ const calculateOrderTotal = (order: any, userRole: string): number => {
     total += productTotal;
   });
   
+  // Add sample fee based on role
+  if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
+    total += parseFloat(order.client_sample_fee || order.sample_fee || 0);
+  } else if (userRole === 'manufacturer') {
+    total += parseFloat(order.sample_fee || 0);
+  }
+  
+  // Add accessories total
+  total += accessoriesTotal;
+  
   return total;
 };
 
-// Interface for sample save data (matches OrderSampleRequest)
+// Interface for sample save data
 interface SampleSaveData {
   fee: string;
   eta: string;
@@ -101,7 +112,7 @@ interface SampleSaveData {
   notes: string;
 }
 
-export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function OrderDetailPageV2({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { id } = use(params);
 
@@ -113,28 +124,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const { order, loading, error, refetch } = useOrderData(id);
   const permissions = usePermissions();
   const userRole = getUserRole();
-  
-  // ADDED: Initialize product delete hook
-  const { deleteProduct } = useProductDelete();
 
-  // State for editing client
-  const [isEditingClient, setIsEditingClient] = useState(false);
-  const [selectedClientId, setSelectedClientId] = useState('');
+  // State
   const [availableClients, setAvailableClients] = useState<any[]>([]);
-  const [savingClient, setSavingClient] = useState(false);
-  
-  // State for editing manufacturer (inline like client)
-  const [isEditingManufacturer, setIsEditingManufacturer] = useState(false);
   const [availableManufacturers, setAvailableManufacturers] = useState<any[]>([]);
-  const [selectedManufacturerId, setSelectedManufacturerId] = useState('');
-  const [savingManufacturer, setSavingManufacturer] = useState(false);
-  
-  // State for showing all products
-  const [showAllProducts, setShowAllProducts] = useState(false);
-  
-  // State for individual product selection
-  const [selectedProductId, setSelectedProductId] = useState<string>('all');
-  
+  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
+  const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
+
   // Order-level sample state
   const [orderSampleFee, setOrderSampleFee] = useState('');
   const [orderSampleETA, setOrderSampleETA] = useState('');
@@ -142,14 +138,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const [orderSampleNotes, setOrderSampleNotes] = useState('');
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([]);
   const [savingOrderSample, setSavingOrderSample] = useState(false);
-  
-  const [workflowUpdating, setWorkflowUpdating] = useState(false);
-  const [manufacturerId, setManufacturerId] = useState<string | null>(null);
-  const [subManufacturers, setSubManufacturers] = useState<any[]>([]);
-  const [selectedSubManufacturer, setSelectedSubManufacturer] = useState<string>('');
-  const [viewedHistory, setViewedHistory] = useState<Record<string, number>>({});
+  const [accessoriesTotal, setAccessoriesTotal] = useState(0);
 
-  
   // History Modal State
   const [historyModal, setHistoryModal] = useState({
     isOpen: false,
@@ -157,11 +147,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     productName: ''
   });
 
-  // Product Route Modal State
-  const [productRouteModal, setProductRouteModal] = useState<{
-    isOpen: boolean;
-    product: any;
-  }>({
+  // Route Modal State
+  const [productRouteModal, setProductRouteModal] = useState<{ isOpen: boolean; product: any }>({
     isOpen: false,
     product: null
   });
@@ -172,105 +159,33 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     isSaving: false
   });
 
-  // Track manufacturer card refs
+  // Track card refs for bulk operations
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
-  
-  // Track admin card refs
   const adminCardRefs = useRef<Map<string, any>>(new Map());
-
-  // Batch translate all dynamic fields when order changes
-  useEffect(() => {
-    if (!order || language === 'en') return;
-
-    const textsToTranslate: string[] = [];
-
-    // Order name
-    if (order.order_name) textsToTranslate.push(order.order_name);
-
-    // Client and manufacturer names
-    if (order.client?.name) textsToTranslate.push(order.client.name);
-    if (order.manufacturer?.name) textsToTranslate.push(order.manufacturer.name);
-
-    // Product data
-    if (order.order_products && Array.isArray(order.order_products)) {
-      order.order_products.forEach((product: any) => {
-        if (product.description) textsToTranslate.push(product.description);
-        if (product.product?.title) textsToTranslate.push(product.product.title);
-        if (product.production_time) textsToTranslate.push(product.production_time);
-        if (product.sample_notes) textsToTranslate.push(product.sample_notes);
-        if (product.selected_sub_manufacturer?.name) textsToTranslate.push(product.selected_sub_manufacturer.name);
-
-        // Variant combinations from order items
-        if (product.order_items && Array.isArray(product.order_items)) {
-          product.order_items.forEach((item: any) => {
-            if (item.variant_combo) textsToTranslate.push(item.variant_combo);
-            if (item.notes) textsToTranslate.push(item.notes);
-          });
-        }
-      });
-    }
-
-    // Order sample notes
-    if (order.sample_notes) textsToTranslate.push(order.sample_notes);
-
-    if (textsToTranslate.length > 0) {
-      translateBatch(textsToTranslate, 'order_detail');
-    }
-  }, [order, language, translateBatch]);
-
-  // Calculate total based on role
-  const totalAmount = calculateOrderTotal(order, userRole || '');
 
   // Role checks
   const isManufacturer = userRole === 'manufacturer';
   const isSuperAdmin = userRole === 'super_admin';
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
-  
-  // Check if this is a client request order
   const isClientRequest = order?.status === 'client_request';
 
-  // Helper functions
-  const getAllProducts = () => {
-    if (!order?.order_products) return [];
-    return order.order_products;
-  };
+  // Calculate total based on role (now includes sample + accessories)
+  const totalAmount = calculateOrderTotal(order, userRole || '', accessoriesTotal);
 
-  /**
-   * UPDATED: Products are now visible to both Admin and Manufacturer regardless of routing
-   * Routing indicates "who needs to work on this" (appears in their queue/tab)
-   * Both parties can still see and edit products at any time
-   */
+  // Helper functions
+  const getAllProducts = () => order?.order_products || [];
+
   const getVisibleProducts = () => {
     const allProducts = getAllProducts();
-    
-    // Client still only sees products routed to them (for approval)
     if (isClient) {
       return allProducts.filter((product: any) => product.routed_to === 'client');
     }
-    
-    // If a specific product is selected from distribution bar, show only that one
-    if (selectedProductId !== 'all') {
-      return allProducts.filter((product: any) => product.id === selectedProductId);
-    }
-    
-    // For Admin and Manufacturer - show ALL products
-    // Routing now indicates "who needs to work on this" not visibility
-    // Products no longer disappear when routed to the other party
     return allProducts;
   };
-  
-  // Get products with admin (for AdminControlPanel)
-  const getAdminProducts = () => {
-    const allProducts = getAllProducts();
-    return allProducts.filter((product: any) => product.routed_to === 'admin');
-  };
-  
-  // Get products with manufacturer (for ManufacturerControlPanel)
-  const getManufacturerProducts = () => {
-    const allProducts = getAllProducts();
-    return allProducts.filter((product: any) => product.routed_to === 'manufacturer');
-  };
+
+  const getAdminProducts = () => getAllProducts().filter((product: any) => product.routed_to === 'admin');
+  const getManufacturerProducts = () => getAllProducts().filter((product: any) => product.routed_to === 'manufacturer');
 
   // Sample Routing Hook
   const sampleRouting = useSampleRouting(
@@ -285,14 +200,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     refetch
   );
 
-  // Bulk Routing Hook - UPDATED: Pass sample files, notes, AND adminCardRefs
+  // Bulk Routing Hook
   const bulkRouting = useBulkRouting({
     orderId: id,
     order,
     products: getVisibleProducts(),
     userRole: userRole || 'admin',
-    manufacturerCardRefs: manufacturerCardRefs,
-    adminCardRefs: adminCardRefs,
+    manufacturerCardRefs,
+    adminCardRefs,
     sampleRouting: {
       routeToAdmin: sampleRouting.routeToAdmin,
       routeToManufacturer: sampleRouting.routeToManufacturer,
@@ -309,50 +224,36 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     onRedirect: () => router.push('/dashboard/orders')
   });
 
+  // Initial data fetch
   useEffect(() => {
-    const fetchSubManufacturers = async () => {
-      const userData = localStorage.getItem('user');
-      if (!userData) return;
-      const user = JSON.parse(userData);
-      if (userRole === 'manufacturer') {
-        const manufacturerIdToUse = user.manufacturer_id || user.id;
-        const { data, error } = await supabase
-          .from('users')
-          .select('id, name, email')
-          .eq('created_by', manufacturerIdToUse)
-          .eq('role', 'sub_manufacturer');
-        if (!error && data) setSubManufacturers(data);
-      }
-    };
-    fetchSubManufacturers();
-    
     const userData = localStorage.getItem('user');
     if (!userData) {
       router.push('/');
       return;
     }
 
-    if (userRole === 'manufacturer') {
-      fetchManufacturerId(JSON.parse(userData));
-    }
+    const user = JSON.parse(userData);
 
-    const viewed = localStorage.getItem(`viewedHistory_${id}`);
-    if (viewed) {
-      setViewedHistory(JSON.parse(viewed));
+    if (userRole === 'manufacturer') {
+      fetchManufacturerId(user);
     }
 
     if (userRole === 'admin' || userRole === 'super_admin') {
       fetchAvailableClients();
       fetchAvailableManufacturers();
     }
+
+    const viewed = localStorage.getItem(`viewedHistory_${id}`);
+    if (viewed) {
+      setViewedHistory(JSON.parse(viewed));
+    }
   }, [router, userRole, id]);
 
-// Load order-level sample data for display
+  // Load order sample data
   useEffect(() => {
     if (order) {
-      // Manufacturer sees their cost, Admin/Client sees client price (with margin)
-      const displayFee = userRole === 'manufacturer' 
-        ? order.sample_fee 
+      const displayFee = userRole === 'manufacturer'
+        ? order.sample_fee
         : (order.client_sample_fee || order.sample_fee);
       setOrderSampleFee(displayFee?.toString() || '');
       setOrderSampleETA(order.sample_eta || '');
@@ -361,9 +262,58 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   }, [order, userRole]);
 
+  // Fetch accessories total for this order
+  useEffect(() => {
+    const fetchAccessoriesTotal = async () => {
+      if (!id) return;
+      try {
+        const { data, error } = await supabase
+          .from('order_accessories')
+          .select('total_fee, client_total_fee')
+          .eq('order_id', id);
+        
+        if (!error && data) {
+          // Use client fees for admin/client, manufacturer fees for manufacturer
+          const total = data.reduce((sum: number, acc: any) => {
+            if (userRole === 'manufacturer') {
+              return sum + parseFloat(acc.total_fee || 0);
+            } else {
+              return sum + parseFloat(acc.client_total_fee || acc.total_fee || 0);
+            }
+          }, 0);
+          setAccessoriesTotal(total);
+        }
+      } catch (err) {
+        console.error('Error fetching accessories total:', err);
+      }
+    };
+    fetchAccessoriesTotal();
+  }, [id, userRole, order]); // Re-fetch when order changes (after refetch)
+
+  // Batch translate
+  useEffect(() => {
+    if (!order || language === 'en') return;
+
+    const textsToTranslate: string[] = [];
+    if (order.order_name) textsToTranslate.push(order.order_name);
+    if (order.client?.name) textsToTranslate.push(order.client.name);
+    if (order.manufacturer?.name) textsToTranslate.push(order.manufacturer.name);
+
+    if (order.order_products) {
+      order.order_products.forEach((product: any) => {
+        if (product.description) textsToTranslate.push(product.description);
+        if (product.product?.title) textsToTranslate.push(product.product.title);
+      });
+    }
+
+    if (textsToTranslate.length > 0) {
+      translateBatch(textsToTranslate, 'order_detail');
+    }
+  }, [order, language, translateBatch]);
+
   // Auto-mark manufacturer notifications as read
   useEffect(() => {
-    const markOrderNotificationsAsRead = async () => {
+    const markNotificationsAsRead = async () => {
       if (userRole === 'manufacturer' && manufacturerId && id) {
         try {
           await supabase
@@ -373,14 +323,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             .eq('order_id', id)
             .eq('is_read', false);
         } catch (err) {
-          console.error('Error in markOrderNotificationsAsRead:', err);
+          console.error('Error marking notifications as read:', err);
         }
       }
     };
-
-    markOrderNotificationsAsRead();
+    markNotificationsAsRead();
   }, [userRole, manufacturerId, id]);
 
+  // Fetch functions
   const fetchManufacturerId = async (user: any) => {
     try {
       const { data, error } = await supabase
@@ -388,7 +338,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         .select('id')
         .eq('email', user.email)
         .single();
-      
+
       if (data && !error) {
         setManufacturerId(data.id);
       }
@@ -396,14 +346,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.error('Error fetching manufacturer ID:', err);
     }
   };
-  
+
   const fetchAvailableClients = async () => {
     try {
       const { data, error } = await supabase
         .from('clients')
         .select('id, name, email')
         .order('name');
-      
+
       if (data && !error) {
         setAvailableClients(data);
       }
@@ -418,7 +368,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         .from('manufacturers')
         .select('id, name, email')
         .order('name');
-      
+
       if (data && !error) {
         setAvailableManufacturers(data);
       }
@@ -426,169 +376,131 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       console.error('Error fetching manufacturers:', err);
     }
   };
-  
-  const handleClientChange = async () => {
-    if (!selectedClientId || !order) return;
-    
-    setSavingClient(true);
-    try {
-      const newClient = availableClients.find(c => c.id === selectedClientId);
-      if (!newClient) throw new Error('Client not found');
-      
-      const clientPrefix = newClient.name.substring(0, 3).toUpperCase();
-      const currentOrderNumber = order.order_number;
-      
-      const numericPart = currentOrderNumber.includes('-') 
-        ? currentOrderNumber.split('-')[1]
-        : currentOrderNumber.replace(/[^0-9]/g, '');
-      
-      const newOrderNumber = `${clientPrefix}-${numericPart}`;
-      
-      const { error } = await supabase
-        .from('orders')
-        .update({ 
-          client_id: selectedClientId,
-          order_number: newOrderNumber
-        })
-        .eq('id', order.id);
 
-      if (error) throw error;
-      
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: user.id || crypto.randomUUID(),
-          user_name: user.name || user.email || 'Admin User',
-          action_type: 'client_changed',
-          target_type: 'order',
-          target_id: order.id,
-          old_value: `${order.client?.name} (${currentOrderNumber})`,
-          new_value: `${newClient.name} (${newOrderNumber})`,
-          timestamp: new Date().toISOString()
-        });
+  // Client change handler
+  const handleClientChange = async (clientId: string) => {
+    if (!clientId || !order) return;
 
-      setIsEditingClient(false);
-      await refetch();
-    } catch (error) {
-      console.error('Error updating client:', error);
-      alert('Error updating client. Please try again.');
-    } finally {
-      setSavingClient(false);
-    }
-  };
+    const newClient = availableClients.find(c => c.id === clientId);
+    if (!newClient) throw new Error('Client not found');
 
-  const handleManufacturerChange = async () => {
-    if (!selectedManufacturerId || !order) return;
-    
-    setSavingManufacturer(true);
-    try {
-      const selectedMfr = availableManufacturers.find(m => m.id === selectedManufacturerId);
-      if (!selectedMfr) throw new Error('Manufacturer not found');
-      
-      // Update order - if it was client_request, change to draft
-      const updateData: any = { 
-        manufacturer_id: selectedManufacturerId
-      };
-      
-      // If this is a client_request, convert to draft
-      if (order.status === 'client_request') {
-        updateData.status = 'draft';
-        updateData.workflow_status = 'draft';
-      }
-      
-      const { error } = await supabase
-        .from('orders')
-        .update(updateData)
-        .eq('id', order.id);
+    const clientPrefix = newClient.name.substring(0, 3).toUpperCase();
+    const numericPart = order.order_number.includes('-')
+      ? order.order_number.split('-')[1]
+      : order.order_number.replace(/[^0-9]/g, '');
+    const newOrderNumber = `${clientPrefix}-${numericPart}`;
 
-      if (error) throw error;
-      
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      // Log the action
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: user.id || crypto.randomUUID(),
-          user_name: user.name || user.email || 'Admin User',
-          action_type: 'manufacturer_changed',
-          target_type: 'order',
-          target_id: order.id,
-          old_value: order.manufacturer?.name || 'No manufacturer',
-          new_value: selectedMfr.name,
-          timestamp: new Date().toISOString()
-        });
+    const { error } = await supabase
+      .from('orders')
+      .update({ client_id: clientId, order_number: newOrderNumber })
+      .eq('id', order.id);
 
-      // Create notification for new manufacturer
-      try {
-        await supabase
-          .from('manufacturer_notifications')
-          .insert({
-            manufacturer_id: selectedManufacturerId,
-            order_id: order.id,
-            message: `Order ${order.order_number} assigned to you`,
-            is_read: false,
-            created_at: new Date().toISOString()
-          });
-      } catch (notifError) {
-        console.warn('Could not create manufacturer notification:', notifError);
-      }
+    if (error) throw error;
 
-      setIsEditingManufacturer(false);
-      setSelectedManufacturerId('');
-      await refetch();
-    } catch (error) {
-      console.error('Error updating manufacturer:', error);
-      alert('Error updating manufacturer. Please try again.');
-    } finally {
-      setSavingManufacturer(false);
-    }
-  };
-
-  // ADDED: Handler for deleting a product
-  const handleDeleteProduct = async (productId: string) => {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const result = await deleteProduct(
-      productId,
-      id,
-      user.role || userRole || 'admin',
-      user.id,
-      user.name || user.email
-    );
-    
-    if (result.success) {
-      // Refetch order data to update the UI
+    await supabase.from('audit_log').insert({
+      user_id: user.id || crypto.randomUUID(),
+      user_name: user.name || user.email || 'Admin User',
+      action_type: 'client_changed',
+      target_type: 'order',
+      target_id: order.id,
+      old_value: `${order.client?.name} (${order.order_number})`,
+      new_value: `${newClient.name} (${newOrderNumber})`,
+      timestamp: new Date().toISOString()
+    });
+
+    await refetch();
+  };
+
+  // Manufacturer change handler
+  const handleManufacturerChange = async (manufacturerId: string) => {
+    if (!manufacturerId || !order) return;
+
+    const selectedMfr = availableManufacturers.find(m => m.id === manufacturerId);
+    if (!selectedMfr) throw new Error('Manufacturer not found');
+
+    const updateData: any = { manufacturer_id: manufacturerId };
+    if (order.status === 'client_request') {
+      updateData.status = 'draft';
+      updateData.workflow_status = 'draft';
+    }
+
+    const { error } = await supabase
+      .from('orders')
+      .update(updateData)
+      .eq('id', order.id);
+
+    if (error) throw error;
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    await supabase.from('audit_log').insert({
+      user_id: user.id || crypto.randomUUID(),
+      user_name: user.name || user.email || 'Admin User',
+      action_type: 'manufacturer_changed',
+      target_type: 'order',
+      target_id: order.id,
+      old_value: order.manufacturer?.name || 'No manufacturer',
+      new_value: selectedMfr.name,
+      timestamp: new Date().toISOString()
+    });
+
+    // Notify new manufacturer
+    try {
+      await supabase.from('manufacturer_notifications').insert({
+        manufacturer_id: manufacturerId,
+        order_id: order.id,
+        message: `Order ${order.order_number} assigned to you`,
+        is_read: false,
+        created_at: new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Could not create manufacturer notification:', e);
+    }
+
+    await refetch();
+  };
+
+  // Toggle paid handler
+  const handleTogglePaid = async (isPaid: boolean) => {
+    if (!order) return;
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_paid: isPaid })
+        .eq('id', order.id);
+
+      if (error) throw error;
+
+      await supabase.from('audit_log').insert({
+        user_id: JSON.parse(localStorage.getItem('user') || '{}').id || crypto.randomUUID(),
+        user_name: JSON.parse(localStorage.getItem('user') || '{}').name || 'Admin User',
+        action_type: isPaid ? 'order_marked_paid' : 'order_marked_unpaid',
+        target_type: 'order',
+        target_id: order.id,
+        old_value: order.is_paid ? 'paid' : 'unpaid',
+        new_value: isPaid ? 'paid' : 'unpaid',
+        timestamp: new Date().toISOString()
+      });
+
       await refetch();
-    } else {
-      // Show error message
-      alert(result.error || 'Failed to delete product');
+    } catch (error) {
+      console.error('Error updating payment status:', error);
     }
   };
 
-  // Handler for order-level sample update
+  // Sample handlers
   const handleOrderSampleUpdate = (field: string, value: any) => {
     switch (field) {
-      case 'sampleFee':
-        setOrderSampleFee(value);
-        break;
-      case 'sampleETA':
-        setOrderSampleETA(value);
-        break;
-      case 'sampleStatus':
-        setOrderSampleStatus(value);
-        break;
-      case 'sampleWorkflowStatus':
-        break;
-      case 'sampleNotes':
-        setOrderSampleNotes(value);
-        break;
+      case 'sampleFee': setOrderSampleFee(value); break;
+      case 'sampleETA': setOrderSampleETA(value); break;
+      case 'sampleStatus': setOrderSampleStatus(value); break;
+      case 'sampleNotes': setOrderSampleNotes(value); break;
     }
   };
 
   const handleOrderSampleFileUpload = (files: FileList | null) => {
     if (!files) return;
-    
     const MAX_FILE_SIZE = 50 * 1024 * 1024;
     const newFiles = Array.from(files).filter(file => {
       if (file.size > MAX_FILE_SIZE) {
@@ -597,7 +509,6 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       }
       return true;
     });
-    
     if (newFiles.length > 0) {
       setOrderSampleFiles(prev => [...prev, ...newFiles]);
     }
@@ -609,50 +520,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const deleteExistingSampleFile = async (mediaId: string) => {
     try {
-      const { data: fileInfo } = await supabase
-        .from('order_media')
-        .select('original_filename, display_name')
-        .eq('id', mediaId)
-        .single();
-      
       const { error } = await supabase
         .from('order_media')
         .delete()
         .eq('id', mediaId);
-      
+
       if (error) throw error;
-      
-      if (fileInfo) {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        await supabase
-          .from('audit_log')
-          .insert({
-            user_id: user.id || crypto.randomUUID(),
-            user_name: user.name || user.email || 'Unknown User',
-            action_type: 'order_sample_updated',
-            target_type: 'order',
-            target_id: order.id,
-            new_value: `File removed: ${fileInfo.original_filename || fileInfo.display_name}`,
-            timestamp: new Date().toISOString()
-          });
-      }
-      
       await refetch();
     } catch (error) {
       console.error('Error deleting media:', error);
       alert('Error deleting file. Please try again.');
     }
   };
-  
-  // Save order sample data (for Save Sample Section button)
+
+  // Save order sample
   const saveOrderSampleData = async (data: SampleSaveData) => {
     if (!order) return;
-    
+
     setSavingOrderSample(true);
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const roleName = userRole === 'super_admin' ? 'Admin' : 
-                      userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
+      const roleName = userRole === 'super_admin' ? 'Admin' : userRole === 'manufacturer' ? 'Manufacturer' : 'Admin';
 
       // Fetch sample margin from system config (with client priority)
       let sampleMarginPercent = 80; // default
@@ -680,157 +568,69 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           }
         }
       }
-      
-      const changes: string[] = [];
-      
-      const newFee = data.fee ? parseFloat(data.fee) : null;
-      const oldFee = order.sample_fee ? parseFloat(order.sample_fee) : null;
-      
-      // ALWAYS log fee if it has a value (even if unchanged) for audit trail
-      if (newFee !== oldFee) {
-        if (oldFee && newFee) {
-          changes.push(`Sample Fee changed: $${oldFee.toFixed(2)} → $${newFee.toFixed(2)}`);
-        } else if (newFee) {
-          changes.push(`Sample Fee set: $${newFee.toFixed(2)}`);
-        } else if (oldFee) {
-          changes.push(`Sample Fee removed (was $${oldFee.toFixed(2)})`);
-        }
-      }
-      
-      // Log the actual fee value being saved for complete audit trail
-      if (newFee) {
-        console.log(`📝 Audit: Sample fee being saved: $${newFee.toFixed(2)} for order ${order.order_number}`);
-      }
-      
-      const oldEta = order.sample_eta || '';
-      if (data.eta !== oldEta) {
-        if (oldEta && data.eta) {
-          changes.push(`ETA: ${oldEta} → ${data.eta}`);
-        } else if (data.eta) {
-          changes.push(`ETA set to ${data.eta}`);
-        } else if (oldEta) {
-          changes.push(`ETA removed`);
-        }
-      }
-      
-      const oldStatus = order.sample_status || 'pending';
-      if (data.status !== oldStatus) {
-        changes.push(`Status: ${oldStatus} → ${data.status}`);
-      }
-      
-      if (data.notes && data.notes.trim()) {
-        changes.push(`Note from ${roleName}: "${data.notes.trim()}"`);
-      }
-      
-      if (orderSampleFiles.length > 0) {
-        changes.push(`${orderSampleFiles.length} file(s) uploaded`);
-      }
-      
-      // Calculate client fee with margin
-      const clientSampleFee = newFee ? Math.round(newFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
+
+      // Calculate fees
+      const mfgSampleFee = data.fee ? parseFloat(data.fee) : null;
+      const clientSampleFee = mfgSampleFee ? Math.round(mfgSampleFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
 
       const updateData: any = {
         sample_required: true,
-        sample_fee: newFee,
+        sample_fee: mfgSampleFee,
         client_sample_fee: clientSampleFee,
         sample_eta: data.eta || null,
         sample_status: data.status || 'pending',
         sample_workflow_status: data.status || 'pending'
       };
-      
-      // SAVE NOTES TO sample_notes column (append to existing)
+
+      // Append notes
       if (data.notes && data.notes.trim()) {
         const timestamp = new Date().toLocaleDateString();
         const newNote = `[${timestamp} - ${roleName}] ${data.notes.trim()}`;
         const existingNotes = order.sample_notes || '';
-        updateData.sample_notes = existingNotes 
-          ? `${existingNotes}\n\n${newNote}`
-          : newNote;
+        updateData.sample_notes = existingNotes ? `${existingNotes}\n\n${newNote}` : newNote;
       }
-      
+
       const { error: updateError } = await supabase
         .from('orders')
         .update(updateData)
         .eq('id', order.id);
-      
+
       if (updateError) throw updateError;
-      
+
+      // Upload files
       if (orderSampleFiles.length > 0) {
         for (const file of orderSampleFiles) {
           const timestamp = Date.now();
           const randomStr = Math.random().toString(36).substring(2, 8);
-          const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
           const fileExt = file.name.split('.').pop()?.toLowerCase() || 'file';
-          const uniqueFileName = `${fileNameWithoutExt}_sample_${timestamp}_${randomStr}.${fileExt}`;
+          const uniqueFileName = `${file.name.replace(/\.[^/.]+$/, "")}_sample_${timestamp}_${randomStr}.${fileExt}`;
           const filePath = `${order.id}/${uniqueFileName}`;
-          
+
           const { error: uploadError } = await supabase.storage
             .from('order-media')
             .upload(filePath, file);
-          
+
           if (!uploadError) {
-            const { data: { publicUrl } } = supabase.storage
-              .from('order-media')
-              .getPublicUrl(filePath);
-            
-            await supabase
-              .from('order_media')
-              .insert({
-                order_id: order.id,
-                order_product_id: null,
-                file_url: publicUrl,
-                file_type: 'order_sample',
-                uploaded_by: user.id || crypto.randomUUID(),
-                original_filename: file.name,
-                display_name: file.name,
-                is_sample: true,
-                created_at: new Date().toISOString()
-              });
+            const { data: { publicUrl } } = supabase.storage.from('order-media').getPublicUrl(filePath);
+
+            await supabase.from('order_media').insert({
+              order_id: order.id,
+              order_product_id: null,
+              file_url: publicUrl,
+              file_type: 'order_sample',
+              uploaded_by: user.id || crypto.randomUUID(),
+              original_filename: file.name,
+              display_name: file.name,
+              is_sample: true,
+              created_at: new Date().toISOString()
+            });
           }
         }
       }
-      
-      // ALWAYS log sample saves with full details (not just when changes detected)
-      const auditData: any = {
-        user_id: user.id || crypto.randomUUID(),
-        user_name: user.name || user.email || 'Unknown User',
-        action_type: 'order_sample_updated',
-        target_type: 'order',
-        target_id: order.id,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Capture old values for complete audit trail
-      const oldValues = {
-        sample_fee: oldFee ? `$${oldFee.toFixed(2)}` : 'none',
-        sample_eta: order.sample_eta || 'none',
-        sample_status: order.sample_status || 'none'
-      };
-      
-      // Capture new values
-      const newValues = {
-        sample_fee: newFee ? `$${newFee.toFixed(2)}` : 'none',
-        client_sample_fee: clientSampleFee ? `$${clientSampleFee.toFixed(2)}` : 'none',
-        sample_eta: data.eta || 'none',
-        sample_status: data.status || 'pending'
-      };
-      
-      if (changes.length > 0) {
-        auditData.old_value = JSON.stringify(oldValues);
-        auditData.new_value = `${changes.join(' | ')} [Full: ${JSON.stringify(newValues)}]`;
-      } else {
-        // Even if no changes detected, log the save action with current values
-        auditData.new_value = `Sample saved (no changes) [Values: ${JSON.stringify(newValues)}]`;
-      }
-      
-      await supabase.from('audit_log').insert(auditData);
-      
-      console.log('📝 Audit log created:', auditData.new_value);
-      
+
       setOrderSampleFiles([]);
       setOrderSampleNotes('');
       await refetch();
-      
     } catch (error) {
       console.error('Error saving order sample data:', error);
       alert('Error saving sample data. Please try again.');
@@ -839,130 +639,100 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
-    if (!order) return;
-    
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: newStatus })
-        .eq('id', order.id);
-      
-      if (error) throw error;
-      
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: JSON.parse(localStorage.getItem('user') || '{}').id || crypto.randomUUID(),
-          user_name: JSON.parse(localStorage.getItem('user') || '{}').name || 'Admin User',
-          action_type: 'order_status_changed',
-          target_type: 'order',
-          target_id: order.id,
-          old_value: order.status,
-          new_value: newStatus,
-          timestamp: new Date().toISOString()
-        });
-
-      await refetch();
-    } catch (error) {
-      console.error('Error updating status:', error);
-    }
-  };
-
-  const handleTogglePaid = async (isPaid: boolean) => {
-    if (!order) return;
-    
-    try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ is_paid: isPaid })
-        .eq('id', order.id);
-
-      if (error) throw error;
-
-      await supabase
-        .from('audit_log')
-        .insert({
-          user_id: JSON.parse(localStorage.getItem('user') || '{}').id || crypto.randomUUID(),
-          user_name: JSON.parse(localStorage.getItem('user') || '{}').name || 'Admin User',
-          action_type: isPaid ? 'order_marked_paid' : 'order_marked_unpaid',
-          target_type: 'order',
-          target_id: order.id,
-          old_value: order.is_paid ? 'paid' : 'unpaid',
-          new_value: isPaid ? 'paid' : 'unpaid',
-          timestamp: new Date().toISOString()
-        });
-
-      await refetch();
-    } catch (error) {
-      console.error('Error updating payment status:', error);
-    }
-  };
-
+  // View history
   const handleViewHistory = (productId: string, productName: string) => {
-    setHistoryModal({
-      isOpen: true,
-      productId,
-      productName
-    });
-    
+    setHistoryModal({ isOpen: true, productId, productName });
+
     const historyCount = getHistoryCount(productId);
     const newViewed = { ...viewedHistory, [productId]: historyCount };
     setViewedHistory(newViewed);
     localStorage.setItem(`viewedHistory_${id}`, JSON.stringify(newViewed));
   };
 
+  // Route product
   const handleRouteProduct = (product: any) => {
-    setProductRouteModal({
-      isOpen: true,
-      product
-    });
+    setProductRouteModal({ isOpen: true, product });
   };
 
-  const handleSaveAllAndRoute = async () => {
-    setSaveAllRouteModal({
-      isOpen: true,
-      isSaving: false
-    });
+  // Delete product handler
+  const handleDeleteProduct = async (productId: string) => {
+    if (!order) return;
+    
+    try {
+      // Delete order_items first
+      await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_product_id', productId);
+      
+      // Delete order_media
+      await supabase
+        .from('order_media')
+        .delete()
+        .eq('order_product_id', productId);
+      
+      // Delete the product itself
+      const { error } = await supabase
+        .from('order_products')
+        .delete()
+        .eq('id', productId);
+      
+      if (error) throw error;
+      
+      // Log to audit
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      await supabase.from('audit_log').insert({
+        user_id: user.id || crypto.randomUUID(),
+        user_name: user.name || user.email || 'Admin User',
+        action_type: 'product_deleted',
+        target_type: 'order_product',
+        target_id: productId,
+        old_value: JSON.stringify({ order_id: order.id }),
+        new_value: null,
+        timestamp: new Date().toISOString()
+      });
+      
+      await refetch();
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      alert('Error deleting product. Please try again.');
+    }
   };
 
-  // Save All & Route handler
+  // Save all and route
+  const handleSaveAllAndRoute = () => {
+    setSaveAllRouteModal({ isOpen: true, isSaving: false });
+  };
+
   const handleSaveAllRoute = async (selectedRoute: string, notes?: string) => {
     setSaveAllRouteModal(prev => ({ ...prev, isSaving: true }));
-    
-    console.log('=== STARTING SAVE ALL & ROUTE ===');
-    console.log('Route option:', selectedRoute);
-    console.log('Products to process:', getVisibleProducts().length);
-    console.log('Sample data:', { fee: orderSampleFee, eta: orderSampleETA, files: orderSampleFiles.length });
-    
+
     const success = await bulkRouting.saveAllAndRoute(selectedRoute, notes);
-    
+
     if (success) {
-      // Clear sample files after successful save
       setOrderSampleFiles([]);
       setOrderSampleNotes('');
     } else if (bulkRouting.state.error) {
       alert(`Error: ${bulkRouting.state.error}`);
     }
-    
+
     setSaveAllRouteModal({ isOpen: false, isSaving: false });
   };
-  
-  // Print handler
+
+  // Print all
   const handlePrintAll = () => {
     const visibleProducts = getVisibleProducts();
     printManufacturingSheets(visibleProducts, order);
   };
 
+  // History helpers
   const getHistoryCount = (productId: string): number => {
     if (productId.startsWith('order-sample-')) {
       if (!order?.audit_log) return 0;
-      return order.audit_log.filter((log: any) => 
-        log.action_type === 'order_sample_updated' && 
-        log.target_id === order.id
+      return order.audit_log.filter((log: any) =>
+        log.action_type === 'order_sample_updated' && log.target_id === order.id
       ).length || 0;
     }
-    
     const product = order?.order_products?.find((p: any) => p.id === productId);
     return product?.audit_log?.length || 0;
   };
@@ -975,9 +745,8 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const getOrderSampleHistoryCount = (): number => {
     if (!order?.audit_log) return 0;
-    return order.audit_log.filter((log: any) => 
-      log.action_type === 'order_sample_updated' && 
-      log.target_id === order.id
+    return order.audit_log.filter((log: any) =>
+      log.action_type === 'order_sample_updated' && log.target_id === order.id
     ).length || 0;
   };
 
@@ -987,16 +756,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     return currentCount > viewedCount;
   };
 
-  const getClientProducts = () => {
-    const allProducts = getAllProducts();
-    return allProducts.filter((product: any) => product.routed_to === 'client');
-  };
-
-  const productCounts = getProductCounts(order);
-
-  const allProductsPaid = order?.order_products?.length > 0 && 
-    order.order_products.every((p: any) => p.payment_status === 'paid');
-
+  // Loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -1005,6 +765,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     );
   }
 
+  // Error state
   if (error || !order) {
     return (
       <div className="p-4 md:p-6">
@@ -1015,16 +776,13 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
     );
   }
 
-  const allProducts = getAllProducts();
   const visibleProducts = getVisibleProducts();
-  const clientProducts = getClientProducts();
   const adminProducts = getAdminProducts();
   const manufacturerProducts = getManufacturerProducts();
 
   // Find sample files
   const existingSampleMedia = (() => {
     const samples: any[] = [];
-    
     if (order?.order_media) {
       order.order_media.forEach((m: any) => {
         if (m.is_sample === true || m.file_type === 'order_sample') {
@@ -1032,413 +790,150 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }
       });
     }
-    
     if (order?.order_products) {
       order.order_products.forEach((product: any) => {
         if (product.order_media) {
           product.order_media.forEach((m: any) => {
-            if (m.is_sample === true) {
-              if (!samples.find((s: any) => s.id === m.id)) {
-                samples.push(m);
-              }
+            if (m.is_sample === true && !samples.find((s: any) => s.id === m.id)) {
+              samples.push(m);
             }
           });
         }
       });
     }
-    
     return samples;
   })();
 
-  // CLIENT VIEW
+  // CLIENT VIEW (simplified)
   if (isClient) {
+    const clientProducts = visibleProducts.filter((p: any) => p.routed_to === 'client');
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 overflow-x-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
         <div className="bg-white border-b border-gray-200 shadow-sm">
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
-            <div className="flex flex-col gap-3">
-              <div className="flex items-start sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Package className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words">
-                      {t('order')} {order.order_number}
-                    </h1>
-                    {order.order_name && (
-                      <p className="text-xs sm:text-sm text-gray-500 truncate">{translate(order.order_name)}</p>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Language Switcher - Client View Header */}
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">
+                  Order {order.order_number}
+                </h1>
+                {order.order_name && (
+                  <p className="text-sm text-gray-500">{translate(order.order_name)}</p>
+                )}
+              </div>
+              {setLanguage && (
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value as 'en' | 'zh')}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-700 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer flex-shrink-0"
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 >
                   <option value="en">🇺🇸 EN</option>
                   <option value="zh">🇨🇳 中文</option>
                 </select>
-              </div>
-              
-              {/* Order Total - Full width on mobile */}
-              {totalAmount > 0 && (
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 rounded-lg border border-green-200">
-                  <p className="text-xs sm:text-sm text-gray-500">{t('orderTotal')}</p>
-                  <p className="text-2xl sm:text-3xl font-bold text-green-700">
-                    ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                </div>
               )}
             </div>
+            {totalAmount > 0 && (
+              <div className="mt-3 p-3 bg-green-50 rounded-lg">
+                <p className="text-xs text-gray-500">Order Total</p>
+                <p className="text-2xl font-bold text-green-700">
+                  ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 pb-20">
-          <div className="space-y-4 sm:space-y-6">
-            <h2 className="text-base sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Package className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-              {t('productsForYourReview')}
-            </h2>
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+            <Package className="w-5 h-5 text-gray-400" />
+            Products for Your Review
+          </h2>
 
-            {clientProducts.length === 0 ? (
-              <div className="bg-white rounded-lg sm:rounded-xl shadow border border-gray-200 p-6 sm:p-8 text-center">
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                  <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
-                </div>
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
-                  {t('noProductsPendingReview')}
-                </h3>
-                <p className="text-sm sm:text-base text-gray-500">
-                  {t('allProductsReviewedOrProcessing')}
-                </p>
-              </div>
-            ) : (
-              clientProducts.map((product: any) => {
-                const items = product.order_items || [];
-                const media = product.order_media || [];
-                
-                // Translate product data for client view
-                const translatedProduct = {
-                  ...product,
-                  description: translate(product.description),
-                  product: product.product ? {
-                    ...product.product,
-                    title: translate(product.product.title)
-                  } : product.product,
-                  production_time: translate(product.production_time),
-                  sample_notes: translate(product.sample_notes)
-                };
-                
-                // Translate order items
-                const translatedItems = items.map((item: any) => ({
-                  ...item,
-                  variant_combination: translate(item.variant_combination),
-                  notes: translate(item.notes)
-                }));
-                
-                return (
-                  <AdminProductCard
-                    key={product.id}
-                    product={translatedProduct}
-                    items={translatedItems}
-                    media={media}
-                    orderStatus={order.workflow_status || order.status}
-                    onUpdate={refetch}
-                    autoCollapse={true}
-                    translate={translate}
-                    t={t}
-                  />
-                );
-              })
-            )}
-          </div>
+          {clientProducts.length === 0 ? (
+            <div className="bg-white rounded-xl shadow border p-8 text-center">
+              <CheckCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Products Pending Review</h3>
+              <p className="text-gray-500">All products have been reviewed or are being processed.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {clientProducts.map((product: any) => (
+                <AdminProductCardV2
+                  key={product.id}
+                  product={product}
+                  items={product.order_items || []}
+                  media={product.order_media || []}
+                  orderStatus={order.workflow_status || order.status}
+                  onUpdate={refetch}
+                  autoCollapse={true}
+                  translate={translate}
+                  t={t}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
   }
+
   // ADMIN/MANUFACTURER VIEW
   return (
-    <div className="min-h-screen bg-gray-100 overflow-x-hidden">
-      <OrderHeader 
-        order={order} 
-        totalAmount={totalAmount}
-        onEditDraft={() => router.push(`/dashboard/orders/edit/${order.id}`)}
-        onStatusChange={handleStatusChange}
-        onTogglePaid={handleTogglePaid}
-        allProductsPaid={allProductsPaid}
-        language={language}
-        setLanguage={setLanguage}
-      />
-
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-2 sm:py-3 pb-20">
-        {/* Client & Manufacturer Info Cards */}
-        {userRole !== 'manufacturer' && ( <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
-            {/* Client Card */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow relative">
-              {(isAdmin || isSuperAdmin) && !isEditingClient && (
-                <button
-                  onClick={() => {
-                    setIsEditingClient(true);
-                    setSelectedClientId(order.client?.id || '');
-                  }}
-                  className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-blue-600 transition-colors"
-                  title="Edit Client"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-              
-              {isEditingClient ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs sm:text-sm text-gray-500">{t('selectNewClient')}</p>
-                    <button
-                      onClick={() => {
-                        setIsEditingClient(false);
-                        setSelectedClientId(order.client?.id || '');
-                      }}
-                      className="p-1 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <select
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
-                    disabled={savingClient}
-                  >
-                    <option value="">{t('selectClient')}</option>
-                    {availableClients.map(client => (
-                      <option key={client.id} value={client.id}>
-                        {client.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setIsEditingClient(false);
-                        setSelectedClientId(order.client?.id || '');
-                      }}
-                      disabled={savingClient}
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {t('cancel')}
-                    </button>
-                    <button
-                      onClick={handleClientChange}
-                      disabled={!selectedClientId || selectedClientId === order.client?.id || savingClient}
-                      className="flex-1 px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {savingClient ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          {t('saving')}
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          {t('save')}
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {selectedClientId && selectedClientId !== order.client?.id && (
-                    <p className="text-xs text-amber-600">
-                      {t('orderNumberWillChange')}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm text-gray-500">{t('client')}</p>
-                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">{translate(order.client?.name)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                    <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span className="truncate">{order.client?.email}</span>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Manufacturer Card - Now with inline edit like Client Card */}
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-2.5 sm:p-4 hover:shadow-md transition-shadow relative">
-              {(isAdmin || isSuperAdmin) && !isEditingManufacturer && (
-                <button
-                  onClick={() => {
-                    setIsEditingManufacturer(true);
-                    setSelectedManufacturerId(order.manufacturer?.id || '');
-                  }}
-                  className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-green-600 transition-colors"
-                  title="Edit Manufacturer"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-              
-              {isEditingManufacturer ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs sm:text-sm text-gray-500">
-                      {order.manufacturer_id ? 'Change Manufacturer' : 'Assign Manufacturer'}
-                    </p>
-                    <button
-                      onClick={() => {
-                        setIsEditingManufacturer(false);
-                        setSelectedManufacturerId(order.manufacturer?.id || '');
-                      }}
-                      className="p-1 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <select
-                    value={selectedManufacturerId}
-                    onChange={(e) => setSelectedManufacturerId(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-green-500"
-                    disabled={savingManufacturer}
-                  >
-                    <option value="">Select a manufacturer...</option>
-                    {availableManufacturers.map(mfr => (
-                      <option key={mfr.id} value={mfr.id}>
-                        {mfr.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setIsEditingManufacturer(false);
-                        setSelectedManufacturerId(order.manufacturer?.id || '');
-                      }}
-                      disabled={savingManufacturer}
-                      className="flex-1 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      {t('cancel')}
-                    </button>
-                    <button
-                      onClick={handleManufacturerChange}
-                      disabled={!selectedManufacturerId || selectedManufacturerId === order.manufacturer?.id || savingManufacturer}
-                      className="flex-1 px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {savingManufacturer ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          {t('saving')}
-                        </>
-                      ) : (
-                        <>
-                          <Check className="w-3.5 h-3.5" />
-                          {t('save')}
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  {isClientRequest && selectedManufacturerId && (
-                    <p className="text-xs text-amber-600">
-                      Order will be converted from "Client Request" to "Draft" status.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
-                    <div className="w-9 h-9 sm:w-10 sm:h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm text-gray-500">{t('manufacturer')}</p>
-                      <p className="text-sm sm:text-base font-semibold text-gray-900 truncate">
-                        {order.manufacturer?.name ? translate(order.manufacturer.name) : (
-                          <span className="text-amber-600 italic">Not assigned - click edit to assign</span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  {order.manufacturer?.email && (
-                    <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600">
-                      <Mail className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                      <span className="truncate">{order.manufacturer.email}</span>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Client Notes Section - Show for client_request orders */}
-        {isClientRequest && order.client_notes && (
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-3">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <MessageSquare className="w-5 h-5 text-teal-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-teal-900 mb-1 flex items-center gap-2">
-                  <span>Client Notes</span>
-                  <span className="px-2 py-0.5 bg-teal-200 text-teal-800 text-xs rounded-full">
-                    From Request
-                  </span>
-                </h3>
-                <p className="text-sm text-teal-800 whitespace-pre-wrap">
-                  {order.client_notes}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CONTROL PANEL - Admin (moved ABOVE sample request) */}
-        {(isAdmin || isSuperAdmin) && !isManufacturer && adminProducts.length > 0 && (
-          <AdminControlPanel
+    <div className="min-h-screen bg-gray-100">
+      {/* MANUFACTURER CONTROL PANEL - V2 */}
+      {isManufacturer && (
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 pt-4">
+          <ManufacturerControlPanelV2
             order={order}
-            visibleProducts={adminProducts}
-            onSaveAndRoute={handleSaveAllAndRoute}
-            onPrintAll={handlePrintAll}
-            totalAmount={totalAmount}
-          />
-        )}
-
-        {/* CONTROL PANEL - Manufacturer (moved ABOVE sample request) */}
-        {userRole === 'manufacturer' && manufacturerProducts.length > 0 && (
-          <ManufacturerControlPanel
-            order={order}
-            visibleProducts={manufacturerProducts}
+            visibleProducts={visibleProducts}
             onSaveAndRoute={handleSaveAllAndRoute}
             onPrintAll={handlePrintAll}
             onUpdate={refetch}
+            manufacturerId={manufacturerId || undefined}
           />
+        </div>
+      )}
+
+      {/* CONSOLIDATED HEADER - Admin/Super Admin only */}
+      {!isManufacturer && (
+        <OrderHeaderV2
+          order={order}
+          totalAmount={totalAmount}
+          userRole={userRole}
+          visibleProducts={isManufacturer ? manufacturerProducts : adminProducts}
+          availableClients={availableClients}
+          availableManufacturers={availableManufacturers}
+          onEditDraft={() => router.push(`/dashboard/orders/edit/${order.id}`)}
+          onTogglePaid={handleTogglePaid}
+          onClientChange={handleClientChange}
+          onManufacturerChange={handleManufacturerChange}
+          onSaveAndRoute={handleSaveAllAndRoute}
+          onPrintAll={handlePrintAll}
+          onRefetch={refetch}
+          sampleNeedsRouting={order?.sample_routed_to === 'admin'}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 pb-20">
+        {/* Client Notes (for client_request orders) */}
+        {isClientRequest && order.client_notes && (
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-4">
+            <div className="flex items-start gap-3">
+              <MessageSquare className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-semibold text-teal-900 mb-1 flex items-center gap-2">
+                  Client Notes
+                  <span className="px-2 py-0.5 bg-teal-200 text-teal-800 text-xs rounded-full">From Request</span>
+                </h3>
+                <p className="text-sm text-teal-800 whitespace-pre-wrap">{order.client_notes}</p>
+              </div>
+            </div>
+          </div>
         )}
 
-        {/* PRODUCT DISTRIBUTION BAR - Hide for client_request orders */}
-        {!isClientRequest && (
-          <ProductDistributionBar
-            products={allProducts}
-            selectedProductId={selectedProductId}
-            onProductSelect={setSelectedProductId}
-            showAllProducts={showAllProducts}
-            onToggleShowAll={isSuperAdmin ? () => setShowAllProducts(!showAllProducts) : undefined}
-            isSuperAdmin={isSuperAdmin}
-            counts={productCounts}
-            translate={translate}
-          />
-        )}
-
-        {/* ORDER-LEVEL SAMPLE REQUEST SECTION (now BELOW control panel and distribution) */}
+        {/* COLLAPSIBLE SAMPLE REQUEST */}
         {(isAdmin || isSuperAdmin || isManufacturer) && (
-          <OrderSampleRequest
+          <CollapsibleSampleSection
             orderId={id}
             sampleFee={orderSampleFee}
             sampleETA={orderSampleETA}
@@ -1447,6 +942,14 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             sampleFiles={orderSampleFiles}
             existingMedia={existingSampleMedia}
             existingSampleNotes={order?.sample_notes || ''}
+            sampleRoutedTo={order?.sample_routed_to || 'admin'}
+            sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
+            isManufacturer={isManufacturer}
+            isClient={isClient}
+            userRole={userRole || 'admin'}
+            hasNewHistory={hasNewOrderSampleHistory()}
+            isRouting={sampleRouting.isRouting}
+            saving={savingOrderSample}
             onUpdate={handleOrderSampleUpdate}
             onFileUpload={handleOrderSampleFileUpload}
             onFileRemove={removeOrderSampleFile}
@@ -1455,89 +958,89 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               setHistoryModal({
                 isOpen: true,
                 productId: 'order-sample-' + order.id,
-                productName: t('orderSampleRequest')
+                productName: 'Sample Request'
               });
-              
               const historyCount = getOrderSampleHistoryCount();
               const newViewed = { ...viewedHistory, ['order-sample-' + id]: historyCount };
               setViewedHistory(newViewed);
               localStorage.setItem(`viewedHistory_${id}`, JSON.stringify(newViewed));
             }}
-            hasNewHistory={hasNewOrderSampleHistory()}
-            isManufacturer={isManufacturer}
-            isClient={isClient}
-            userRole={userRole || 'admin'}
-            readOnly={false}
             onSave={saveOrderSampleData}
-            saving={savingOrderSample}
-            sampleRoutedTo={order?.sample_routed_to || 'admin'}
-            sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
             onRouteToManufacturer={sampleRouting.routeToManufacturer}
             onRouteToAdmin={sampleRouting.routeToAdmin}
             onRouteToClient={sampleRouting.routeToClient}
             canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
             canRouteToAdmin={sampleRouting.canRouteToAdmin}
             canRouteToClient={sampleRouting.canRouteToClient}
-            isRouting={sampleRouting.isRouting}
-          />
+            t={t}
+          >
+            {/* The actual OrderSampleRequest form inside the collapsible */}
+            <OrderSampleRequest
+              orderId={id}
+              sampleFee={orderSampleFee}
+              sampleETA={orderSampleETA}
+              sampleStatus={orderSampleStatus}
+              sampleNotes={orderSampleNotes}
+              sampleFiles={orderSampleFiles}
+              existingMedia={existingSampleMedia}
+              existingSampleNotes={order?.sample_notes || ''}
+              onUpdate={handleOrderSampleUpdate}
+              onFileUpload={handleOrderSampleFileUpload}
+              onFileRemove={removeOrderSampleFile}
+              onExistingFileDelete={deleteExistingSampleFile}
+              onViewHistory={() => {}}
+              hasNewHistory={false}
+              isManufacturer={isManufacturer}
+              isClient={isClient}
+              userRole={userRole || 'admin'}
+              readOnly={false}
+              onSave={saveOrderSampleData}
+              saving={savingOrderSample}
+              sampleRoutedTo={order?.sample_routed_to || 'admin'}
+              sampleWorkflowStatus={order?.sample_workflow_status || 'pending'}
+              onRouteToManufacturer={sampleRouting.routeToManufacturer}
+              onRouteToAdmin={sampleRouting.routeToAdmin}
+              onRouteToClient={sampleRouting.routeToClient}
+              canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
+              canRouteToAdmin={sampleRouting.canRouteToAdmin}
+              canRouteToClient={sampleRouting.canRouteToClient}
+              isRouting={sampleRouting.isRouting}
+              hideHeader={true}
+            />
+          </CollapsibleSampleSection>
         )}
 
-        {/* Products Section */}
-        <div className="space-y-2 sm:space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
-            <h2 className="text-sm sm:text-lg font-semibold text-gray-900">
-              {selectedProductId !== 'all' ? t('productDetail') : t('orderProducts')}
-            </h2>
-            <div className="flex items-center gap-2">
-              {isSuperAdmin && productCounts.withManufacturer > 0 && !isClientRequest && (
-                <button
-                  onClick={() => setShowAllProducts(!showAllProducts)}
-                  className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg shadow transition-all flex items-center gap-1.5 sm:gap-2 font-medium text-sm ${
-                    showAllProducts 
-                      ? 'bg-amber-600 text-white hover:bg-amber-700' 
-                      : 'bg-purple-600 text-white hover:bg-purple-700'
-                  }`}
-                  title={showAllProducts ? 'Hide manufacturer products' : 'Show all products including those with manufacturer'}
-                >
-                  {showAllProducts ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline">{t('hideManufacturerProducts')}</span>
-                      <span className="sm:hidden">{t('hide')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span className="hidden sm:inline">{t('showAllProducts')}</span>
-                      <span className="sm:hidden">{t('showAll')}</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
+        {/* ACCESSORIES SECTION - Header included in card, only renders when accessories exist */}
+        {(isAdmin || isSuperAdmin || isManufacturer) && (
+          <div className="mb-4">
+            <AccessoriesCard
+              orderId={id}
+              userRole={userRole || 'admin'}
+              onUpdate={refetch}
+            />
           </div>
+        )}
+
+        {/* ORDER PRODUCTS */}
+        <div className="space-y-3">
+          <h2 className="text-sm sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Package className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+            Order Products ({visibleProducts.length})
+          </h2>
 
           {visibleProducts.length === 0 ? (
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 sm:p-8 text-center">
-              <Package className="w-10 h-10 sm:w-12 sm:h-12 text-gray-300 mx-auto mb-2 sm:mb-3" />
-              <p className="text-sm sm:text-base text-gray-500">
-                {selectedProductId !== 'all' 
-                  ? t('productNotFound')
-                  : t('noProductsInOrder')}
-              </p>
-              {productCounts.total > 0 && (
-                <p className="text-xs text-gray-400 mt-2">
-                  {t('totalProductsInOrder')}: {productCounts.total}
-                </p>
-              )}
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-8 text-center">
+              <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500">No products in this order</p>
             </div>
           ) : (
             visibleProducts.map((product: any) => {
               const items = product.order_items || [];
               const media = product.order_media || [];
               const productName = product.description || product.product?.title || 'Product';
-              
-              // Translate product data for card
+              const shouldAutoCollapse = visibleProducts.length >= 2;
+
+              // Translate product data
               const translatedProduct = {
                 ...product,
                 description: translate(product.description),
@@ -1546,34 +1049,21 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   title: translate(product.product.title)
                 } : product.product,
                 production_time: translate(product.production_time),
-                sample_notes: translate(product.sample_notes),
-                selected_sub_manufacturer: product.selected_sub_manufacturer ? {
-                  ...product.selected_sub_manufacturer,
-                  name: translate(product.selected_sub_manufacturer.name)
-                } : product.selected_sub_manufacturer
+                sample_notes: translate(product.sample_notes)
               };
-              
-              // Translate order items (variant combinations)
+
               const translatedItems = items.map((item: any) => ({
                 ...item,
                 variant_combo: translate(item.variant_combo),
                 notes: translate(item.notes)
               }));
-              
-              const shouldAutoCollapse = visibleProducts.length >= 2;
-              
-              // Determine if this product is "with me" or "with the other party"
-              const isWithMe = (isManufacturer && product.routed_to === 'manufacturer') ||
-                              (!isManufacturer && product.routed_to === 'admin');
-              
+
               if (isManufacturer) {
                 return (
-                  <ManufacturerProductCard
+                  <ManufacturerProductCardV2
                     key={product.id}
                     ref={(ref: any) => {
-                      if (ref) {
-                        manufacturerCardRefs.current.set(product.id, ref);
-                      }
+                      if (ref) manufacturerCardRefs.current.set(product.id, ref);
                     }}
                     product={translatedProduct}
                     items={translatedItems}
@@ -1585,20 +1075,18 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                     hasNewHistory={hasNewHistory(product.id)}
                     manufacturerId={manufacturerId}
                     autoCollapse={shouldAutoCollapse}
-                    allOrderProducts={allProducts}
+                    allOrderProducts={getAllProducts()}
                     translate={translate}
                     t={t}
                   />
                 );
               }
-              
+
               return (
-                <AdminProductCard
+                <AdminProductCardV2
                   key={product.id}
                   ref={(ref: any) => {
-                    if (ref) {
-                      adminCardRefs.current.set(product.id, ref);
-                    }
+                    if (ref) adminCardRefs.current.set(product.id, ref);
                   }}
                   product={translatedProduct}
                   items={translatedItems}
@@ -1607,7 +1095,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                   onUpdate={refetch}
                   onRoute={handleRouteProduct}
                   onViewHistory={(productId) => handleViewHistory(productId, productName)}
-                  onDelete={handleDeleteProduct}  // ADDED: Pass delete handler
+                  onDelete={handleDeleteProduct}
                   hasNewHistory={hasNewHistory(product.id)}
                   autoCollapse={isClientRequest ? false : shouldAutoCollapse}
                   translate={translate}
@@ -1618,7 +1106,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
           )}
         </div>
       </div>
-      
+
       {/* Modals */}
       <ProductRouteModal
         isOpen={productRouteModal.isOpen}

@@ -1,8 +1,8 @@
 /**
- * Admin Product Card Component - WITH WAITING FOR SAMPLE
+ * Admin Product Card V2 Component - Clean Header Layout
  * Product card for Admin/Super Admin users with CLIENT pricing
- * ADDED: "Waiting for Sample" checkbox - grays out card when checked
- * ADDED: Auto-unchecks when sample ships (via database trigger)
+ * V2: Redesigned header with buttons on right, removed Lock button
+ * Location: /app/dashboard/orders/[id]/v2/components/AdminProductCardV2.tsx
  * Last Modified: December 2025
  */
 
@@ -11,7 +11,7 @@ import {
   Package, Clock, Lock, Unlock, Send, CheckCircle,
   Loader2, MessageSquare, Save, DollarSign, Plane, Ship,
   Upload, X, ChevronDown, Edit2, Eye, EyeOff, Link2, AlertCircle,
-  FlaskConical
+  FlaskConical, Trash2, Calendar, FolderOpen
 } from 'lucide-react';
 import { OrderProduct, OrderItem } from '../../types/order.types';
 import { ProductStatusBadge } from '../../../shared-components/StatusBadge';
@@ -40,8 +40,8 @@ interface AdminProductCardProps {
   t?: (key: string) => string;
 }
 
-export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
-  function AdminProductCard({
+export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
+  function AdminProductCardV2({
     product,
     items = [],
     media = [],
@@ -605,6 +605,61 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
       setIsCollapsed(true);
     };
 
+    // Helper functions and variables for new header
+    const productName = (product as any).description || (product as any).product?.title || 'Product';
+    const clientTotal = totalPrice;
+    const hasShipping = hasShippingLink || shippingPrice > 0;
+    const hasUnreadMessages = showNewHistoryDot || hasNewHistory;
+    const toggleExpanded = () => {
+      setIsCollapsed(!isCollapsed);
+    };
+
+    const getStatusColor = (status: string): string => {
+      const statusColors: Record<string, string> = {
+        pending: 'bg-gray-100 text-gray-700',
+        in_production: 'bg-blue-100 text-blue-700',
+        sample_requested: 'bg-yellow-100 text-yellow-700',
+        pending_client_approval: 'bg-purple-100 text-purple-700',
+        revision_requested: 'bg-orange-100 text-orange-700',
+        completed: 'bg-green-100 text-green-700',
+        rejected: 'bg-red-100 text-red-700',
+        approved_for_production: 'bg-green-100 text-green-700',
+        sent_to_manufacturer: 'bg-purple-100 text-purple-700',
+        submitted_to_manufacturer: 'bg-purple-100 text-purple-700',
+        client_approved: 'bg-green-100 text-green-700'
+      };
+      return statusColors[status] || statusColors.pending;
+    };
+
+    const formatStatus = (status: string): string => {
+      const normalizedStatus = status || 'pending';
+      switch(normalizedStatus) {
+        case 'pending':
+          return t('pendingAdmin');
+        case 'in_production':
+          return t('inProduction');
+        case 'sample_requested':
+          return t('sampleRequested');
+        case 'pending_client_approval':
+          return t('pendingClient');
+        case 'revision_requested':
+          return t('revisionRequested');
+        case 'approved_for_production':
+          return t('approvedForProduction');
+        case 'completed':
+          return t('completed');
+        case 'rejected':
+          return t('rejected');
+        case 'sent_to_manufacturer':
+        case 'submitted_to_manufacturer':
+          return t('sentToManufacturer');
+        case 'client_approved':
+          return t('clientApproved') || 'Client Approved';
+        default:
+          return normalizedStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      }
+    };
+
     // Filter variants for display
     const visibleVariants = showAllVariants || editingVariants 
       ? items 
@@ -640,195 +695,126 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
           ? 'border-amber-300 opacity-60' 
           : 'border-gray-300 hover:shadow-xl'
       }`}>
-        {/* Product Header */}
-        <div className={`p-3 sm:p-4 border-b-2 ${
-          isGrayedOut ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'
-        }`}>
-          <div className="flex flex-col gap-3">
-            <div className="flex items-start gap-2 sm:gap-3">
-              {/* Collapse Button */}
-              {autoCollapse && (
-                <button
-                  onClick={handleCollapse}
-                  className="p-1 hover:bg-gray-200 rounded transition-colors mt-1 flex-shrink-0"
-                  title={t('collapseDetails')}
-                >
-                  <ChevronDown className="w-5 h-5 text-gray-600" />
-                </button>
-              )}
-              {getProductStatusIcon(displayStatus)}
-              <div className="flex-1 min-w-0">
-                {/* Title and Status Badge */}
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <h3 className={`font-semibold text-base sm:text-lg truncate flex-1 min-w-0 ${
-                    isGrayedOut ? 'text-gray-500' : 'text-gray-900'
-                  }`}>
-                    {(product as any).description || (product as any).product?.title || 'Product'}
-                  </h3>
-                  <div className="flex items-center gap-1">
-                    <ProductStatusBadge status={displayStatus} translate={translate} t={t} />
-                    {(product as any).payment_status === 'paid' && (
-                      <span className="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-medium rounded-full flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" />
-                        <span className="hidden sm:inline">Paid</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* WAITING FOR SAMPLE CHECKBOX - Admin/Super Admin only */}
-                {(userRole === 'admin' || userRole === 'super_admin') && (
-                  <div className="mb-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isWaitingForSample}
-                        onChange={handleToggleWaitingForSample}
-                        disabled={savingWaitingForSample}
-                        className="w-5 h-5 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer"
-                      />
-                      <div className="flex items-center gap-2">
-                        <FlaskConical className="w-4 h-4 text-amber-600" />
-                        <span className="text-sm font-medium text-amber-800">
-                          Waiting for Sample
-                        </span>
-                        {savingWaitingForSample && (
-                          <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                        )}
-                      </div>
-                    </label>
-                    {isWaitingForSample && (
-                      <p className="mt-1.5 ml-8 text-xs text-amber-600">
-                        This product is on hold until sample ships. Card is grayed out for non-admins.
-                      </p>
-                    )}
-                  </div>
+        {/* HEADER - Tightened layout */}
+        <div className="p-2.5 sm:p-3 border-b-2 cursor-pointer bg-gray-50 border-gray-200" onClick={toggleExpanded}>
+          {/* Row 1: Product name + status badge + action buttons */}
+          <div className="flex items-center justify-between gap-2">
+            {/* Left side: Expand arrow + icon + product name + status */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
+              {/* Expand/Collapse Arrow */}
+              <button
+                className="p-0.5 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                onClick={(e) => { e.stopPropagation(); toggleExpanded(); }}
+                title={isCollapsed ? t('expandDetails') : t('collapseDetails')}
+              >
+                <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+              </button>
+              
+              {/* Product Icon */}
+              <div className="flex-shrink-0">
+                {hasUnreadMessages ? (
+                  <MessageSquare className="w-4 h-4 text-orange-500" />
+                ) : (
+                  <FolderOpen className="w-4 h-4 text-gray-400" />
                 )}
-
-                {/* Waiting for Sample Badge (shown when not admin/super_admin) */}
-                {isWaitingForSample && userRole !== 'admin' && userRole !== 'super_admin' && (
-                  <div className="mb-3 p-2.5 bg-amber-100 border border-amber-300 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <FlaskConical className="w-4 h-4 text-amber-600" />
-                      <span className="text-sm font-medium text-amber-800">
-                        ⏳ Waiting for Sample - Product on hold
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* CLIENT TOTAL BADGE */}
-                {totalPrice > 0 && (
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-1 text-xs sm:text-sm font-semibold rounded-lg mb-2 ${
-                    shippingPrice > 0 || hasShippingLink
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}>
-                    <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
-                    <span className="whitespace-nowrap">Client: ${formatCurrency(totalPrice)}</span>
-                    {shippingPrice > 0 || hasShippingLink ? (
-                      <span className="hidden sm:inline text-green-600">(+ shipping)</span>
-                    ) : (
-                      <span className="hidden sm:inline text-red-600">(no ship)</span>
-                    )}
-                  </div>
-                )}
-
-                {(product as any).description && (product as any).product?.title && (
-                  <p className="text-xs sm:text-sm text-gray-600 mb-2">{(product as any).product?.title}</p>
-                )}
-
-                {/* Product Info Row */}
-                <div className="flex items-center gap-2 sm:gap-4 text-xs text-gray-500">
-                  <span className="font-medium">{(product as any).product_order_number}</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span>{t('qty')}: <span className="font-semibold text-gray-700">{totalQuantity}</span></span>
-                </div>
+              </div>
+              
+              {/* Product Name + Status Badge */}
+              <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+                <h3 className="font-semibold text-sm sm:text-base text-gray-900 truncate">{productName}</h3>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor((product as any).product_status || 'pending')}`}>
+                  {formatStatus((product as any).product_status || 'pending')}
+                </span>
               </div>
             </div>
-
-            {/* Status Dropdown - Super Admin Only */}
-            <div className={`flex flex-col sm:flex-row gap-2 ${isGrayedOut ? 'pointer-events-none' : ''}`}>
-              {userRole === 'super_admin' && (
-                <select
-                  value={displayStatus}
-                  onChange={(e) => handleProductStatusChange(e.target.value)}
-                  className="flex-1 px-2 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  <option value="pending">{t('pending')}</option>
-                  <option value="sample_requested">{t('sampleRequested')}</option>
-                  <option value="sent_to_manufacturer">{t('sentToManufacturer')}</option>
-                  <option value="pending_admin">{t('pendingAdmin')}</option>
-                  <option value="approved_for_production">{t('approvedForProduction')}</option>
-                  <option value="in_production">{t('inProduction')}</option>
-                  <option value="pending_client_approval">{t('pendingClient')}</option>
-                  <option value="revision_requested">{t('revisionRequested')}</option>
-                  <option value="completed">{t('completed')}</option>
-                  <option value="rejected">{t('rejected')}</option>
-                  <option value="shipped">{t('shipped')}</option>
-                  <option value="in_transit">{t('inTransit')}</option>
-                </select>
-              )}
-
-              {/* Lock/Unlock button */}
-              {canLockProducts && !isGrayedOut && (
-                <button
-                  onClick={handleToggleLock}
-                  disabled={processingProduct}
-                  className={`px-3 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                    (product as any).is_locked
-                      ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'
-                      : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-200'
-                  } disabled:opacity-50 whitespace-nowrap`}
-                  title={(product as any).is_locked ? 'Unlock for editing' : 'Lock for production'}
-                >
-                  {processingProduct ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (product as any).is_locked ? (
-                    <>
-                      <Lock className="w-4 h-4" />
-                      <span className="text-sm font-medium">{t('unlock')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Unlock className="w-4 h-4" />
-                      <span className="text-sm font-medium">{t('lock')}</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className={`grid grid-cols-2 sm:flex gap-2 ${isGrayedOut ? 'pointer-events-none' : ''}`}>
+            
+            {/* Right side: Action buttons */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               {onViewHistory && (
                 <button
-                  onClick={handleViewHistory}
-                  className="px-3 py-2 sm:py-1.5 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium flex items-center justify-center gap-2 relative"
+                  onClick={(e) => { e.stopPropagation(); handleViewHistory(); }}
+                  className="px-2 py-1 bg-gray-600 text-white rounded text-xs font-medium flex items-center gap-1 relative"
+                  title="History"
                 >
-                  <MessageSquare className="w-4 h-4" />
-                  <span>{t('history')}</span>
-                  {showNewHistoryDot && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  <MessageSquare className="w-3 h-3" />
+                  <span>History</span>
+                  {hasUnreadMessages && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
                   )}
                 </button>
               )}
-
               {(userRole === 'admin' || userRole === 'super_admin') && onRoute && !isGrayedOut && (
                 <button
-                  onClick={() => onRoute(product)}
-                  className="px-3 py-2 sm:py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                  onClick={(e) => { e.stopPropagation(); onRoute(product); }}
+                  className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium flex items-center gap-1"
+                  title="Route"
                 >
-                  <Send className="w-4 h-4" />
-                  <span>{t('route')}</span>
+                  <Send className="w-3 h-3" />
+                  <span>Route</span>
+                </button>
+              )}
+              {(userRole === 'admin' || userRole === 'super_admin') && onDelete && !isGrayedOut && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete((product as any).id); }}
+                  className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
+          
+          {/* Row 2: Product number + Qty + Price badge | Waiting for Sample - tight spacing */}
+          <div className="flex items-center justify-between mt-1 ml-6 sm:ml-7">
+            {/* Left: Product number, qty, price */}
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <span className="text-xs text-gray-500 font-medium">{(product as any).product_order_number || 'No number'}</span>
+              <span className="text-gray-300 text-xs">•</span>
+              <span className="text-xs text-gray-500">Qty: <span className="font-semibold text-gray-700">{totalQuantity}</span></span>
+              
+              {/* Client Price Badge - smaller */}
+              <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium rounded ${
+                hasShipping ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}>
+                <DollarSign className="w-3 h-3" />
+                <span>Client: ${formatCurrency(clientTotal)}</span>
+                {!hasShipping && <span className="text-red-600">(no ship)</span>}
+                {hasShipping && <span className="text-green-600">(+ ship)</span>}
+              </div>
+            </div>
+            
+            {/* Right: Waiting for Sample - smaller */}
+            {(userRole === 'admin' || userRole === 'super_admin') && (
+              <label className="inline-flex items-center gap-1 cursor-pointer px-2 py-0.5 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={isWaitingForSample}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    handleToggleWaitingForSample();
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={savingWaitingForSample}
+                  className="w-3 h-3 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer"
+                />
+                <FlaskConical className="w-3 h-3 text-amber-600" />
+                <span className="text-xs font-medium text-amber-800">Waiting for Sample</span>
+                {savingWaitingForSample && (
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                )}
+              </label>
+            )}
+          </div>
+        </div>
 
-          {/* Bulk Order Information - only show if not grayed out or super admin */}
+        {/* BODY - White background, all the content */}
+        <div className={`${isGrayedOut && userRole !== 'super_admin' ? 'pointer-events-none' : ''}`}>
+          {/* Keep ALL existing Bulk Order Information section and everything below EXACTLY as is */}
+          
           {(!isGrayedOut || userRole === 'super_admin') && (
-            <div className="mt-3 bg-white rounded-lg border border-gray-300 p-3 sm:p-4">
+            <div className="p-3 sm:p-4">
+              {/* Bulk Order Information */}
               <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                 <Package className="w-4 h-4 mr-2 flex-shrink-0" />
                 <span>{t('bulkOrderInformation')}</span>
@@ -891,7 +877,7 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
               />
 
               {/* Product Price and Production Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 mb-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                     {t('clientPricePerUnit')}
@@ -916,6 +902,23 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
                     <input
                       type="text"
                       value={(product as any).production_time || t('notSet')}
+                      disabled={true}
+                      className="w-full pl-7 sm:pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-xs sm:text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                    ETA
+                  </label>
+                  <div className="relative">
+                    <Calendar className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      value={(product as any).estimated_completion 
+                        ? new Date((product as any).estimated_completion).toLocaleDateString()
+                        : t('notSet')}
                       disabled={true}
                       className="w-full pl-7 sm:pl-8 pr-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 text-xs sm:text-sm"
                     />
@@ -1270,3 +1273,4 @@ export const AdminProductCard = forwardRef<any, AdminProductCardProps>(
     );
   }
 );
+

@@ -295,6 +295,12 @@ export default function UsersPage() {
         return 'bg-purple-100 text-purple-700'
       case 'warehouse':
         return 'bg-amber-100 text-amber-700'
+      case 'manufacturer_inventory_manager':
+        return 'bg-indigo-100 text-indigo-700'
+      case 'manufacturer_team_member':
+        return 'bg-cyan-100 text-cyan-700'
+      case 'sub_manufacturer':
+        return 'bg-teal-100 text-teal-700'
       default:
         return 'bg-gray-100 text-gray-700'
     }
@@ -523,9 +529,10 @@ export default function UsersPage() {
             <ul className="space-y-1 text-xs sm:text-sm text-blue-800">
               <li>• <strong>Manufacturer Team Member:</strong> Can view and manage orders assigned to your manufacturing facility, handle product pricing, and communicate with admin</li>
               <li>• <strong>Sub-Manufacturer:</strong> Can view and process specific orders assigned to them by the manufacturer, with limited access to order details</li>
+              <li>• <strong>Inventory Manager:</strong> Can manage accessories inventory only - add, edit, and track stock levels for client accessories</li>
             </ul>
             <p className="text-xs text-blue-700 mt-2 sm:mt-3">
-              <strong>Note:</strong> Team members and sub-manufacturers will have access to orders and products relevant to your manufacturing operations.
+              <strong>Note:</strong> Team members and sub-manufacturers will have access to orders and products relevant to your manufacturing operations. Inventory managers only see the Accessories inventory section.
             </p>
           </>
         ) : (
@@ -652,6 +659,7 @@ export default function UsersPage() {
                     >
                       <option value="manufacturer_team_member">Team Member</option>
                       <option value="sub_manufacturer">Sub-Manufacturer</option>
+                      <option value="manufacturer_inventory_manager">Inventory Manager</option>
                     </select>
                   ) : (
                     <select
