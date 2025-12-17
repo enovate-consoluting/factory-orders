@@ -1,6 +1,7 @@
 /**
  * Inventory Page - /dashboard/inventory
  * Warehouse management for tracking incoming shipments, current stock, and archived items
+ * Features: Image carousel, PDF viewer, camera capture, ajax client search
  * Tabs: Incoming (shipped products), Inventory (in stock), Archive (picked up/gone)
  * Roles: Super Admin, Admin, Warehouse
  * Last Modified: December 2024
@@ -8,13 +9,13 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   Search, RefreshCw, Clock, Archive, MapPin, Truck,
   CheckSquare, Square, Save, X, Warehouse, Loader2, Trash2, Plus, AlertTriangle,
-  ChevronLeft, ChevronRight, MessageSquare
+  ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink
 } from 'lucide-react';
 
 interface InventoryItem {
@@ -26,6 +27,28 @@ interface InventoryItem {
   verified: boolean;
   verified_at: string | null;
   notes: string | null;
+}
+
+interface InventoryMedia {
+  id: string;
+  inventory_id: string;
+  file_url: string;
+  file_name: string;
+  file_type: string;
+}
+
+interface OrderMedia {
+  id: string;
+  order_product_id: string;
+  file_url: string;
+  file_type: string;
+  original_filename: string;
+}
+
+interface MediaFile {
+  url: string;
+  name: string;
+  type: 'image' | 'pdf' | 'other';
 }
 
 interface InventoryRecord {
@@ -48,10 +71,19 @@ interface InventoryRecord {
   created_at: string;
   items?: InventoryItem[];
   total_quantity?: number;
+  order_media?: OrderMedia[];
+  inventory_media?: InventoryMedia[];
 }
 
 type TabType = 'incoming' | 'inventory' | 'archive';
 const ITEMS_PER_PAGE = 10;
+
+// Helper to determine file type
+const getFileType = (url: string, fileType?: string): 'image' | 'pdf' | 'other' => {
+  if (fileType?.startsWith('image') || url?.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return 'image';
+  if (fileType === 'document' || fileType?.includes('pdf') || url?.match(/\.pdf$/i)) return 'pdf';
+  return 'other';
+};
 
 export default function InventoryPage() {
   const router = useRouter();
@@ -66,12 +98,22 @@ export default function InventoryPage() {
   const [stats, setStats] = useState({ incoming: 0, inStock: 0, archived: 0 });
   const [saving, setSaving] = useState(false);
 
+  // Media Viewer Modal
+  const [mediaModal, setMediaModal] = useState<{
+    isOpen: boolean;
+    files: MediaFile[];
+    currentIndex: number;
+    title: string;
+  }>({ isOpen: false, files: [], currentIndex: 0, title: '' });
+
+  // Receive Modal with camera
   const [receiveModal, setReceiveModal] = useState<{
     isOpen: boolean;
     record: InventoryRecord | null;
     rack_location: string;
     items: { id: string; verified: boolean; notes: string }[];
-  }>({ isOpen: false, record: null, rack_location: '', items: [] });
+    capturedPhotos: { file: File; preview: string }[];
+  }>({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] });
 
   const [notesModal, setNotesModal] = useState<{
     isOpen: boolean;
@@ -88,11 +130,23 @@ export default function InventoryPage() {
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; record: InventoryRecord | null }>({ isOpen: false, record: null });
   const [deleting, setDeleting] = useState(false);
 
+  // Manual Entry Modal
   const [manualEntryModal, setManualEntryModal] = useState(false);
   const [manualForm, setManualForm] = useState({
     product_order_number: '', product_name: '', order_number: '', client_id: '',
     rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }]
   });
+  const [manualPhotos, setManualPhotos] = useState<{ file: File; preview: string }[]>([]);
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  // Camera refs
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualFileInputRef = useRef<HTMLInputElement>(null);
+
+  const filteredClients = clients.filter(c =>
+    c.name.toLowerCase().includes(clientSearch.toLowerCase())
+  );
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -104,6 +158,14 @@ export default function InventoryPage() {
   }, [router]);
 
   useEffect(() => { setCurrentPage(1); fetchInventory(); }, [activeTab, clientFilter]);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showClientDropdown) setShowClientDropdown(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showClientDropdown]);
 
   const fetchClients = async () => {
     const { data } = await supabase.from('clients').select('id, name').order('name');
@@ -119,24 +181,118 @@ export default function InventoryPage() {
 
   const fetchInventory = async () => {
     setLoading(true);
-    let query = supabase.from('inventory').select('*, items:inventory_items(*)').order('created_at', { ascending: false });
-    if (activeTab === 'incoming') query = query.eq('status', 'incoming');
-    else if (activeTab === 'inventory') query = query.eq('status', 'in_stock');
-    else query = query.eq('status', 'archived');
-    if (clientFilter !== 'all') query = query.eq('client_id', clientFilter);
-    const { data } = await query;
-    const recordsWithTotals = (data || []).map(record => ({
-      ...record,
-      total_quantity: record.items?.reduce((sum: number, item: InventoryItem) => sum + (item.expected_quantity || 0), 0) || 0
-    }));
-    setInventoryRecords(recordsWithTotals);
+    try {
+      let query = supabase.from('inventory').select('*, items:inventory_items(*)').order('created_at', { ascending: false });
+      if (activeTab === 'incoming') query = query.eq('status', 'incoming');
+      else if (activeTab === 'inventory') query = query.eq('status', 'in_stock');
+      else query = query.eq('status', 'archived');
+      if (clientFilter !== 'all') query = query.eq('client_id', clientFilter);
+      const { data } = await query;
+
+      const recordsWithMedia = await Promise.all((data || []).map(async (record) => {
+        let orderMedia: OrderMedia[] = [];
+        let inventoryMedia: InventoryMedia[] = [];
+
+        if (record.order_product_id) {
+          const { data: mediaData } = await supabase
+            .from('order_media')
+            .select('*')
+            .eq('order_product_id', record.order_product_id);
+          orderMedia = mediaData || [];
+        }
+
+        const { data: invMediaData } = await supabase
+          .from('inventory_media')
+          .select('*')
+          .eq('inventory_id', record.id);
+        inventoryMedia = invMediaData || [];
+
+        return {
+          ...record,
+          total_quantity: record.items?.reduce((sum: number, item: InventoryItem) => sum + (item.expected_quantity || 0), 0) || 0,
+          order_media: orderMedia,
+          inventory_media: inventoryMedia
+        };
+      }));
+
+      setInventoryRecords(recordsWithMedia);
+    } catch (error) {
+      console.error('Error fetching inventory:', error);
+    }
     setLoading(false);
+  };
+
+  // Get all media files for a record
+  const getMediaFiles = (record: InventoryRecord): MediaFile[] => {
+    const files: MediaFile[] = [];
+
+    record.order_media?.forEach(m => {
+      const type = getFileType(m.file_url, m.file_type);
+      if (type !== 'other') {
+        files.push({ url: m.file_url, name: m.original_filename || 'File', type });
+      }
+    });
+
+    record.inventory_media?.forEach(m => {
+      const type = getFileType(m.file_url, m.file_type);
+      if (type !== 'other') {
+        files.push({ url: m.file_url, name: m.file_name || 'File', type });
+      }
+    });
+
+    return files;
+  };
+
+  // Get thumbnail info
+  const getThumbnailInfo = (record: InventoryRecord): { type: 'image' | 'pdf' | 'none'; url?: string; count: number } => {
+    const files = getMediaFiles(record);
+    if (files.length === 0) return { type: 'none', count: 0 };
+
+    const firstImage = files.find(f => f.type === 'image');
+    if (firstImage) return { type: 'image', url: firstImage.url, count: files.length };
+
+    const firstPdf = files.find(f => f.type === 'pdf');
+    if (firstPdf) return { type: 'pdf', url: firstPdf.url, count: files.length };
+
+    return { type: 'none', count: files.length };
+  };
+
+  // Open media viewer
+  const openMediaViewer = (record: InventoryRecord) => {
+    const files = getMediaFiles(record);
+    if (files.length > 0) {
+      setMediaModal({
+        isOpen: true,
+        files,
+        currentIndex: 0,
+        title: `${record.product_order_number} - ${record.product_name}`
+      });
+    }
+  };
+
+  const nextFile = () => {
+    setMediaModal(prev => ({
+      ...prev,
+      currentIndex: (prev.currentIndex + 1) % prev.files.length
+    }));
+  };
+
+  const prevFile = () => {
+    setMediaModal(prev => ({
+      ...prev,
+      currentIndex: prev.currentIndex === 0 ? prev.files.length - 1 : prev.currentIndex - 1
+    }));
+  };
+
+  const openPdfInNewTab = (url: string) => {
+    window.open(url, '_blank');
   };
 
   const openReceiveModal = (record: InventoryRecord) => {
     setReceiveModal({
       isOpen: true, record, rack_location: record.rack_location || '',
-      items: record.items?.map(item => ({ id: item.id, verified: item.verified, notes: item.notes || '' })) || []
+      items: record.items?.map(item => ({ id: item.id, verified: item.verified, notes: item.notes || '' })) || [],
+      capturedPhotos: []
     });
   };
 
@@ -162,25 +318,97 @@ export default function InventoryPage() {
     setReceiveModal(prev => ({ ...prev, items: prev.items.map(item => ({ ...item, verified: !allVerified })) }));
   };
 
-  const updateItemNotes = (itemId: string, notes: string) => {
-    setReceiveModal(prev => ({ ...prev, items: prev.items.map(item => item.id === itemId ? { ...item, notes } : item) }));
+  const handleReceiveFileCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newPhotos = Array.from(files).map(file => ({
+      file,
+      preview: URL.createObjectURL(file)
+    }));
+    setReceiveModal(prev => ({
+      ...prev,
+      capturedPhotos: [...prev.capturedPhotos, ...newPhotos]
+    }));
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeReceivePhoto = (index: number) => {
+    setReceiveModal(prev => ({
+      ...prev,
+      capturedPhotos: prev.capturedPhotos.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleManualFileCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newPhotos = Array.from(files).map(file => ({
+      file,
+      preview: URL.createObjectURL(file)
+    }));
+    setManualPhotos(prev => [...prev, ...newPhotos]);
+    if (manualFileInputRef.current) manualFileInputRef.current.value = '';
+  };
+
+  const removeManualPhoto = (index: number) => {
+    setManualPhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadPhotos = async (inventoryId: string, photos: { file: File; preview: string }[]): Promise<void> => {
+    for (const photo of photos) {
+      const fileExt = photo.file.name.split('.').pop();
+      const fileName = `${inventoryId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('inventory-media')
+        .upload(fileName, photo.file);
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        continue;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('inventory-media')
+        .getPublicUrl(fileName);
+
+      await supabase.from('inventory_media').insert({
+        inventory_id: inventoryId,
+        file_url: publicUrl,
+        file_name: photo.file.name,
+        file_type: photo.file.type,
+        uploaded_by: user?.id
+      });
+    }
   };
 
   const handleMarkReceived = async () => {
     if (!receiveModal.record) return;
     setSaving(true);
-    await supabase.from('inventory').update({
-      status: 'in_stock', received_at: new Date().toISOString(), received_by: user?.id,
-      rack_location: receiveModal.rack_location
-    }).eq('id', receiveModal.record.id);
-    for (const item of receiveModal.items) {
-      await supabase.from('inventory_items').update({
-        verified: item.verified, verified_at: item.verified ? new Date().toISOString() : null,
-        verified_by: item.verified ? user?.id : null, notes: item.notes
-      }).eq('id', item.id);
+
+    try {
+      await supabase.from('inventory').update({
+        status: 'in_stock', received_at: new Date().toISOString(), received_by: user?.id,
+        rack_location: receiveModal.rack_location
+      }).eq('id', receiveModal.record.id);
+
+      for (const item of receiveModal.items) {
+        await supabase.from('inventory_items').update({
+          verified: item.verified, verified_at: item.verified ? new Date().toISOString() : null,
+          verified_by: item.verified ? user?.id : null
+        }).eq('id', item.id);
+      }
+
+      if (receiveModal.capturedPhotos.length > 0) {
+        await uploadPhotos(receiveModal.record.id, receiveModal.capturedPhotos);
+      }
+
+      setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] });
+      fetchInventory(); fetchStats();
+    } catch (error) {
+      console.error('Error marking received:', error);
     }
-    setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [] });
-    fetchInventory(); fetchStats(); setSaving(false);
+    setSaving(false);
   };
 
   const handleArchive = async () => {
@@ -198,6 +426,7 @@ export default function InventoryPage() {
     if (!deleteModal.record) return;
     setDeleting(true);
     await supabase.from('inventory_items').delete().eq('inventory_id', deleteModal.record.id);
+    await supabase.from('inventory_media').delete().eq('inventory_id', deleteModal.record.id);
     await supabase.from('inventory').delete().eq('id', deleteModal.record.id);
     setDeleteModal({ isOpen: false, record: null });
     fetchInventory(); fetchStats(); setDeleting(false);
@@ -209,33 +438,54 @@ export default function InventoryPage() {
     setManualForm(prev => ({ ...prev, variants: prev.variants.map((v, i) => i === index ? { ...v, [field]: value } : v) }));
   };
 
+  const selectClient = (client: { id: string; name: string }) => {
+    setManualForm(prev => ({ ...prev, client_id: client.id }));
+    setClientSearch(client.name);
+    setShowClientDropdown(false);
+  };
+
   const handleManualEntry = async () => {
     if (!manualForm.product_name.trim()) { alert('Product name is required'); return; }
     setSaving(true);
-    const productNum = manualForm.product_order_number || 'MAN-' + Date.now();
-    const { data: invData } = await supabase.from('inventory').insert({
-      product_order_number: productNum,
-      product_name: manualForm.product_name, 
-      order_number: manualForm.order_number || 'MANUAL',
-      client_id: manualForm.client_id || null, 
-      client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
-      status: 'in_stock', 
-      rack_location: manualForm.rack_location, 
-      notes: manualForm.notes,
-      received_at: new Date().toISOString(), 
-      received_by: user?.id
-    }).select().single();
-    if (invData) {
-      const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
-      if (validVariants.length > 0) {
-        await supabase.from('inventory_items').insert(validVariants.map(v => ({
-          inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
-          verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
-        })));
+
+    try {
+      const productNum = manualForm.product_order_number || 'MAN-' + Date.now();
+      const { data: invData } = await supabase.from('inventory').insert({
+        product_order_number: productNum,
+        product_name: manualForm.product_name,
+        order_number: manualForm.order_number || 'MANUAL',
+        client_id: manualForm.client_id || null,
+        client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
+        status: 'in_stock',
+        rack_location: manualForm.rack_location,
+        notes: manualForm.notes,
+        received_at: new Date().toISOString(),
+        received_by: user?.id
+      }).select().single();
+
+      if (invData) {
+        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+        if (validVariants.length > 0) {
+          await supabase.from('inventory_items').insert(validVariants.map(v => ({
+            inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
+          })));
+        }
+
+        if (manualPhotos.length > 0) {
+          await uploadPhotos(invData.id, manualPhotos);
+        }
       }
+
+      setManualForm({ product_order_number: '', product_name: '', order_number: '', client_id: '', rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }] });
+      setManualPhotos([]);
+      setClientSearch('');
+      setManualEntryModal(false);
+      fetchInventory(); fetchStats();
+    } catch (error) {
+      console.error('Error creating manual entry:', error);
     }
-    setManualForm({ product_order_number: '', product_name: '', order_number: '', client_id: '', rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }] });
-    setManualEntryModal(false); fetchInventory(); fetchStats(); setSaving(false);
+    setSaving(false);
   };
 
   const filteredRecords = inventoryRecords.filter(record => {
@@ -272,6 +522,7 @@ export default function InventoryPage() {
 
   return (
     <div className="p-4 md:p-6">
+      {/* Header */}
       <div className="mb-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
           <div>
@@ -290,8 +541,9 @@ export default function InventoryPage() {
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="border-b border-gray-200 mb-3">
-          <nav className="-mb-px flex gap-x-1">
+          <nav className="-mb-px flex gap-x-1 overflow-x-auto">
             {(['incoming', 'inventory', 'archive'] as TabType[]).map((tab) => {
               const Icon = getTabIcon(tab);
               const count = tab === 'incoming' ? stats.incoming : tab === 'inventory' ? stats.inStock : stats.archived;
@@ -308,6 +560,7 @@ export default function InventoryPage() {
           </nav>
         </div>
 
+        {/* Search & Filter */}
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -315,13 +568,14 @@ export default function InventoryPage() {
               className="w-full pl-8 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-500" />
           </div>
           <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
+            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white min-w-[140px]">
             <option value="all">All Clients</option>
             {clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
           </select>
         </div>
       </div>
 
+      {/* Content */}
       {loading ? (
         <div className="flex justify-center items-center h-48"><Loader2 className="w-6 h-6 text-blue-500 animate-spin" /></div>
       ) : filteredRecords.length === 0 ? (
@@ -334,66 +588,106 @@ export default function InventoryPage() {
         </div>
       ) : (
         <>
+          {/* Records List */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="divide-y divide-gray-100">
-              {paginatedRecords.map((record) => (
-                <div key={record.id} className="px-3 py-2 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <span className="font-semibold text-gray-900">{record.order_number}</span>
-                        <span className="text-gray-300">•</span>
-                        <span className="font-medium text-gray-500">{record.product_order_number}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-sm text-gray-800 truncate">{record.product_name}</span>
-                        {activeTab === 'incoming' && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex-shrink-0">
-                            <Clock className="w-2.5 h-2.5" />Awaiting
-                          </span>
+              {paginatedRecords.map((record) => {
+                const thumbnail = getThumbnailInfo(record);
+
+                return (
+                  <div key={record.id} className="px-3 py-2.5 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      {/* Thumbnail */}
+                      <button
+                        onClick={() => thumbnail.count > 0 && openMediaViewer(record)}
+                        disabled={thumbnail.count === 0}
+                        className={`w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden flex-shrink-0 relative ${
+                          thumbnail.count > 0 ? 'cursor-pointer group' : 'cursor-default'
+                        }`}
+                      >
+                        {thumbnail.type === 'image' && thumbnail.url ? (
+                          <img src={thumbnail.url} alt="" className="w-full h-full object-cover bg-gray-100" />
+                        ) : thumbnail.type === 'pdf' ? (
+                          <div className="w-full h-full bg-red-50 flex flex-col items-center justify-center">
+                            <FileText className="w-5 h-5 text-red-500" />
+                            <span className="text-[8px] font-bold text-red-600 mt-0.5">PDF</span>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                            <ImageIcon className="w-5 h-5 text-gray-300" />
+                          </div>
                         )}
-                        {activeTab === 'inventory' && record.rack_location && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
-                            <MapPin className="w-2.5 h-2.5" />{record.rack_location}
-                          </span>
+                        {thumbnail.count > 1 && (
+                          <div className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl font-medium">
+                            +{thumbnail.count - 1}
+                          </div>
                         )}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-500">
-                        <span>{record.client_name}</span>
-                        <span className="text-gray-300">•</span>
-                        <span>{record.total_quantity} units</span>
-                        {activeTab === 'archive' && record.picked_up_by && (
-                          <><span className="text-gray-300">•</span><span>Picked up: {record.picked_up_by}</span></>
+                        {thumbnail.count > 0 && (
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                         )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <button onClick={() => openNotesModal(record)} 
-                        className={record.notes ? 'p-1.5 rounded-lg transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100' : 'p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100'} 
-                        title={record.notes || 'Add notes'}>
-                        <MessageSquare className="w-4 h-4" />
                       </button>
-                      {user?.role === 'super_admin' && (
-                        <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                          <Trash2 className="w-4 h-4" />
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                          <span className="font-semibold text-gray-900">{record.order_number}</span>
+                          <span className="text-gray-300">•</span>
+                          <span className="font-medium text-gray-500">{record.product_order_number}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span className="text-sm text-gray-800 truncate max-w-[180px] sm:max-w-none">{record.product_name}</span>
+                          {activeTab === 'incoming' && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex-shrink-0">
+                              <Clock className="w-2.5 h-2.5" />Awaiting
+                            </span>
+                          )}
+                          {activeTab === 'inventory' && record.rack_location && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
+                              <MapPin className="w-2.5 h-2.5" />{record.rack_location}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-500 flex-wrap">
+                          <span>{record.client_name}</span>
+                          <span className="text-gray-300">•</span>
+                          <span>{record.total_quantity} units</span>
+                          {activeTab === 'archive' && record.picked_up_by && (
+                            <><span className="text-gray-300">•</span><span>Picked up: {record.picked_up_by}</span></>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button onClick={() => openNotesModal(record)}
+                          className={record.notes ? 'p-1.5 rounded-lg transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100' : 'p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100'}
+                          title={record.notes || 'Add notes'}>
+                          <MessageSquare className="w-4 h-4" />
                         </button>
-                      )}
-                      {activeTab === 'incoming' && (
-                        <button onClick={() => openReceiveModal(record)} className="px-2.5 py-1 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors">
-                          Mark Received
-                        </button>
-                      )}
-                      {activeTab === 'inventory' && (
-                        <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2.5 py-1 bg-gray-500 text-white text-xs font-medium rounded-lg hover:bg-gray-600 transition-colors">
-                          Picked Up
-                        </button>
-                      )}
+                        {user?.role === 'super_admin' && (
+                          <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {activeTab === 'incoming' && (
+                          <button onClick={() => openReceiveModal(record)} className="px-2 py-1 sm:px-2.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap">
+                            Received
+                          </button>
+                        )}
+                        {activeTab === 'inventory' && (
+                          <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 sm:px-2.5 bg-gray-500 text-white text-xs font-medium rounded-lg hover:bg-gray-600 transition-colors whitespace-nowrap">
+                            Picked Up
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+
+          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-3 text-xs">
               <span className="text-gray-500">Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredRecords.length)} of {filteredRecords.length}</span>
@@ -411,6 +705,84 @@ export default function InventoryPage() {
         </>
       )}
 
+      {/* ==================== MODALS ==================== */}
+
+      {/* Media Viewer Modal */}
+      {mediaModal.isOpen && mediaModal.files.length > 0 && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+          <button onClick={() => setMediaModal({ isOpen: false, files: [], currentIndex: 0, title: '' })}
+            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 rounded-full z-10">
+            <X className="w-6 h-6" />
+          </button>
+
+          <div className="absolute top-4 left-4 text-white z-10">
+            <p className="font-medium text-sm truncate max-w-[200px] sm:max-w-none">{mediaModal.title}</p>
+            <p className="text-white/60 text-xs">{mediaModal.currentIndex + 1} / {mediaModal.files.length}</p>
+          </div>
+
+          {mediaModal.files.length > 1 && (
+            <>
+              <button onClick={prevFile} className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white bg-white/10 rounded-full z-10">
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button onClick={nextFile} className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 p-2 text-white/80 hover:text-white bg-white/10 rounded-full z-10">
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            </>
+          )}
+
+          {/* Current File Display */}
+          <div className="max-w-4xl w-full max-h-[80vh] flex items-center justify-center">
+            {mediaModal.files[mediaModal.currentIndex].type === 'image' ? (
+              <img
+                src={mediaModal.files[mediaModal.currentIndex].url}
+                alt={mediaModal.files[mediaModal.currentIndex].name}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg"
+              />
+            ) : (
+              <div className="bg-white rounded-xl p-8 text-center max-w-sm w-full">
+                <div className="w-20 h-20 mx-auto bg-red-100 rounded-xl flex items-center justify-center mb-4">
+                  <FileText className="w-10 h-10 text-red-500" />
+                </div>
+                <p className="font-medium text-gray-900 mb-1 truncate px-4">{mediaModal.files[mediaModal.currentIndex].name}</p>
+                <p className="text-sm text-gray-500 mb-4">PDF Document</p>
+                <button
+                  onClick={() => openPdfInNewTab(mediaModal.files[mediaModal.currentIndex].url)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open PDF
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Thumbnails */}
+          {mediaModal.files.length > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-black/50 p-2 rounded-lg max-w-[90vw] overflow-x-auto">
+              {mediaModal.files.map((file, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setMediaModal(prev => ({ ...prev, currentIndex: idx }))}
+                  className={`w-12 h-12 rounded overflow-hidden border-2 transition-colors flex-shrink-0 ${
+                    idx === mediaModal.currentIndex ? 'border-white' : 'border-transparent opacity-60 hover:opacity-100'
+                  }`}
+                >
+                  {file.type === 'image' ? (
+                    <img src={file.url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-red-100 flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-red-500" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mark Received Modal */}
       {receiveModal.isOpen && receiveModal.record && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
@@ -419,53 +791,88 @@ export default function InventoryPage() {
                 <h3 className="font-semibold text-gray-900">Mark as Received</h3>
                 <p className="text-xs text-gray-500">{receiveModal.record.order_number} • {receiveModal.record.product_order_number}</p>
               </div>
-              <button onClick={() => setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [] })} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] })} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
+
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="p-2 bg-gray-50 rounded-lg">
-                <p className="font-medium text-gray-900 text-sm">{receiveModal.record.product_name}</p>
-                <p className="text-xs text-gray-500">{receiveModal.record.client_name}</p>
+              {/* Product Info */}
+              <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                {getThumbnailInfo(receiveModal.record).type !== 'none' && (
+                  <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0">
+                    {getThumbnailInfo(receiveModal.record).type === 'image' ? (
+                      <img src={getThumbnailInfo(receiveModal.record).url} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-red-50 flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-red-500" />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 text-sm truncate">{receiveModal.record.product_name}</p>
+                  <p className="text-xs text-gray-500">{receiveModal.record.client_name} • {receiveModal.record.total_quantity} units</p>
+                </div>
               </div>
+
+              {/* Rack Location */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Rack Location</label>
+                <input type="text" value={receiveModal.rack_location} onChange={(e) => setReceiveModal(prev => ({ ...prev, rack_location: e.target.value }))}
+                  placeholder="e.g., A-12-3" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
+              </div>
+
+              {/* Variants */}
               {receiveModal.items.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-gray-900 text-sm">Variants</h4>
+                    <h4 className="font-medium text-gray-900 text-xs">Verify Items ({receiveModal.items.length})</h4>
                     <button onClick={toggleAllVerified} className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700">
-                      {receiveModal.items.every(item => item.verified) ? <><CheckSquare className="w-3.5 h-3.5" />Uncheck All</> : <><Square className="w-3.5 h-3.5" />Check All</>}
+                      {receiveModal.items.every(item => item.verified) ? <><CheckSquare className="w-3.5 h-3.5" />Uncheck</> : <><Square className="w-3.5 h-3.5" />Check All</>}
                     </button>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {receiveModal.record.items?.map((item) => {
                       const editItem = receiveModal.items.find(i => i.id === item.id);
                       return (
-                        <div key={item.id} className="flex items-start gap-2 p-2 bg-white border border-gray-200 rounded-lg">
-                          <button onClick={() => toggleItemVerified(item.id)} className="mt-0.5 flex-shrink-0">
+                        <div key={item.id} className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg">
+                          <button onClick={() => toggleItemVerified(item.id)} className="flex-shrink-0">
                             {editItem?.verified ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
                           </button>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <span className="font-medium text-gray-900 text-sm">{item.variant_combo}</span>
-                              <span className="text-xs text-gray-500 ml-4">Qty: {item.expected_quantity}</span>
-                            </div>
-                            <input type="text" value={editItem?.notes || ''} onChange={(e) => updateItemNotes(item.id, e.target.value)}
-                              placeholder="Notes (e.g., 2 damaged)..." className="w-full mt-1.5 px-2 py-1 border border-gray-200 rounded text-xs text-gray-900 placeholder-gray-400" />
-                          </div>
+                          <span className="flex-1 text-sm text-gray-900 truncate">{item.variant_combo}</span>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{item.expected_quantity}</span>
                         </div>
                       );
                     })}
                   </div>
                 </div>
               )}
+
+              {/* Camera Capture */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rack Location</label>
-                <input type="text" value={receiveModal.rack_location} onChange={(e) => setReceiveModal(prev => ({ ...prev, rack_location: e.target.value }))}
-                  placeholder="e.g., A-12-3" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
+                <label className="block text-xs font-medium text-gray-700 mb-1">Photos (optional)</label>
+                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" multiple onChange={handleReceiveFileCapture} className="hidden" />
+                <div className="flex flex-wrap gap-2">
+                  {receiveModal.capturedPhotos.map((photo, idx) => (
+                    <div key={idx} className="relative w-14 h-14">
+                      <img src={photo.preview} alt="" className="w-full h-full object-cover rounded-lg" />
+                      <button onClick={() => removeReceivePhoto(idx)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => fileInputRef.current?.click()}
+                    className="w-14 h-14 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                    <Camera className="w-4 h-4" />
+                    <span className="text-[9px] mt-0.5">Add</span>
+                  </button>
+                </div>
               </div>
             </div>
+
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [] })} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={() => setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] })} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
               <button onClick={handleMarkReceived} disabled={saving} className="flex-1 px-3 py-1.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Save className="w-4 h-4" />Save</>}
               </button>
@@ -474,6 +881,7 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Notes Modal */}
       {notesModal.isOpen && notesModal.record && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
@@ -498,6 +906,7 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Archive Modal */}
       {archiveModal.isOpen && archiveModal.record && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
@@ -526,6 +935,7 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Delete Modal */}
       {deleteModal.isOpen && deleteModal.record && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
@@ -554,39 +964,65 @@ export default function InventoryPage() {
         </div>
       )}
 
+      {/* Manual Entry Modal */}
       {manualEntryModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-gray-900">Add Manual Entry</h3>
-              <button onClick={() => setManualEntryModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Product #</label>
-                  <input type="text" value={manualForm.product_order_number} onChange={(e) => setManualForm(prev => ({ ...prev, product_order_number: e.target.value }))}
-                    placeholder="PRD-001" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Order #</label>
-                  <input type="text" value={manualForm.order_number} onChange={(e) => setManualForm(prev => ({ ...prev, order_number: e.target.value }))}
-                    placeholder="ORD-001" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
-                </div>
-              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Product Name <span className="text-red-500">*</span></label>
                 <input type="text" value={manualForm.product_name} onChange={(e) => setManualForm(prev => ({ ...prev, product_name: e.target.value }))}
                   placeholder="Enter product name" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
               </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Product #</label>
+                  <input type="text" value={manualForm.product_order_number} onChange={(e) => setManualForm(prev => ({ ...prev, product_order_number: e.target.value }))}
+                    placeholder="Auto-generated" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Order #</label>
+                  <input type="text" value={manualForm.order_number} onChange={(e) => setManualForm(prev => ({ ...prev, order_number: e.target.value }))}
+                    placeholder="Optional" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
+                </div>
+              </div>
+
+              {/* Ajax Searchable Client */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Client</label>
-                  <select value={manualForm.client_id} onChange={(e) => setManualForm(prev => ({ ...prev, client_id: e.target.value }))}
-                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white">
-                    <option value="">Select</option>
-                    {clients.map(client => <option key={client.id} value={client.id}>{client.name}</option>)}
-                  </select>
+                  <input
+                    type="text"
+                    value={clientSearch}
+                    onChange={(e) => {
+                      setClientSearch(e.target.value);
+                      setShowClientDropdown(true);
+                      if (!e.target.value) setManualForm(prev => ({ ...prev, client_id: '' }));
+                    }}
+                    onFocus={() => setShowClientDropdown(true)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Type to search..."
+                    className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400"
+                  />
+                  {showClientDropdown && clientSearch && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-32 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                      {filteredClients.length > 0 ? (
+                        filteredClients.slice(0, 5).map(client => (
+                          <button key={client.id} onClick={() => selectClient(client)}
+                            className="w-full px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-100">
+                            {client.name}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-gray-500">No clients found</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Rack Location</label>
@@ -594,6 +1030,8 @@ export default function InventoryPage() {
                     placeholder="A-12-3" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
                 </div>
               </div>
+
+              {/* Variants */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Variants</label>
@@ -611,14 +1049,37 @@ export default function InventoryPage() {
                   ))}
                 </div>
               </div>
+
+              {/* Notes */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
                 <textarea value={manualForm.notes} onChange={(e) => setManualForm(prev => ({ ...prev, notes: e.target.value }))}
                   placeholder="Add notes..." rows={2} className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" />
               </div>
+
+              {/* Camera Capture */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Photos</label>
+                <input ref={manualFileInputRef} type="file" accept="image/*" capture="environment" multiple onChange={handleManualFileCapture} className="hidden" />
+                <div className="flex flex-wrap gap-2">
+                  {manualPhotos.map((photo, idx) => (
+                    <div key={idx} className="relative w-14 h-14">
+                      <img src={photo.preview} alt="" className="w-full h-full object-cover rounded-lg" />
+                      <button onClick={() => removeManualPhoto(idx)} className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => manualFileInputRef.current?.click()}
+                    className="w-14 h-14 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors">
+                    <Camera className="w-4 h-4" />
+                    <span className="text-[9px] mt-0.5">Add</span>
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => setManualEntryModal(false)} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
               <button onClick={handleManualEntry} disabled={saving || !manualForm.product_name.trim()} className="flex-1 px-3 py-1.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />Add</>}
               </button>
