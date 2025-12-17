@@ -1,10 +1,10 @@
 /**
  * Client Invoice Page - /dashboard/invoices/client
  * View invoices sent by admin, track payment status, see outstanding balance
- * Features: Outstanding balance header, invoice list, payment status, view invoice modal with PAY NOW button
- * UPDATED: Now shows pay_link button and pdf_url if available
+ * Features: Outstanding balance header, invoice list, payment status, PDF viewer modal
+ * UPDATED: Cleaner layout, PDF opens in modal/popup, better spacing
  * Mobile responsive
- * Last Modified: December 1, 2025
+ * Last Modified: December 2024
  */
 
 'use client';
@@ -30,8 +30,8 @@ interface Invoice {
   notes?: string;
   created_at: string;
   sent_at?: string;
-  pay_link?: string;  // Square payment link
-  pdf_url?: string;   // PDF document URL
+  pay_link?: string;
+  pdf_url?: string;
   order?: {
     order_number: string;
     order_name: string;
@@ -44,8 +44,8 @@ export default function ClientInvoicePage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clientId, setClientId] = useState<string | null>(null);
   
-  // View Invoice Modal
-  const [viewModal, setViewModal] = useState<{
+  // PDF Viewer Modal
+  const [pdfModal, setPdfModal] = useState<{
     isOpen: boolean;
     invoice: Invoice | null;
   }>({
@@ -55,7 +55,7 @@ export default function ClientInvoicePage() {
 
   // Prevent background scroll when modal is open
   useEffect(() => {
-    if (viewModal.isOpen) {
+    if (pdfModal.isOpen) {
       document.body.style.overflow = 'hidden';
       document.documentElement.style.overflow = 'hidden';
     } else {
@@ -66,7 +66,7 @@ export default function ClientInvoicePage() {
       document.body.style.overflow = 'auto';
       document.documentElement.style.overflow = 'auto';
     };
-  }, [viewModal.isOpen]);
+  }, [pdfModal.isOpen]);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -102,7 +102,6 @@ export default function ClientInvoicePage() {
       const client = clientData[0];
       setClientId(client.id);
 
-      // Fetch invoices with pay_link and pdf_url
       const { data: invoicesData, error: invoicesError } = await supabase
         .from('invoices')
         .select(`
@@ -176,6 +175,22 @@ export default function ClientInvoicePage() {
     );
   };
 
+  // Handle view invoice - open PDF or modal
+  const handleViewInvoice = (invoice: Invoice) => {
+    if (invoice.pdf_url) {
+      // On mobile, open in new tab for better experience
+      if (window.innerWidth < 768) {
+        window.open(invoice.pdf_url, '_blank');
+      } else {
+        // On desktop, show in modal
+        setPdfModal({ isOpen: true, invoice });
+      }
+    } else {
+      // No PDF available - show info modal
+      setPdfModal({ isOpen: true, invoice });
+    }
+  };
+
   // Calculate totals
   const outstandingInvoices = invoices.filter(inv => inv.status !== 'paid');
   const paidInvoices = invoices.filter(inv => inv.status === 'paid');
@@ -203,103 +218,82 @@ export default function ClientInvoicePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Compact Header with Summary Stats */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Invoices</h1>
-              <p className="text-gray-500 mt-0.5 text-sm sm:text-base">View and track your invoices</p>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Title */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Invoices</h1>
+            </div>
+
+            {/* Inline Stats - Desktop */}
+            <div className="hidden sm:flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${totalOutstanding > 0 ? 'bg-amber-500' : 'bg-green-500'}`} />
+                <span className="text-sm text-gray-600">Outstanding:</span>
+                <span className={`font-bold ${totalOutstanding > 0 ? 'text-amber-600' : 'text-green-600'}`}>
+                  ${formatCurrency(totalOutstanding)}
+                </span>
+                {overdueCount > 0 && (
+                  <span className="text-xs text-red-600 font-medium">({overdueCount} overdue)</span>
+                )}
+              </div>
+              <div className="w-px h-6 bg-gray-200" />
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500" />
+                <span className="text-sm text-gray-600">Paid:</span>
+                <span className="font-bold text-green-600">${formatCurrency(totalPaid)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile Stats Cards */}
+          <div className="sm:hidden grid grid-cols-2 gap-3 mt-4">
+            <div className={`p-3 rounded-lg ${totalOutstanding > 0 ? 'bg-amber-50 border border-amber-200' : 'bg-green-50 border border-green-200'}`}>
+              <p className="text-xs text-gray-600">Outstanding</p>
+              <p className={`text-lg font-bold ${totalOutstanding > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                ${formatCurrency(totalOutstanding)}
+              </p>
+              {overdueCount > 0 && (
+                <p className="text-xs text-red-600 mt-0.5">{overdueCount} overdue</p>
+              )}
+            </div>
+            <div className="p-3 rounded-lg bg-green-50 border border-green-200">
+              <p className="text-xs text-gray-600">Total Paid</p>
+              <p className="text-lg font-bold text-green-700">${formatCurrency(totalPaid)}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-        
-        {/* Balance Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-          {/* Outstanding Balance */}
-          <div className={`p-4 sm:p-5 rounded-xl border-2 ${
-            totalOutstanding > 0 ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-300'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center ${
-                totalOutstanding > 0 ? 'bg-amber-500' : 'bg-green-500'
-              }`}>
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Outstanding Balance</p>
-                <p className={`text-xl sm:text-2xl font-bold ${
-                  totalOutstanding > 0 ? 'text-amber-700' : 'text-green-700'
-                }`}>
-                  ${formatCurrency(totalOutstanding)}
-                </p>
-              </div>
+      {/* Invoice List - Full Width */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {invoices.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 py-16 text-center">
+            <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-7 h-7 text-gray-400" />
             </div>
-            {overdueCount > 0 && (
-              <div className="mt-3 pt-3 border-t border-amber-200">
-                <p className="text-xs text-red-600 font-semibold flex items-center gap-1">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {overdueCount} invoice{overdueCount !== 1 ? 's' : ''} overdue
-                </p>
-              </div>
-            )}
+            <p className="text-gray-700 font-medium">No invoices yet</p>
+            <p className="text-gray-400 text-sm mt-1">Invoices will appear here once sent</p>
           </div>
-
-          {/* Pending Invoices Count */}
-          <div className="p-4 sm:p-5 rounded-xl border-2 bg-white border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-blue-100">
-                <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Pending Invoices</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {outstandingInvoices.length}
-                </p>
-              </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {/* Table Header - Desktop */}
+            <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <div className="col-span-4">Invoice</div>
+              <div className="col-span-2">Date</div>
+              <div className="col-span-2">Due Date</div>
+              <div className="col-span-2 text-right">Amount</div>
+              <div className="col-span-2 text-right">Actions</div>
             </div>
-          </div>
 
-          {/* Total Paid */}
-          <div className="p-4 sm:p-5 rounded-xl border-2 bg-white border-gray-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-green-100">
-                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Paid</p>
-                <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  ${formatCurrency(totalPaid)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Invoices List */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-            <h2 className="font-semibold text-gray-900">All Invoices</h2>
-          </div>
-
-          {invoices.length === 0 ? (
-            <div className="py-12 sm:py-16 text-center px-4">
-              <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FileText className="w-7 h-7 text-gray-400" />
-              </div>
-              <p className="text-gray-700 font-medium">No invoices yet</p>
-              <p className="text-gray-400 text-sm mt-1">Invoices will appear here once sent</p>
-            </div>
-          ) : (
             <div className="divide-y divide-gray-100">
               {invoices.map((invoice) => {
                 const overdue = isOverdue(invoice);
@@ -309,257 +303,242 @@ export default function ClientInvoicePage() {
                   <div 
                     key={invoice.id}
                     className={`px-4 sm:px-6 py-4 hover:bg-gray-50 transition-colors ${
-                      overdue ? 'bg-red-50/50' : ''
+                      overdue ? 'bg-red-50/30' : ''
                     }`}
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {/* Desktop Layout */}
+                    <div className="hidden md:grid grid-cols-12 gap-4 items-center">
                       {/* Invoice Info */}
-                      <div className="flex items-start gap-3 min-w-0">
+                      <div className="col-span-4 flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                           isPaid ? 'bg-green-500' : overdue ? 'bg-red-500' : 'bg-blue-500'
                         }`}>
                           <FileText className="w-5 h-5 text-white" />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold text-gray-900 text-sm sm:text-base">
-                              {invoice.invoice_number}
-                            </h3>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-900">{invoice.invoice_number}</span>
                             {getStatusBadge(invoice)}
                           </div>
-                          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-                            {invoice.order?.order_name || invoice.order?.order_number || 'Order'}
+                          <p className="text-sm text-gray-500 truncate">
+                            {invoice.order?.order_name || invoice.order?.order_number || '—'}
                           </p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
-                            {invoice.sent_at && (
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                Sent {formatDate(invoice.sent_at)}
-                              </span>
-                            )}
-                            {invoice.due_date && !isPaid && (
-                              <span className={`flex items-center gap-1 ${overdue ? 'text-red-500 font-medium' : ''}`}>
-                                <Clock className="w-3 h-3" />
-                                Due {formatDate(invoice.due_date)}
-                              </span>
-                            )}
-                            {isPaid && invoice.paid_at && (
-                              <span className="flex items-center gap-1 text-green-600">
-                                <CheckCircle className="w-3 h-3" />
-                                Paid {formatDate(invoice.paid_at)}
-                              </span>
-                            )}
-                          </div>
                         </div>
                       </div>
 
-                      {/* Amount & Actions */}
-                      <div className="flex items-center gap-2 sm:gap-3 pl-13 sm:pl-0">
-                        <div className="text-right">
-                          <p className={`text-lg sm:text-xl font-bold ${
-                            isPaid ? 'text-green-600' : overdue ? 'text-red-600' : 'text-gray-900'
-                          }`}>
-                            ${formatCurrency(invoice.amount)}
-                          </p>
-                        </div>
-                        
-                        {/* Pay Now Button - Only show if not paid and has pay_link */}
+                      {/* Sent Date */}
+                      <div className="col-span-2 text-sm text-gray-600">
+                        {invoice.sent_at ? formatDate(invoice.sent_at) : '—'}
+                      </div>
+
+                      {/* Due Date */}
+                      <div className="col-span-2">
+                        {isPaid && invoice.paid_at ? (
+                          <span className="text-sm text-green-600 flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Paid {formatDate(invoice.paid_at)}
+                          </span>
+                        ) : invoice.due_date ? (
+                          <span className={`text-sm ${overdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+                            {formatDate(invoice.due_date)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </div>
+
+                      {/* Amount */}
+                      <div className="col-span-2 text-right">
+                        <span className={`text-lg font-bold ${
+                          isPaid ? 'text-green-600' : overdue ? 'text-red-600' : 'text-gray-900'
+                        }`}>
+                          ${formatCurrency(invoice.amount)}
+                        </span>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="col-span-2 flex items-center justify-end gap-2">
                         {!isPaid && invoice.pay_link && (
                           <a
                             href={invoice.pay_link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-3 py-2 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5"
                           >
                             <CreditCard className="w-4 h-4" />
-                            <span className="hidden sm:inline">Pay Now</span>
-                            <span className="sm:hidden">Pay</span>
+                            Pay
                           </a>
                         )}
-                        
                         <button
-                          onClick={() => setViewModal({ isOpen: true, invoice })}
+                          onClick={() => handleViewInvoice(invoice)}
                           className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
                           title="View Invoice"
                         >
-                          <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                          <Eye className="w-4 h-4" />
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Mobile Layout */}
+                    <div className="md:hidden flex flex-col gap-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            isPaid ? 'bg-green-500' : overdue ? 'bg-red-500' : 'bg-blue-500'
+                          }`}>
+                            <FileText className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-gray-900">{invoice.invoice_number}</span>
+                              {getStatusBadge(invoice)}
+                            </div>
+                            <p className="text-sm text-gray-500">
+                              {invoice.order?.order_name || invoice.order?.order_number || '—'}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`text-lg font-bold ${
+                          isPaid ? 'text-green-600' : overdue ? 'text-red-600' : 'text-gray-900'
+                        }`}>
+                          ${formatCurrency(invoice.amount)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pl-13">
+                        <div className="text-xs text-gray-500 space-y-0.5">
+                          {invoice.sent_at && <p>Sent {formatDate(invoice.sent_at)}</p>}
+                          {!isPaid && invoice.due_date && (
+                            <p className={overdue ? 'text-red-600 font-medium' : ''}>
+                              Due {formatDate(invoice.due_date)}
+                            </p>
+                          )}
+                          {isPaid && invoice.paid_at && (
+                            <p className="text-green-600">Paid {formatDate(invoice.paid_at)}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!isPaid && invoice.pay_link && (
+                            <a
+                              href={invoice.pay_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                            >
+                              Pay
+                            </a>
+                          )}
+                          <button
+                            onClick={() => handleViewInvoice(invoice)}
+                            className="p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Footer */}
-        <div className="mt-6 sm:mt-8 text-center text-xs sm:text-sm text-gray-400 px-3">
-          Questions about an invoice? Contact{' '}
+        <div className="mt-8 text-center text-sm text-gray-400">
+          Questions? Contact{' '}
           <a href="mailto:sales@bybirdhaus.com" className="text-blue-600 hover:text-blue-700 font-medium">
             sales@bybirdhaus.com
           </a>
         </div>
       </div>
 
-      {/* View Invoice Modal */}
-      {viewModal.isOpen && viewModal.invoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-2xl">
+      {/* PDF Viewer Modal */}
+      {pdfModal.isOpen && pdfModal.invoice && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-gray-200 bg-gray-50 flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  viewModal.invoice.status === 'paid' ? 'bg-green-500' : 
-                  isOverdue(viewModal.invoice) ? 'bg-red-500' : 'bg-blue-500'
-                }`}>
-                  <FileText className="w-5 h-5 text-white" />
-                </div>
+                <FileText className="w-5 h-5 text-blue-600" />
                 <div>
-                  <h3 className="font-semibold text-gray-900">{viewModal.invoice.invoice_number}</h3>
-                  <p className="text-sm text-gray-500">Invoice Details</p>
+                  <h3 className="font-semibold text-gray-900">{pdfModal.invoice.invoice_number}</h3>
+                  <p className="text-xs text-gray-500">
+                    {pdfModal.invoice.order?.order_name || pdfModal.invoice.order?.order_number}
+                  </p>
                 </div>
               </div>
-              <button
-                onClick={() => setViewModal({ isOpen: false, invoice: null })}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
+              <div className="flex items-center gap-2">
+                {pdfModal.invoice.pdf_url && (
+                  <a
+                    href={pdfModal.invoice.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                    title="Open in new tab"
+                  >
+                    <ExternalLink className="w-5 h-5" />
+                  </a>
+                )}
+                <button
+                  onClick={() => setPdfModal({ isOpen: false, invoice: null })}
+                  className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
             </div>
             
-            {/* Modal Content */}
-            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-180px)]">
-              {/* Status Banner */}
-              <div className={`p-4 rounded-xl ${
-                viewModal.invoice.status === 'paid' 
-                  ? 'bg-green-50 border border-green-200' 
-                  : isOverdue(viewModal.invoice)
-                  ? 'bg-red-50 border border-red-200'
-                  : 'bg-amber-50 border border-amber-200'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className={`text-sm font-medium ${
-                      viewModal.invoice.status === 'paid' ? 'text-green-700' :
-                      isOverdue(viewModal.invoice) ? 'text-red-700' : 'text-amber-700'
-                    }`}>
-                      {viewModal.invoice.status === 'paid' ? 'Payment Received' :
-                       isOverdue(viewModal.invoice) ? 'Payment Overdue' : 'Payment Pending'}
-                    </p>
-                    <p className={`text-2xl font-bold mt-1 ${
-                      viewModal.invoice.status === 'paid' ? 'text-green-700' :
-                      isOverdue(viewModal.invoice) ? 'text-red-700' : 'text-amber-700'
-                    }`}>
-                      ${formatCurrency(viewModal.invoice.amount)}
-                    </p>
+            {/* PDF Content */}
+            <div className="flex-1 overflow-hidden bg-gray-100">
+              {pdfModal.invoice.pdf_url ? (
+                <iframe
+                  src={pdfModal.invoice.pdf_url}
+                  className="w-full h-full min-h-[60vh]"
+                  title={`Invoice ${pdfModal.invoice.invoice_number}`}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full min-h-[40vh] p-6">
+                  <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+                    <FileText className="w-8 h-8 text-gray-400" />
                   </div>
-                  {getStatusBadge(viewModal.invoice)}
-                </div>
-              </div>
-
-              {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Order</p>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">
-                    {viewModal.invoice.order?.order_name || viewModal.invoice.order?.order_number || '—'}
+                  <p className="text-gray-700 font-medium">PDF not available</p>
+                  <p className="text-gray-500 text-sm mt-1 text-center">
+                    The PDF for this invoice hasn't been generated yet.
                   </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Invoice Date</p>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">
-                    {viewModal.invoice.sent_at ? formatDate(viewModal.invoice.sent_at) : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase font-medium">Due Date</p>
-                  <p className={`text-sm font-semibold mt-1 ${
-                    isOverdue(viewModal.invoice) ? 'text-red-600' : 'text-gray-900'
-                  }`}>
-                    {viewModal.invoice.due_date ? formatDate(viewModal.invoice.due_date) : '—'}
-                  </p>
-                </div>
-                {viewModal.invoice.status === 'paid' && viewModal.invoice.paid_at && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase font-medium">Paid On</p>
-                    <p className="text-sm font-semibold text-green-600 mt-1">
-                      {formatDate(viewModal.invoice.paid_at)}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Notes */}
-              {viewModal.invoice.notes && (
-                <div className="pt-4 border-t border-gray-100">
-                  <p className="text-xs text-gray-500 uppercase font-medium mb-2">Notes</p>
-                  <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">
-                    {viewModal.invoice.notes}
-                  </p>
-                </div>
-              )}
-
-              {/* PDF Download - if available */}
-              {viewModal.invoice.pdf_url && (
-                <div className="pt-4 border-t border-gray-100">
-                  <a
-                    href={viewModal.invoice.pdf_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    <Download className="w-5 h-5" />
-                    Download Invoice PDF
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              )}
-
-              {/* Pay Now Button - if not paid and has pay link */}
-              {viewModal.invoice.status !== 'paid' && viewModal.invoice.pay_link && (
-                <div className="pt-4 border-t border-gray-100">
-                  <a
-                    href={viewModal.invoice.pay_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    <CreditCard className="w-5 h-5" />
-                    Pay Now - ${formatCurrency(viewModal.invoice.amount)}
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                  <p className="text-xs text-gray-500 text-center mt-2">
-                    Secure payment via Square
-                  </p>
-                </div>
-              )}
-
-              {/* Payment Instructions for unpaid without pay link */}
-              {viewModal.invoice.status !== 'paid' && !viewModal.invoice.pay_link && (
-                <div className="pt-4 border-t border-gray-100">
-                  <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <CreditCard className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Payment Instructions</p>
-                      <p className="text-xs text-blue-600 mt-1">
-                        Please contact your account manager or check your email for payment link.
+                  
+                  {/* Show invoice summary instead */}
+                  <div className="mt-6 p-4 bg-white rounded-lg border border-gray-200 w-full max-w-sm">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900">
+                        ${formatCurrency(pdfModal.invoice.amount)}
                       </p>
+                      <div className="mt-2">{getStatusBadge(pdfModal.invoice)}</div>
+                      {pdfModal.invoice.due_date && pdfModal.invoice.status !== 'paid' && (
+                        <p className={`text-sm mt-2 ${isOverdue(pdfModal.invoice) ? 'text-red-600' : 'text-gray-500'}`}>
+                          Due {formatDate(pdfModal.invoice.due_date)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <button
-                onClick={() => setViewModal({ isOpen: false, invoice: null })}
-                className="w-full py-2.5 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+            {/* Modal Footer - Pay Button */}
+            {pdfModal.invoice.status !== 'paid' && pdfModal.invoice.pay_link && (
+              <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-white flex-shrink-0">
+                <a
+                  href={pdfModal.invoice.pay_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <CreditCard className="w-5 h-5" />
+                  Pay Now - ${formatCurrency(pdfModal.invoice.amount)}
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

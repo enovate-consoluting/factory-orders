@@ -833,7 +833,7 @@ export default function InvoicesPage() {
                   {/* Order Header */}
                   <div 
                     className="p-3 sm:p-4 cursor-pointer"
-                    onDoubleClick={() => window.open(`/dashboard/orders/${order.id}/v2`, '_blank')}
+                    onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-0">
                       <div className="flex items-start sm:items-center gap-2 flex-1 min-w-0">
@@ -909,7 +909,7 @@ export default function InvoicesPage() {
                                 <span className="sm:hidden">Invoice</span>
                               </button>
                               <Link
-                                href={`/dashboard/orders/${order.id}/v2`}
+                                href={`/dashboard/orders/${order.id}`}
                                 target="_blank"
                                 onClick={(e) => e.stopPropagation()}
                                 className="p-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex-shrink-0"
@@ -936,7 +936,7 @@ export default function InvoicesPage() {
                             <div 
                               key={product.id} 
                               className={`bg-white rounded p-2 sm:p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 cursor-pointer hover:bg-gray-50 ${product.invoiced ? 'opacity-60' : ''}`}
-                              onDoubleClick={() => window.open(`/dashboard/orders/${order.id}/v2`, '_blank')}
+                              onDoubleClick={() => window.open(`/dashboard/orders/${order.id}`, '_blank')}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <Package className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-gray-400 flex-shrink-0" />
@@ -1131,7 +1131,7 @@ export default function InvoicesPage() {
                       <div className="flex items-center justify-end gap-1">
                         {invoice.order?.id && (
                           <Link
-                            href={`/dashboard/orders/${invoice.order.id}/v2`}
+                            href={`/dashboard/orders/${invoice.order.id}`}
                             target="_blank"
                             className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                             title="View Order"
@@ -1256,7 +1256,7 @@ export default function InvoicesPage() {
                   <div className="flex items-center justify-end gap-1 pt-2 border-t border-gray-100 mt-2">
                     {invoice.order?.id && (
                       <Link
-                        href={`/dashboard/orders/${invoice.order.id}/v2`}
+                        href={`/dashboard/orders/${invoice.order.id}`}
                         target="_blank"
                         className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                         title="View Order"

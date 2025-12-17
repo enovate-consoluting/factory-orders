@@ -545,7 +545,7 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin'],
       notificationKey: null,
     },
-    // OPERATIONS SECTION
+    // OPERATIONS SECTION - Orders & Invoices
     {
       type: 'section',
       label: 'Operations',
@@ -565,6 +565,12 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin', 'order_approver'],
       notificationKey: 'invoices',
     },
+    // WAREHOUSE SECTION - Inventory for warehouse role
+    {
+      type: 'section',
+      label: 'Warehouse',
+      roles: ['warehouse'],
+    },
     {
       href: '/dashboard/inventory',
       label: 'Inventory',
@@ -572,7 +578,20 @@ export default function DashboardLayout({
       roles: ['super_admin', 'admin', 'warehouse'],
       notificationKey: null,
     },
-    // INVENTORY SECTION - For manufacturers and inventory managers
+    // MANUFACTURING SECTION - For admin/super_admin to see manufacturer accessories
+    {
+      type: 'section',
+      label: 'Manufacturing',
+      roles: ['super_admin', 'admin'],
+    },
+    {
+      href: '/dashboard/manufacturer/inventory',
+      label: 'Accessories',
+      icon: Warehouse,
+      roles: ['super_admin', 'admin'],
+      notificationKey: null,
+    },
+    // INVENTORY SECTION - For manufacturers and inventory managers (their own view)
     {
       type: 'section',
       label: 'Inventory',
@@ -582,7 +601,7 @@ export default function DashboardLayout({
       href: '/dashboard/manufacturer/inventory',
       label: 'Accessories',
       icon: Warehouse,
-      roles: ['manufacturer', 'super_admin', 'manufacturer_inventory_manager'],
+      roles: ['manufacturer', 'manufacturer_inventory_manager'],
       notificationKey: null,
     },
     // PRODUCT CONFIGURATION SECTION
@@ -666,12 +685,18 @@ export default function DashboardLayout({
     },
   ];
 
-  // CLIENT MENU - FIXED: Invoices now goes to /dashboard/invoices/client
+  // CLIENT MENU - Organized with section headers
   const clientMenuItems = [
     {
       href: '/dashboard',
       label: 'Dashboard',
       icon: LayoutGrid,
+      roles: ['client'],
+    },
+    // OPERATIONS SECTION
+    {
+      type: 'section',
+      label: 'Operations',
       roles: ['client'],
     },
     {
@@ -688,11 +713,30 @@ export default function DashboardLayout({
       icon: Users,
       roles: ['client'],
     }] : []),
+    // FINANCE SECTION
+    {
+      type: 'section',
+      label: 'Finance',
+      roles: ['client'],
+    },
     {
       href: '/dashboard/invoices/client',
       label: 'Invoices',
       icon: FileText,
       roles: ['client'],
+    },
+    // REPORTS SECTION
+    {
+      type: 'section',
+      label: 'Reports',
+      roles: ['client'],
+    },
+    {
+      href: '#',
+      label: 'Reports',
+      icon: Activity,
+      roles: ['client'],
+      comingSoon: true,
     },
   ];
 
@@ -1194,7 +1238,8 @@ function SidebarContent({
 
           // Regular menu item
           const Icon = item.icon!;
-          const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
+          const isActive = pathname === item.href || (item.href !== '/dashboard' && item.href !== '#' && pathname.startsWith(item.href + '/'));
+          const isComingSoon = item.comingSoon === true;
           
           // Notification badge logic
           let notificationCount = 0;
@@ -1204,6 +1249,25 @@ function SidebarContent({
             notificationCount = notificationCounts.total;
           } else if (item.notificationKey) {
             notificationCount = notificationCounts[item.notificationKey as keyof NotificationCount] || 0;
+          }
+          
+          // Coming Soon item - not clickable
+          if (isComingSoon) {
+            return (
+              <div key={`coming-soon-${item.label}`} className="mb-1">
+                <div
+                  className="flex items-center justify-between px-6 pl-10 py-2.5 text-sm text-gray-400 cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Icon className="w-5 h-5 flex-shrink-0 text-gray-300" />
+                    <span className="font-medium truncate">{item.label}</span>
+                  </div>
+                  <span className="px-2 py-0.5 text-xs font-medium bg-gradient-to-r from-purple-100 to-pink-100 text-purple-600 rounded-full flex-shrink-0 ml-2 animate-pulse">
+                    Soon
+                  </span>
+                </div>
+              </div>
+            );
           }
           
           return (
