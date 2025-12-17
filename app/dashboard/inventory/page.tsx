@@ -15,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import {
   Search, RefreshCw, Clock, Archive, MapPin, Truck,
   CheckSquare, Square, Save, X, Warehouse, Loader2, Trash2, Plus, AlertTriangle,
-  ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink
+  ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink, Edit2
 } from 'lucide-react';
 
 interface InventoryItem {
@@ -132,6 +132,7 @@ export default function InventoryPage() {
 
   // Manual Entry Modal
   const [manualEntryModal, setManualEntryModal] = useState(false);
+  const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
   const [manualForm, setManualForm] = useState({
     product_order_number: '', product_name: '', order_number: '', client_id: '',
     rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }]
@@ -354,8 +355,9 @@ export default function InventoryPage() {
     setManualPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Upload photos to Supabase storage - PARALLEL for speed
   const uploadPhotos = async (inventoryId: string, photos: { file: File; preview: string }[]): Promise<void> => {
-    for (const photo of photos) {
+    const uploadPromises = photos.map(async (photo) => {
       const fileExt = photo.file.name.split('.').pop();
       const fileName = `${inventoryId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
 
@@ -365,7 +367,7 @@ export default function InventoryPage() {
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
-        continue;
+        return;
       }
 
       const { data: { publicUrl } } = supabase.storage
@@ -379,7 +381,9 @@ export default function InventoryPage() {
         file_type: photo.file.type,
         uploaded_by: user?.id
       });
-    }
+    });
+
+    await Promise.all(uploadPromises);
   };
 
   const handleMarkReceived = async () => {
@@ -444,46 +448,104 @@ export default function InventoryPage() {
     setShowClientDropdown(false);
   };
 
+  const openEditManualModal = (record: InventoryRecord) => {
+    setEditingInventoryId(record.id);
+    setManualForm({
+      product_order_number: record.product_order_number || '',
+      product_name: record.product_name || '',
+      order_number: record.order_number || '',
+      client_id: record.client_id || '',
+      rack_location: record.rack_location || '',
+      notes: record.notes || '',
+      variants: record.items && record.items.length > 0 
+        ? record.items.map(item => ({ variant_combo: item.variant_combo, expected_quantity: item.expected_quantity }))
+        : [{ variant_combo: '', expected_quantity: 0 }]
+    });
+    setClientSearch(record.client_name || '');
+    setManualPhotos([]);
+    setManualEntryModal(true);
+  };
+
   const handleManualEntry = async () => {
     if (!manualForm.product_name.trim()) { alert('Product name is required'); return; }
     setSaving(true);
 
     try {
-      const productNum = manualForm.product_order_number || 'MAN-' + Date.now();
-      const { data: invData } = await supabase.from('inventory').insert({
-        product_order_number: productNum,
-        product_name: manualForm.product_name,
-        order_number: manualForm.order_number || 'MANUAL',
-        client_id: manualForm.client_id || null,
-        client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
-        status: 'in_stock',
-        rack_location: manualForm.rack_location,
-        notes: manualForm.notes,
-        received_at: new Date().toISOString(),
-        received_by: user?.id
-      }).select().single();
+      if (editingInventoryId) {
+        // UPDATE existing
+        await supabase.from('inventory').update({
+          product_name: manualForm.product_name,
+          order_number: manualForm.order_number || 'MANUAL',
+          client_id: manualForm.client_id || null,
+          client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
+          rack_location: manualForm.rack_location,
+          notes: manualForm.notes
+        }).eq('id', editingInventoryId);
 
-      if (invData) {
+        // Delete old items and insert new
+        await supabase.from('inventory_items').delete().eq('inventory_id', editingInventoryId);
         const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
         if (validVariants.length > 0) {
           await supabase.from('inventory_items').insert(validVariants.map(v => ({
-            inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            inventory_id: editingInventoryId, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
             verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
           })));
         }
 
+        // Upload new photos in background
         if (manualPhotos.length > 0) {
-          await uploadPhotos(invData.id, manualPhotos);
+          uploadPhotos(editingInventoryId, manualPhotos);
+        }
+      } else {
+        // CREATE new
+        const productNum = manualForm.product_order_number || (() => {
+          const now = new Date();
+          const month = String(now.getMonth() + 1).padStart(2, '0');
+          const day = String(now.getDate()).padStart(2, '0');
+          const hour = String(now.getHours()).padStart(2, '0');
+          const min = String(now.getMinutes()).padStart(2, '0');
+          const seq = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+          return `MAN-${month}${day}${hour}${min}-${seq}`;
+        })();
+        
+        const { data: invData } = await supabase.from('inventory').insert({
+          product_order_number: productNum,
+          product_name: manualForm.product_name,
+          order_number: manualForm.order_number || 'MANUAL',
+          client_id: manualForm.client_id || null,
+          client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
+          status: 'in_stock',
+          rack_location: manualForm.rack_location,
+          notes: manualForm.notes,
+          received_at: new Date().toISOString(),
+          received_by: user?.id
+        }).select().single();
+
+        if (invData) {
+          const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+          if (validVariants.length > 0) {
+            await supabase.from('inventory_items').insert(validVariants.map(v => ({
+              inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+              verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
+            })));
+          }
+
+          // Upload photos in background (don't wait)
+          if (manualPhotos.length > 0) {
+            uploadPhotos(invData.id, manualPhotos);
+          }
         }
       }
 
+      // Reset and close immediately
       setManualForm({ product_order_number: '', product_name: '', order_number: '', client_id: '', rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }] });
       setManualPhotos([]);
       setClientSearch('');
+      setEditingInventoryId(null);
       setManualEntryModal(false);
       fetchInventory(); fetchStats();
     } catch (error) {
-      console.error('Error creating manual entry:', error);
+      console.error('Error saving manual entry:', error);
     }
     setSaving(false);
   };
@@ -595,13 +657,13 @@ export default function InventoryPage() {
                 const thumbnail = getThumbnailInfo(record);
 
                 return (
-                  <div key={record.id} className="px-3 py-2.5 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3">
+                  <div key={record.id} className="px-3 py-2 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-2">
                       {/* Thumbnail */}
                       <button
                         onClick={() => thumbnail.count > 0 && openMediaViewer(record)}
                         disabled={thumbnail.count === 0}
-                        className={`w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden flex-shrink-0 relative ${
+                        className={`w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative ${
                           thumbnail.count > 0 ? 'cursor-pointer group' : 'cursor-default'
                         }`}
                       >
@@ -609,73 +671,118 @@ export default function InventoryPage() {
                           <img src={thumbnail.url} alt="" className="w-full h-full object-cover bg-gray-100" />
                         ) : thumbnail.type === 'pdf' ? (
                           <div className="w-full h-full bg-red-50 flex flex-col items-center justify-center">
-                            <FileText className="w-5 h-5 text-red-500" />
-                            <span className="text-[8px] font-bold text-red-600 mt-0.5">PDF</span>
+                            <FileText className="w-4 h-4 text-red-500" />
                           </div>
                         ) : (
                           <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                            <ImageIcon className="w-5 h-5 text-gray-300" />
+                            <ImageIcon className="w-4 h-4 text-gray-300" />
                           </div>
                         )}
                         {thumbnail.count > 1 && (
-                          <div className="absolute bottom-0 right-0 bg-black/70 text-white text-[9px] px-1 rounded-tl font-medium">
+                          <div className="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] px-0.5 rounded-tl">
                             +{thumbnail.count - 1}
                           </div>
                         )}
-                        {thumbnail.count > 0 && (
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                        )}
                       </button>
 
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                          <span className="font-semibold text-gray-900">{record.order_number}</span>
-                          <span className="text-gray-300">•</span>
-                          <span className="font-medium text-gray-500">{record.product_order_number}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                          <span className="text-sm text-gray-800 truncate max-w-[180px] sm:max-w-none">{record.product_name}</span>
-                          {activeTab === 'incoming' && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex-shrink-0">
-                              <Clock className="w-2.5 h-2.5" />Awaiting
-                            </span>
-                          )}
-                          {activeTab === 'inventory' && record.rack_location && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
-                              <MapPin className="w-2.5 h-2.5" />{record.rack_location}
-                            </span>
+                      {/* Product Name & Order Info */}
+                      <div className="min-w-0 w-48 flex-shrink-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-sm font-medium text-gray-900 truncate">{record.product_name}</span>
+                          {!record.order_product_id && (
+                            <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-medium flex-shrink-0">M</span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-gray-500 flex-wrap">
-                          <span>{record.client_name}</span>
-                          <span className="text-gray-300">•</span>
-                          <span>{record.total_quantity} units</span>
-                          {activeTab === 'archive' && record.picked_up_by && (
-                            <><span className="text-gray-300">•</span><span>Picked up: {record.picked_up_by}</span></>
+                        <div className="text-[10px] text-gray-500 truncate">
+                          {record.order_number} • {record.product_order_number}
+                        </div>
+                      </div>
+
+                      {/* Client */}
+                      <div className="min-w-0 w-28 flex-shrink-0 hidden sm:block">
+                        <span className="text-[9px] text-gray-400 uppercase">Client</span>
+                        <span className="text-xs text-gray-700 truncate block font-medium">{record.client_name || '—'}</span>
+                      </div>
+
+                      {/* Qty */}
+                      <div className="w-14 flex-shrink-0 hidden sm:block">
+                        <span className="text-[9px] text-gray-400 uppercase">Qty</span>
+                        <div>
+                          <span className="text-xs font-bold text-gray-900">{record.total_quantity}</span>
+                        </div>
+                      </div>
+
+                      {/* Rack */}
+                      <div className="w-16 flex-shrink-0 hidden md:block">
+                        <span className="text-[9px] text-gray-400 uppercase">Rack</span>
+                        <div>
+                          {record.rack_location ? (
+                            <span className="text-xs font-semibold text-green-700">{record.rack_location}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
                           )}
                         </div>
                       </div>
 
+                      {/* Variants */}
+                      <div className="flex-1 min-w-0 hidden lg:block">
+                        <span className="text-[9px] text-gray-400 uppercase">Variants</span>
+                        <div className="flex items-center gap-1 overflow-hidden">
+                          {record.items && record.items.length > 0 ? (
+                            <>
+                              {record.items.slice(0, 3).map((item: InventoryItem) => (
+                                <span key={item.id} className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] whitespace-nowrap">
+                                  {item.variant_combo}:<span className="font-semibold ml-0.5">{item.expected_quantity}</span>
+                                </span>
+                              ))}
+                              {record.items.length > 3 && (
+                                <span className="text-[10px] text-gray-400">+{record.items.length - 3}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div className="w-36 flex-shrink-0 hidden xl:block">
+                        <span className="text-[9px] text-gray-400 uppercase">Notes</span>
+                        <div>
+                          {record.notes ? (
+                            <span className="text-[11px] text-gray-600 truncate block" title={record.notes}>{record.notes}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Status Badge (for incoming) */}
+                      {activeTab === 'incoming' && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex-shrink-0">
+                          <Clock className="w-2.5 h-2.5" />Wait
+                        </span>
+                      )}
+
                       {/* Actions */}
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onClick={() => openNotesModal(record)}
-                          className={record.notes ? 'p-1.5 rounded-lg transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100' : 'p-1.5 rounded-lg transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100'}
+                          className={record.notes ? 'p-1 rounded transition-colors text-blue-600 bg-blue-50 hover:bg-blue-100' : 'p-1 rounded transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100'}
                           title={record.notes || 'Add notes'}>
-                          <MessageSquare className="w-4 h-4" />
+                          <MessageSquare className="w-3.5 h-3.5" />
                         </button>
-                        {user?.role === 'super_admin' && (
-                          <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
-                            <Trash2 className="w-4 h-4" />
+                        {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                          <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {activeTab === 'incoming' && (
-                          <button onClick={() => openReceiveModal(record)} className="px-2 py-1 sm:px-2.5 bg-amber-500 text-white text-xs font-medium rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap">
+                          <button onClick={() => openReceiveModal(record)} className="px-2 py-1 bg-amber-500 text-white text-[10px] font-medium rounded hover:bg-amber-600 transition-colors whitespace-nowrap">
                             Received
                           </button>
                         )}
                         {activeTab === 'inventory' && (
-                          <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 sm:px-2.5 bg-gray-500 text-white text-xs font-medium rounded-lg hover:bg-gray-600 transition-colors whitespace-nowrap">
+                          <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
                             Picked Up
                           </button>
                         )}
@@ -969,8 +1076,8 @@ export default function InventoryPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Add Manual Entry</h3>
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+              <h3 className="font-semibold text-gray-900">{editingInventoryId ? 'Edit Manual Entry' : 'Add Manual Entry'}</h3>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
               <div>
@@ -1079,9 +1186,9 @@ export default function InventoryPage() {
               </div>
             </div>
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
               <button onClick={handleManualEntry} disabled={saving || !manualForm.product_name.trim()} className="flex-1 px-3 py-1.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Plus className="w-4 h-4" />Add</>}
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : editingInventoryId ? <><Save className="w-4 h-4" />Update</> : <><Plus className="w-4 h-4" />Add</>}
               </button>
             </div>
           </div>
