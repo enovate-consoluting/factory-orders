@@ -18,7 +18,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   AlertCircle, Calendar, DollarSign, Upload, X, Save, Loader2, 
   Paperclip, History, Send, Building, User,
-  Factory, Ban, MessageSquare, FileText, Users, RotateCcw
+  Factory, Ban, MessageSquare, FileText, Users, RotateCcw, Truck, Package, CheckCircle
 } from 'lucide-react';
 import { ACCEPTED_FILE_TYPES } from '@/lib/constants/fileUpload';
 import { supabase } from '@/lib/supabase';
@@ -30,6 +30,13 @@ interface SampleSaveData {
   eta: string;
   status: string;
   notes: string;
+}
+
+interface ShippingData {
+  trackingNumber?: string;
+  shippingCarrier?: string;
+  estimatedDelivery?: string;
+  shippingNotes?: string;
 }
 
 interface OrderSampleRequestProps {
@@ -46,10 +53,15 @@ interface OrderSampleRequestProps {
   onRouteToManufacturer?: (notes?: string) => Promise<boolean>;
   onRouteToAdmin?: (notes?: string) => Promise<boolean>;
   onRouteToClient?: (notes?: string) => Promise<boolean>;
+  onShipSample?: (shippingData: ShippingData) => Promise<boolean>;
   canRouteToManufacturer?: boolean;
   canRouteToAdmin?: boolean;
   canRouteToClient?: boolean;
+  canShipSample?: boolean;
   isRouting?: boolean;
+  isSampleShipped?: boolean;
+  existingTrackingNumber?: string;
+  existingCarrier?: string;
   onUpdate: (field: string, value: any) => void;
   onFileUpload?: (files: FileList | null) => void;
   onFileRemove?: (index: number) => void;
@@ -79,10 +91,15 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   onRouteToManufacturer,
   onRouteToAdmin,
   onRouteToClient,
+  onShipSample,
   canRouteToManufacturer = false,
   canRouteToAdmin = false,
   canRouteToClient = false,
+  canShipSample = false,
   isRouting = false,
+  isSampleShipped = false,
+  existingTrackingNumber,
+  existingCarrier,
   onUpdate,
   onFileUpload,
   onFileRemove,
@@ -123,8 +140,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   
   // Route modal state
   const [showRouteModal, setShowRouteModal] = useState(false);
-  const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | null>(null);
+  const [routeDestination, setRouteDestination] = useState<'manufacturer' | 'admin' | 'client' | 'ship' | null>(null);
   const [routeNotes, setRouteNotes] = useState('');
+  
+  // Shipping fields
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [shippingCarrier, setShippingCarrier] = useState('');
+  const [shippingNotes, setShippingNotes] = useState('');
+  const [estimatedDelivery, setEstimatedDelivery] = useState('');
 
   // Prevent background scroll when modal is open
   useEffect(() => {
@@ -239,9 +262,15 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
 
   // Route modal handlers - opens modal for selection
   const openRouteModal = () => {
+    console.log('openRouteModal called - setting showRouteModal to true');
     setRouteDestination(null);
     setRouteNotes('');
+    setTrackingNumber('');
+    setShippingCarrier('');
+    setShippingNotes('');
+    setEstimatedDelivery('');
     setShowRouteModal(true);
+    console.log('showRouteModal should now be true');
   };
 
   const saveNoteToClientAdminNotes = async (note: string) => {
@@ -295,12 +324,23 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
       success = await onRouteToAdmin(routeNotes);
     } else if (routeDestination === 'client' && onRouteToClient) {
       success = await onRouteToClient(routeNotes);
+    } else if (routeDestination === 'ship' && onShipSample) {
+      success = await onShipSample({
+        trackingNumber: trackingNumber || undefined,
+        shippingCarrier: shippingCarrier || undefined,
+        estimatedDelivery: estimatedDelivery || undefined,
+        shippingNotes: shippingNotes || routeNotes || undefined
+      });
     }
     
     if (success) {
       setShowRouteModal(false);
       setRouteNotes('');
       setRouteDestination(null);
+      setTrackingNumber('');
+      setShippingCarrier('');
+      setShippingNotes('');
+      setEstimatedDelivery('');
       setIsDirty(false);
     }
   };
@@ -380,7 +420,28 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   const showRoutingButtons = isSampleActive;
   
   // Check if any routing option is available
-  const hasAnyRouteOption = canRouteToManufacturer || canRouteToClient || canRouteToAdmin;
+  // For manufacturers: they can route to admin OR ship when sample is with them
+  // For admins: they can route to manufacturer, client, or approve
+  const hasAnyRouteOption = canRouteToManufacturer || canRouteToClient || canRouteToAdmin || canShipSample;
+  
+  // Debug logging - remove after fixing
+  console.log('OrderSampleRequest Route Debug:', {
+    userRole,
+    isManufacturer,
+    sampleRoutedTo,
+    isSampleShipped,
+    canRouteToAdmin,
+    canShipSample,
+    canRouteToManufacturer,
+    canRouteToClient,
+    hasAnyRouteOption,
+    showRouteModal
+  });
+  
+  // Override hasAnyRouteOption for manufacturers - if sample is with them, they can always route
+  const manufacturerCanRoute = isManufacturer && sampleRoutedTo === 'manufacturer' && !isSampleShipped;
+  const adminCanRoute = !isManufacturer && sampleRoutedTo === 'admin' && !isSampleShipped;
+  const effectiveHasRouteOption = hasAnyRouteOption || manufacturerCanRoute || adminCanRoute;
 
   return (
     <div className={`${hideHeader ? 'p-3 sm:p-4' : 'rounded-lg p-2.5 sm:p-4 border mb-2 sm:mb-4'} ${
@@ -415,6 +476,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               </span>
             )}
 
+            {/* Shipped tracking display */}
+            {isSampleShipped && existingTrackingNumber && (
+              <span className="px-2 py-1 bg-cyan-100 text-cyan-700 rounded text-xs font-medium flex items-center gap-1">
+                <Truck className="w-3 h-3" />
+                {existingCarrier ? `${existingCarrier}: ` : ''}{existingTrackingNumber}
+              </span>
+            )}
+
             {existingMedia && existingMedia.length > 0 && (
               <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-medium flex items-center gap-1">
                 <Paperclip className="w-3 h-3" />
@@ -438,9 +507,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
             )}
             
             {/* Route Button - Single button that opens modal */}
-            {showRoutingButtons && hasAnyRouteOption && (
+            {showRoutingButtons && effectiveHasRouteOption && (
               <button
-                onClick={openRouteModal}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  console.log('Route button clicked! Opening modal...');
+                  openRouteModal();
+                }}
                 disabled={isRouting}
                 className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
               >
@@ -669,7 +743,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
         </div>
       )}
 
-      {/* ROUTE MODAL - Simplified to 2 Options */}
+      {/* ROUTE MODAL - With Ship Option for Manufacturers */}
       {showRouteModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
@@ -678,132 +752,244 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
               setShowRouteModal(false);
               setRouteNotes('');
               setRouteDestination(null);
+              setTrackingNumber('');
+              setShippingCarrier('');
+              setShippingNotes('');
+              setEstimatedDelivery('');
             }
           }}
         >
           <div className="min-h-screen flex items-center justify-center p-3 sm:p-4">
-            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-lg p-4 sm:p-6 max-w-lg w-full shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
                   <Send className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
-                  {t('routeSample') || 'Route Sample'}
+                  {isManufacturer ? (t('updateSampleStatus') || 'Update Sample Status') : (t('routeSample') || 'Route Sample')}
                 </h3>
                 <button
                   onClick={() => {
                     setShowRouteModal(false);
                     setRouteNotes('');
                     setRouteDestination(null);
+                    setTrackingNumber('');
+                    setShippingCarrier('');
+                    setShippingNotes('');
+                    setEstimatedDelivery('');
                   }}
                   className="p-1 hover:bg-gray-100 rounded-full transition-colors"
                 >
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              
-              {/* Route Options - 2 Cards Only */}
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                {/* Send to Client */}
-                {canRouteToClient && (
-                  <button
-                    onClick={() => setRouteDestination('client')}
-                    className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
-                      routeDestination === 'client'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-full ${routeDestination === 'client' ? 'bg-blue-500' : 'bg-gray-200'}`}>
-                        <Users className={`w-4 h-4 ${routeDestination === 'client' ? 'text-white' : 'text-gray-600'}`} />
-                      </div>
-                      <span className="font-semibold text-sm text-gray-900">{t('sendToClient') || 'Send to Client'}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {t('sendForClientApproval') || 'Send for client approval (routes to client portal)'}
-                    </p>
-                  </button>
-                )}
 
-                {/* Back to Manufacturer */}
-                {canRouteToManufacturer && (
-                  <button
-                    onClick={() => setRouteDestination('manufacturer')}
-                    className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
-                      routeDestination === 'manufacturer'
-                        ? 'border-indigo-500 bg-indigo-50'
-                        : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-full ${routeDestination === 'manufacturer' ? 'bg-indigo-500' : 'bg-gray-200'}`}>
-                        <RotateCcw className={`w-4 h-4 ${routeDestination === 'manufacturer' ? 'text-white' : 'text-gray-600'}`} />
-                      </div>
-                      <span className="font-semibold text-sm text-gray-900">{t('backToManufacturer') || 'Back to Manufacturer'}</span>
+              {/* Already shipped warning */}
+              {isSampleShipped && (
+                <div className="mb-4 p-3 bg-green-50 border border-green-300 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-semibold text-green-800 text-sm">Sample Already Shipped</h4>
+                      <p className="text-xs text-green-700 mt-1">
+                        This sample has been shipped and cannot be re-routed.
+                      </p>
+                      {existingTrackingNumber && (
+                        <p className="text-xs text-green-700 mt-1">
+                          <strong>Tracking:</strong> {existingCarrier ? `${existingCarrier} - ` : ''}{existingTrackingNumber}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-500">
-                      {t('requestRevisionsFromManufacturer') || 'Request revisions from manufacturer'}
-                    </p>
-                  </button>
-                )}
-
-                {/* Send to Admin (for manufacturer view) */}
-                {canRouteToAdmin && !canRouteToClient && !canRouteToManufacturer && (
-                  <button
-                    onClick={() => setRouteDestination('admin')}
-                    className={`col-span-2 p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
-                      routeDestination === 'admin'
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-full ${routeDestination === 'admin' ? 'bg-purple-500' : 'bg-gray-200'}`}>
-                        <Send className={`w-4 h-4 ${routeDestination === 'admin' ? 'text-white' : 'text-gray-600'}`} />
-                      </div>
-                      <span className="font-semibold text-sm text-gray-900">{t('sendToAdmin') || 'Send to Admin'}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {t('sendSampleToAdmin') || 'Send sample back to admin for review'}
-                    </p>
-                  </button>
-                )}
-                
-                {/* If both client and manufacturer options available, also show admin */}
-                {canRouteToAdmin && (canRouteToClient || canRouteToManufacturer) && (
-                  <button
-                    onClick={() => setRouteDestination('admin')}
-                    className={`col-span-2 p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
-                      routeDestination === 'admin'
-                        ? 'border-purple-500 bg-purple-50'
-                        : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className={`p-1.5 rounded-full ${routeDestination === 'admin' ? 'bg-purple-500' : 'bg-gray-200'}`}>
-                        <Send className={`w-4 h-4 ${routeDestination === 'admin' ? 'text-white' : 'text-gray-600'}`} />
-                      </div>
-                      <span className="font-semibold text-sm text-gray-900">{isManufacturer ? (t('sendToAdmin') || 'Send to Admin') : (t('returnToAdmin') || 'Return to Admin')}</span>
-                    </div>
-                    <p className="text-xs text-gray-500">
-                      {isManufacturer ? (t('sendSampleToAdmin') || 'Send sample back to admin') : (t('returnForAdminReview') || 'Return for admin review')}
-                    </p>
-                  </button>
-                )}
-              </div>
+                  </div>
+                </div>
+              )}
               
-              {/* Routing Notes */}
-              <div className="mb-4">
-                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
-                  {t('routingNotesOptional') || 'Routing Notes (Optional)'}
-                </label>
-                <textarea
-                  value={routeNotes}
-                  onChange={(e) => setRouteNotes(e.target.value)}
-                  placeholder={t('addAnyNotesOrInstructions') || 'Add any notes or instructions...'}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                />
-              </div>
+              {/* Route Options */}
+              {!isSampleShipped && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  {/* MANUFACTURER VIEW: Send to Admin + Ship Sample */}
+                  {/* Show for manufacturers when sample is routed to them */}
+                  {isManufacturer && sampleRoutedTo === 'manufacturer' && (
+                    <>
+                      {/* Send to Admin - Always available for manufacturer when sample is with them */}
+                      {true && (
+                        <button
+                          onClick={() => setRouteDestination('admin')}
+                          className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                            routeDestination === 'admin'
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`p-1.5 rounded-full ${routeDestination === 'admin' ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                              <Send className={`w-4 h-4 ${routeDestination === 'admin' ? 'text-white' : 'text-gray-600'}`} />
+                            </div>
+                            <span className="font-semibold text-sm text-gray-900">{t('sendToAdmin') || 'Send to Admin'}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {t('sendQuestionOrUpdate') || 'Send question or update to admin'}
+                          </p>
+                        </button>
+                      )}
+
+                      {/* Ship Sample - Always available for manufacturer when sample is with them */}
+                      {true && (
+                        <button
+                          onClick={() => setRouteDestination('ship')}
+                          className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                            routeDestination === 'ship'
+                              ? 'border-purple-500 bg-purple-50'
+                              : 'border-gray-200 hover:border-purple-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`p-1.5 rounded-full ${routeDestination === 'ship' ? 'bg-purple-500' : 'bg-gray-200'}`}>
+                              <Truck className={`w-4 h-4 ${routeDestination === 'ship' ? 'text-white' : 'text-gray-600'}`} />
+                            </div>
+                            <span className="font-semibold text-sm text-gray-900">{t('shipSample') || 'Ship Sample'}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {t('sampleCompleteReadyToShip') || 'Sample complete, ready to ship'}
+                          </p>
+                        </button>
+                      )}
+                    </>
+                  )}
+
+                  {/* ADMIN VIEW: Send to Client, Back to Manufacturer */}
+                  {!isManufacturer && (
+                    <>
+                      {/* Send to Client */}
+                      {canRouteToClient && (
+                        <button
+                          onClick={() => setRouteDestination('client')}
+                          className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                            routeDestination === 'client'
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`p-1.5 rounded-full ${routeDestination === 'client' ? 'bg-blue-500' : 'bg-gray-200'}`}>
+                              <Users className={`w-4 h-4 ${routeDestination === 'client' ? 'text-white' : 'text-gray-600'}`} />
+                            </div>
+                            <span className="font-semibold text-sm text-gray-900">{t('sendToClient') || 'Send to Client'}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {t('sendForClientApproval') || 'Send for client approval'}
+                          </p>
+                        </button>
+                      )}
+
+                      {/* Back to Manufacturer */}
+                      {canRouteToManufacturer && (
+                        <button
+                          onClick={() => setRouteDestination('manufacturer')}
+                          className={`p-3 sm:p-4 rounded-lg border-2 text-left transition-all ${
+                            routeDestination === 'manufacturer'
+                              ? 'border-indigo-500 bg-indigo-50'
+                              : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div className={`p-1.5 rounded-full ${routeDestination === 'manufacturer' ? 'bg-indigo-500' : 'bg-gray-200'}`}>
+                              <RotateCcw className={`w-4 h-4 ${routeDestination === 'manufacturer' ? 'text-white' : 'text-gray-600'}`} />
+                            </div>
+                            <span className="font-semibold text-sm text-gray-900">{t('backToManufacturer') || 'Back to Manufacturer'}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            {t('requestRevisionsFromManufacturer') || 'Request revisions from manufacturer'}
+                          </p>
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Shipping Fields - Show when "ship" is selected */}
+              {routeDestination === 'ship' && (
+                <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+                  <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-purple-600" />
+                    {t('shippingInformation') || 'Shipping Information'}
+                  </h4>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1">
+                      {t('trackingNumberOptional') || 'Tracking Number (optional)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={trackingNumber}
+                      onChange={(e) => setTrackingNumber(e.target.value)}
+                      placeholder={t('enterTrackingNumber') || 'Enter tracking number'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-500 focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1">
+                      {t('shippingCarrierOptional') || 'Shipping Carrier (optional)'}
+                    </label>
+                    <select
+                      value={shippingCarrier}
+                      onChange={(e) => setShippingCarrier(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    >
+                      <option value="">{t('selectCarrier') || 'Select carrier'}</option>
+                      <option value="DHL">DHL</option>
+                      <option value="FedEx">FedEx</option>
+                      <option value="UPS">UPS</option>
+                      <option value="USPS">USPS</option>
+                      <option value="China Post">China Post</option>
+                      <option value="SF Express">SF Express</option>
+                      <option value="EMS">EMS</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1">
+                      {t('estimatedDeliveryOptional') || 'Estimated Delivery (optional)'}
+                    </label>
+                    <input
+                      type="date"
+                      value={estimatedDelivery}
+                      onChange={(e) => setEstimatedDelivery(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-800 mb-1">
+                      {t('shippingNotesOptional') || 'Shipping Notes (optional)'}
+                    </label>
+                    <textarea
+                      value={shippingNotes}
+                      onChange={(e) => setShippingNotes(e.target.value)}
+                      placeholder={t('packageDetailsInstructions') || 'Package details, special instructions...'}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder-gray-500 focus:ring-2 focus:ring-purple-500 bg-white text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Routing Notes - Hide when shipping (use shipping notes instead) */}
+              {routeDestination !== 'ship' && !isSampleShipped && (
+                <div className="mb-4">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
+                    {t('routingNotesOptional') || 'Routing Notes (Optional)'}
+                  </label>
+                  <textarea
+                    value={routeNotes}
+                    onChange={(e) => setRouteNotes(e.target.value)}
+                    placeholder={t('addAnyNotesOrInstructions') || 'Add any notes or instructions...'}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+              )}
               
               {/* Action Buttons */}
               <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
@@ -812,29 +998,39 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
                     setShowRouteModal(false);
                     setRouteNotes('');
                     setRouteDestination(null);
+                    setTrackingNumber('');
+                    setShippingCarrier('');
+                    setShippingNotes('');
+                    setEstimatedDelivery('');
                   }}
                   disabled={isRouting}
                   className="w-full sm:flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 text-sm font-medium"
                 >
                   {t('cancel') || 'Cancel'}
                 </button>
-                <button
-                  onClick={handleRoute}
-                  disabled={isRouting || !routeDestination}
-                  className="w-full sm:flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm font-medium"
-                >
-                  {isRouting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {t('routing') || 'Routing...'}
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      {t('submitRouting') || 'Submit Routing'}
-                    </>
-                  )}
-                </button>
+                {!isSampleShipped && (
+                  <button
+                    onClick={handleRoute}
+                    disabled={isRouting || !routeDestination}
+                    className={`w-full sm:flex-1 px-4 py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:bg-gray-300 flex items-center justify-center gap-2 text-sm font-medium ${
+                      routeDestination === 'ship'
+                        ? 'bg-purple-600 hover:bg-purple-700'
+                        : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
+                  >
+                    {isRouting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {routeDestination === 'ship' ? (t('shipping') || 'Shipping...') : (t('routing') || 'Routing...')}
+                      </>
+                    ) : (
+                      <>
+                        {routeDestination === 'ship' ? <Truck className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                        {routeDestination === 'ship' ? (t('shipSample') || 'Ship Sample') : (t('submitRouting') || 'Submit Routing')}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>

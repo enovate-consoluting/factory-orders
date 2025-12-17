@@ -536,12 +536,19 @@ export default function OrdersPage() {
 
       case 'shipped':
         filtered = ordersToFilter.filter(order => {
-          if (!order.order_products || order.order_products.length === 0) return false;
           // Exclude client requests
           if (order.status === 'client_request') return false;
-          return order.order_products.some(p => 
+          
+          // Check if any product is shipped
+          const hasShippedProduct = order.order_products?.some(p => 
             p.product_status === 'shipped' || p.product_status === 'completed'
           );
+          
+          // Check if sample is shipped
+          const hasSampleShipped = order.sample_status === 'shipped' || 
+                                   order.sample_shipped_date;
+          
+          return hasShippedProduct || hasSampleShipped;
         });
         break;
 
@@ -689,6 +696,11 @@ export default function OrdersPage() {
             counts.shipped++;
           }
         });
+      }
+      
+      // COUNT SHIPPED SAMPLES - add to shipped count
+      if (order.sample_status === 'shipped' || order.sample_shipped_date) {
+        counts.shipped++;
       }
       
       // COUNT SAMPLES - only if not in production phase

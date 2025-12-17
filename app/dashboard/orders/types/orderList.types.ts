@@ -46,6 +46,9 @@ export interface Order {
   sample_required?: boolean;
   sample_workflow_status?: string;
   sample_status?: string;  // The actual sample status (pending, sample_approved, etc.)
+  sample_shipped_date?: string;  // Date when sample was shipped (YYYY-MM-DD)
+  sample_tracking_number?: string;  // Tracking number for shipped sample
+  sample_shipping_carrier?: string;  // Shipping carrier for shipped sample
   client?: {
     id: string;
     name: string;

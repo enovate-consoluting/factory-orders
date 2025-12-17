@@ -3,11 +3,12 @@
  * Handles independent sample request routing
  * Routes: Admin ↔ Manufacturer, Admin ↔ Client (never Manufacturer ↔ Client)
  * 
- * UPDATED Dec 9, 2024:
- * - Added sampleApproved function to mark sample as approved
+ * UPDATED Dec 2025:
+ * - Added shipSample function for manufacturer to ship samples with tracking
+ * - Added canShipSample permission check
  * - Notes go to audit log only (not accumulated)
  * 
- * Last Modified: December 9, 2024
+ * Last Modified: December 2025
  */
 
 import { useState } from 'react';
@@ -20,6 +21,13 @@ interface SampleRoutingState {
   routed_by: string | null;
 }
 
+interface ShippingData {
+  trackingNumber?: string;
+  shippingCarrier?: string;
+  estimatedDelivery?: string;
+  shippingNotes?: string;
+}
+
 interface UseSampleRoutingReturn {
   routing: SampleRoutingState;
   isRouting: boolean;
@@ -28,17 +36,20 @@ interface UseSampleRoutingReturn {
   routeToAdmin: (notes?: string) => Promise<boolean>;
   routeToClient: (notes?: string) => Promise<boolean>;
   sampleApproved: (notes?: string) => Promise<boolean>;
+  shipSample: (shippingData: ShippingData) => Promise<boolean>;
   canRouteToManufacturer: boolean;
   canRouteToAdmin: boolean;
   canRouteToClient: boolean;
   canApproveSample: boolean;
+  canShipSample: boolean;
 }
 
 export function useSampleRouting(
   orderId: string,
   currentRouting: SampleRoutingState,
   userRole: string,
-  onUpdate: () => void
+  onUpdate: () => void,
+  isSampleShipped: boolean = false
 ): UseSampleRoutingReturn {
   const [isRouting, setIsRouting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,27 +68,38 @@ export function useSampleRouting(
 
   // ROUTING RULES:
   // - Admin can route to: Manufacturer, Client, or Approve
-  // - Manufacturer can route to: Admin ONLY
+  // - Manufacturer can route to: Admin ONLY, or Ship Sample
   // - Client can route to: Admin ONLY (approve/reject)
   // - NEVER: Manufacturer ↔ Client direct
 
   const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin';
+  const isManufacturer = userRole === 'manufacturer';
 
   const canRouteToManufacturer = 
     isAdminOrSuper && 
-    currentRouting.routed_to === 'admin';
+    currentRouting.routed_to === 'admin' &&
+    !isSampleShipped;
 
   const canRouteToAdmin = 
-    (userRole === 'manufacturer' && currentRouting.routed_to === 'manufacturer') ||
-    (userRole === 'client' && currentRouting.routed_to === 'client');
+    ((isManufacturer && currentRouting.routed_to === 'manufacturer') ||
+    (userRole === 'client' && currentRouting.routed_to === 'client')) &&
+    !isSampleShipped;
 
   const canRouteToClient = 
     isAdminOrSuper && 
-    currentRouting.routed_to === 'admin';
+    currentRouting.routed_to === 'admin' &&
+    !isSampleShipped;
 
   const canApproveSample = 
     isAdminOrSuper && 
-    currentRouting.routed_to === 'admin';
+    currentRouting.routed_to === 'admin' &&
+    !isSampleShipped;
+
+  // Manufacturer can ship when sample is with them and not already shipped
+  const canShipSample = 
+    isManufacturer && 
+    currentRouting.routed_to === 'manufacturer' &&
+    !isSampleShipped;
 
   const routeSample = async (
     destination: 'admin' | 'manufacturer' | 'client',
@@ -307,6 +329,147 @@ export function useSampleRouting(
     }
   };
 
+  /**
+   * Ship sample with tracking information
+   * Only manufacturer can ship when sample is with them
+   */
+  const shipSample = async (shippingData: ShippingData): Promise<boolean> => {
+    if (!canShipSample) {
+      setError('Cannot ship sample from current state');
+      return false;
+    }
+
+    setIsRouting(true);
+    setError(null);
+
+    try {
+      const user = getCurrentUser();
+      const timestamp = new Date().toISOString();
+
+      // Update order with shipping info
+      // Sample routes to admin after shipping
+      const updateData: any = {
+        sample_routed_to: 'admin',
+        sample_routed_at: timestamp,
+        sample_routed_by: user.id,
+        sample_workflow_status: 'sample_shipped',
+        sample_status: 'shipped',
+        sample_shipped_date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+        sample_tracking_number: shippingData.trackingNumber || null,
+        sample_shipping_carrier: shippingData.shippingCarrier || null
+      };
+
+      // Add shipping notes to sample_notes if provided
+      if (shippingData.shippingNotes && shippingData.shippingNotes.trim()) {
+        // Get current sample_notes first
+        const { data: currentOrder } = await supabase
+          .from('orders')
+          .select('sample_notes')
+          .eq('id', orderId)
+          .single();
+        
+        const dateStr = new Date().toLocaleDateString();
+        const newNote = `[${dateStr} - Manufacturer - SHIPPED] ${shippingData.shippingNotes.trim()}`;
+        
+        if (currentOrder?.sample_notes) {
+          updateData.sample_notes = `${currentOrder.sample_notes}\n\n${newNote}`;
+        } else {
+          updateData.sample_notes = newNote;
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update(updateData)
+        .eq('id', orderId);
+
+      if (updateError) throw updateError;
+
+      // Build audit message with shipping details
+      const shippingInfo = [];
+      if (shippingData.trackingNumber) {
+        shippingInfo.push(`Tracking: ${shippingData.trackingNumber}`);
+      }
+      if (shippingData.shippingCarrier) {
+        shippingInfo.push(`Carrier: ${shippingData.shippingCarrier}`);
+      }
+      if (shippingData.estimatedDelivery) {
+        const deliveryDate = new Date(shippingData.estimatedDelivery).toLocaleDateString();
+        shippingInfo.push(`Est. Delivery: ${deliveryDate}`);
+      }
+      if (shippingData.shippingNotes) {
+        shippingInfo.push(`Notes: ${shippingData.shippingNotes}`);
+      }
+
+      const auditMessage = shippingInfo.length > 0 
+        ? `📦 SAMPLE SHIPPED:\n${shippingInfo.join('\n')}`
+        : '📦 Sample shipped (no tracking details provided)';
+
+      await supabase.from('audit_log').insert({
+        user_id: user.id,
+        user_name: user.name,
+        action_type: 'order_sample_shipped',
+        target_type: 'order',
+        target_id: orderId,
+        old_value: `routed_to: ${currentRouting.routed_to}`,
+        new_value: auditMessage,
+        timestamp
+      });
+
+      // Get order info for notification
+      const { data: orderInfo } = await supabase
+        .from('orders')
+        .select('order_number, created_by, client_id')
+        .eq('id', orderId)
+        .single();
+
+      if (orderInfo) {
+        // Notify admin
+        let notificationMessage = `Sample shipped for order ${orderInfo.order_number}`;
+        if (shippingData.trackingNumber && shippingData.shippingCarrier) {
+          notificationMessage += ` via ${shippingData.shippingCarrier} (${shippingData.trackingNumber})`;
+        } else if (shippingData.trackingNumber) {
+          notificationMessage += ` - Tracking: ${shippingData.trackingNumber}`;
+        }
+
+        await supabase.from('notifications').insert({
+          user_id: orderInfo.created_by,
+          type: 'sample_shipped',
+          message: notificationMessage,
+          order_id: orderId
+        });
+
+        // Also notify client if there's a client
+        if (orderInfo.client_id) {
+          const { data: clientUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('client_id', orderInfo.client_id)
+            .single();
+
+          if (clientUser) {
+            await supabase.from('notifications').insert({
+              user_id: clientUser.id,
+              type: 'sample_shipped',
+              message: notificationMessage,
+              order_id: orderId
+            });
+          }
+        }
+      }
+
+      onUpdate();
+      return true;
+
+    } catch (err: any) {
+      console.error('Error shipping sample:', err);
+      setError(err.message || 'Failed to ship sample');
+      return false;
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
   return {
     routing: currentRouting,
     isRouting,
@@ -315,9 +478,11 @@ export function useSampleRouting(
     routeToAdmin,
     routeToClient,
     sampleApproved,
+    shipSample,
     canRouteToManufacturer,
     canRouteToAdmin,
     canRouteToClient,
-    canApproveSample
+    canApproveSample,
+    canShipSample
   };
 }

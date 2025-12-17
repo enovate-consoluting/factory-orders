@@ -27,7 +27,7 @@ import {
   Trash2,
   Upload,
   Image as ImageIcon,
-  FileText
+  PlusSquare
 } from 'lucide-react';
 
 interface SubClient {
@@ -598,15 +598,15 @@ export default function MyClientsPage() {
 
                   {/* Stats & Actions */}
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    {/* Orders - Clickable to view filtered orders */}
+                    {/* Orders - Clean clickable box */}
                     <a
                       href={`/dashboard/orders/client?viewAs=${client.id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="text-center px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors group"
+                      className="text-center px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
                       title="View orders for this client"
                     >
-                      <p className="font-semibold text-gray-900 text-sm group-hover:text-blue-600">{client.order_count || 0}</p>
-                      <p className="text-xs text-gray-400 group-hover:text-blue-500">Orders</p>
+                      <p className="font-semibold text-blue-700 text-sm">{client.order_count || 0}</p>
+                      <p className="text-xs text-blue-500">Orders</p>
                     </a>
                     
                     <div className="text-center px-2">
@@ -614,21 +614,21 @@ export default function MyClientsPage() {
                       <p className="text-xs text-gray-400">Total</p>
                     </div>
                     
-                    {/* Create Order Button */}
+                    {/* Create Order Button - Simple green + */}
                     <a
                       href={`/dashboard/orders/client/create?forClient=${client.id}`}
                       className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
                       title="Create order for this client"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <FileText className="w-4 h-4" />
+                      <PlusSquare className="w-5 h-5" />
                     </a>
                     
-                    {/* Remove Button */}
+                    {/* Remove Button - Simple red trash */}
                     <button
                       onClick={() => setShowDeleteConfirm(client)}
                       disabled={deletingId === client.id}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                       title="Remove client"
                     >
                       {deletingId === client.id ? (

@@ -188,6 +188,8 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
   const getManufacturerProducts = () => getAllProducts().filter((product: any) => product.routed_to === 'manufacturer');
 
   // Sample Routing Hook
+  const isSampleShipped = !!(order?.sample_shipped_date || order?.sample_status === 'shipped');
+  
   const sampleRouting = useSampleRouting(
     id,
     {
@@ -197,7 +199,8 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
       routed_by: order?.sample_routed_by || null
     },
     userRole || 'admin',
-    refetch
+    refetch,
+    isSampleShipped
   );
 
   // Bulk Routing Hook
@@ -950,6 +953,9 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
             hasNewHistory={hasNewOrderSampleHistory()}
             isRouting={sampleRouting.isRouting}
             saving={savingOrderSample}
+            isSampleShipped={isSampleShipped}
+            existingTrackingNumber={order?.sample_tracking_number}
+            existingCarrier={order?.sample_shipping_carrier}
             onUpdate={handleOrderSampleUpdate}
             onFileUpload={handleOrderSampleFileUpload}
             onFileRemove={removeOrderSampleFile}
@@ -969,9 +975,11 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
             onRouteToManufacturer={sampleRouting.routeToManufacturer}
             onRouteToAdmin={sampleRouting.routeToAdmin}
             onRouteToClient={sampleRouting.routeToClient}
+            onShipSample={sampleRouting.shipSample}
             canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
             canRouteToAdmin={sampleRouting.canRouteToAdmin}
             canRouteToClient={sampleRouting.canRouteToClient}
+            canShipSample={sampleRouting.canShipSample}
             t={t}
           >
             {/* The actual OrderSampleRequest form inside the collapsible */}
@@ -1001,10 +1009,15 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
               onRouteToManufacturer={sampleRouting.routeToManufacturer}
               onRouteToAdmin={sampleRouting.routeToAdmin}
               onRouteToClient={sampleRouting.routeToClient}
+              onShipSample={sampleRouting.shipSample}
               canRouteToManufacturer={sampleRouting.canRouteToManufacturer}
               canRouteToAdmin={sampleRouting.canRouteToAdmin}
               canRouteToClient={sampleRouting.canRouteToClient}
+              canShipSample={sampleRouting.canShipSample}
               isRouting={sampleRouting.isRouting}
+              isSampleShipped={isSampleShipped}
+              existingTrackingNumber={order?.sample_tracking_number}
+              existingCarrier={order?.sample_shipping_carrier}
               hideHeader={true}
             />
           </CollapsibleSampleSection>

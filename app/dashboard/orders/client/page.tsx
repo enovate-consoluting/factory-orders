@@ -8,15 +8,15 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, CheckCircle, Calendar, 
   Loader2, ChevronDown, ChevronRight,
   FileText, Truck, Check, X, Image as ImageIcon,
   Layers, Clock, AlertTriangle, Box, MessageSquare, Send,
-  Plus, FlaskConical
+  Plus, FlaskConical, ExternalLink
 } from 'lucide-react';
 
 interface OrderItem {
@@ -45,6 +45,10 @@ interface OrderProduct {
   production_start_date?: string;
   production_days?: number;
   estimated_ship_date?: string;
+  // Shipping/Tracking fields
+  tracking_number?: string;
+  shipping_carrier?: string;
+  shipped_date?: string;
 }
 
 interface Order {
@@ -59,6 +63,9 @@ interface Order {
   sample_fee?: number;
   sample_eta?: string;
   sample_notes?: string;
+  sample_shipped_date?: string;
+  sample_tracking_number?: string;
+  sample_shipping_carrier?: string;
   order_products: OrderProduct[];
   order_media?: any[];
   client_notes?: ClientNote[];
@@ -131,15 +138,41 @@ const formatETA = (date: Date): string => {
   });
 };
 
-export default function ClientOrdersPage() {
+// Generate tracking URL based on carrier
+const getTrackingUrl = (carrier: string | undefined, trackingNumber: string | undefined): string | null => {
+  if (!trackingNumber || !carrier) return null;
+  
+  const carrierLower = carrier.toLowerCase();
+  
+  if (carrierLower === 'dhl') {
+    return `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${trackingNumber}`;
+  }
+  if (carrierLower === 'ups') {
+    return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  }
+  if (carrierLower === 'fedex') {
+    return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  }
+  if (carrierLower === 'usps') {
+    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`;
+  }
+  
+  // For "Other" or unknown carriers, no link
+  return null;
+};
+
+function ClientOrdersContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const viewAsClientId = searchParams.get('viewAs');
   const [loading, setLoading] = useState(true);
+  const [viewingAsSubClient, setViewingAsSubClient] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [clientName, setClientName] = useState('');
   const [canCreateOrders, setCanCreateOrders] = useState(false);
-  const [activeTab, setActiveTab] = useState<'orders' | 'samples' | 'products' | 'approved'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'shipped' | 'samples' | 'products' | 'approved'>('orders');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvingProductId, setApprovingProductId] = useState<string | null>(null);
   
@@ -169,6 +202,15 @@ export default function ClientOrdersPage() {
   const [newNote, setNewNote] = useState('');
   const [sendingNote, setSendingNote] = useState(false);
   const [loadingNotes, setLoadingNotes] = useState(false);
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const ordersPerPage = 10;
+
+  // Reset pagination when tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab]);
 
   // Prevent background scroll when modals are open
   useEffect(() => {
@@ -198,8 +240,113 @@ export default function ClientOrdersPage() {
       return;
     }
 
-    fetchOrders(user.email);
-  }, [router]);
+    // If viewAs parameter exists, fetch orders for that specific client
+    if (viewAsClientId) {
+      fetchOrdersForClient(viewAsClientId, user.email);
+    } else {
+      fetchOrders(user.email);
+    }
+  }, [router, viewAsClientId]);
+
+  // Fetch orders for a specific sub-client (when viewing from My Clients)
+  const fetchOrdersForClient = async (clientId: string, parentEmail: string) => {
+    try {
+      setLoading(true);
+
+      // First verify the parent client has permission
+      const { data: parentClient, error: parentError } = await supabase
+        .from('clients')
+        .select('id, can_create_orders')
+        .eq('email', parentEmail)
+        .single();
+
+      if (parentError || !parentClient || !parentClient.can_create_orders) {
+        console.error('Parent client not authorized');
+        router.push('/dashboard');
+        return;
+      }
+
+      // Verify the sub-client belongs to this parent
+      const { data: subClient, error: subError } = await supabase
+        .from('clients')
+        .select('id, name, parent_client_id')
+        .eq('id', clientId)
+        .single();
+
+      if (subError || !subClient) {
+        console.error('Sub-client not found');
+        router.push('/dashboard/my-clients');
+        return;
+      }
+
+      if (subClient.parent_client_id !== parentClient.id) {
+        console.error('Sub-client does not belong to this parent');
+        router.push('/dashboard/my-clients');
+        return;
+      }
+
+      setClientName(subClient.name);
+      setViewingAsSubClient(true);
+      setCanCreateOrders(true);
+
+      // Fetch orders for the sub-client
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          order_name,
+          status,
+          created_at,
+          sample_required,
+          sample_routed_to,
+          sample_status,
+          sample_fee,
+          sample_eta,
+          sample_notes,
+          sample_shipped_date,
+          sample_tracking_number,
+          sample_shipping_carrier,
+          order_media!order_media_order_id_fkey(id, file_url, file_type, original_filename, is_sample),
+          order_products(
+            id,
+            product_order_number,
+            description,
+            product_status,
+            routed_to,
+            routed_at,
+            client_product_price,
+            client_shipping_air_price,
+            client_shipping_boat_price,
+            selected_shipping_method,
+            sample_fee,
+            sample_required,
+            production_start_date,
+            production_days,
+            estimated_ship_date,
+            tracking_number,
+            shipping_carrier,
+            shipped_date,
+            order_items(id, variant_combo, quantity, notes),
+            order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
+          )
+        `)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+      if (ordersError) {
+        console.error('Error fetching orders:', ordersError);
+        setLoading(false);
+        return;
+      }
+
+      setOrders(ordersData || []);
+    } catch (error) {
+      console.error('Error loading orders:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchOrders = async (email: string) => {
     try {
@@ -239,6 +386,9 @@ export default function ClientOrdersPage() {
           sample_fee,
           sample_eta,
           sample_notes,
+          sample_shipped_date,
+          sample_tracking_number,
+          sample_shipping_carrier,
           order_media!order_media_order_id_fkey(id, file_url, file_type, original_filename, is_sample),
           order_products(
             id,
@@ -256,6 +406,9 @@ export default function ClientOrdersPage() {
             production_start_date,
             production_days,
             estimated_ship_date,
+            tracking_number,
+            shipping_carrier,
+            shipped_date,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
           )
@@ -544,6 +697,12 @@ export default function ClientOrdersPage() {
     return sum + count + approvedProducts;
   }, 0);
 
+  // Shipped count - orders with at least one shipped product or shipped sample
+  const shippedCount = orders.filter(o => 
+    o.sample_shipped_date ||
+    o.order_products?.some(p => p.product_status === 'shipped' || p.shipped_date)
+  ).length;
+
   // Filtered and sorted data based on active tab
   const getFilteredContent = () => {
     let filtered: Order[] = [];
@@ -551,6 +710,12 @@ export default function ClientOrdersPage() {
     switch (activeTab) {
       case 'orders':
         filtered = [...orders];
+        break;
+      case 'shipped':
+        filtered = orders.filter(o => 
+          o.sample_shipped_date ||
+          o.order_products?.some(p => p.product_status === 'shipped' || p.shipped_date)
+        );
         break;
       case 'samples':
         filtered = orders.filter(o => 
@@ -596,6 +761,12 @@ export default function ClientOrdersPage() {
   };
 
   const filteredOrders = getFilteredContent();
+  
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+  const startIndex = (currentPage - 1) * ordersPerPage;
+  const endIndex = startIndex + ordersPerPage;
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
 
   // Get ALL products for orders tab (no filtering)
   const getProductsToShow = (order: Order) => {
@@ -637,16 +808,33 @@ export default function ClientOrdersPage() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
+          {/* Back button when viewing sub-client */}
+          {viewingAsSubClient && (
+            <a
+              href="/dashboard/my-clients"
+              className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium mb-3"
+            >
+              <ChevronRight className="w-4 h-4 rotate-180" />
+              Back to My Clients
+            </a>
+          )}
+          
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">My Orders</h1>
-              <p className="text-gray-500 mt-1 text-sm sm:text-base">Review and approve your orders</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                {viewingAsSubClient ? `${clientName}'s Orders` : 'My Orders'}
+              </h1>
+              <p className="text-gray-500 mt-1 text-sm sm:text-base">
+                {viewingAsSubClient ? `Viewing orders for ${clientName}` : 'Review and approve your orders'}
+              </p>
             </div>
             
             {/* Create Request Button - Only show if client has permission */}
             {canCreateOrders && (
               <a
-                href="/dashboard/orders/client/create"
+                href={viewingAsSubClient && viewAsClientId 
+                  ? `/dashboard/orders/client/create?forClient=${viewAsClientId}` 
+                  : '/dashboard/orders/client/create'}
                 className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors font-medium text-sm sm:text-base shadow-sm"
               >
                 <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -659,47 +847,43 @@ export default function ClientOrdersPage() {
       </div>
 
       <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-        {/* Stats Cards - 4 columns with clean styling */}
+        {/* Stats Cards - 4 columns (removed All Orders) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
-          {/* All Orders */}
+          {/* Shipped */}
           <button
-            onClick={() => setActiveTab('orders')}
-            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
-              activeTab === 'orders'
-                ? 'bg-blue-50 border-blue-400 shadow-md'
-                : 'bg-white border-blue-200 hover:bg-blue-50 hover:border-blue-300'
+            onClick={() => setActiveTab('shipped')}
+            className={`group relative p-3 sm:p-4 rounded-xl border-2 transition-all text-center ${
+              activeTab === 'shipped'
+                ? 'bg-cyan-50 border-cyan-400 shadow-md'
+                : 'bg-white border-cyan-200 hover:bg-cyan-50 hover:border-cyan-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-blue-100 mb-2 sm:mb-3">
-                <Layers className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-cyan-100 mb-2">
+                <Truck className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-600" />
               </div>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{orders.length}</p>
-              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600">All Orders</p>
-              {/* Spacer to match height of cards with "Action required" */}
-              <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{shippedCount}</p>
+              <p className="text-xs font-semibold mt-1 text-gray-600">Shipped</p>
             </div>
           </button>
 
           {/* Samples Awaiting Approval */}
           <button
             onClick={() => setActiveTab('samples')}
-            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-4 rounded-xl border-2 transition-all text-center ${
               activeTab === 'samples'
                 ? 'bg-amber-50 border-amber-400 shadow-md'
                 : 'bg-white border-amber-200 hover:bg-amber-50 hover:border-amber-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-amber-100 mb-2 sm:mb-3">
-                <FlaskConical className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-amber-100 mb-2">
+                <FlaskConical className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
               </div>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{samplesAwaitingApproval}</p>
-              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600 leading-tight">Samples Awaiting Approval</p>
-              {samplesAwaitingApproval > 0 && activeTab !== 'samples' ? (
-                <p className="text-xs text-amber-600 mt-1 font-bold">Action required</p>
-              ) : (
-                <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{samplesAwaitingApproval}</p>
+              <p className="text-xs font-semibold mt-1 text-gray-600 leading-tight">Samples</p>
+              {samplesAwaitingApproval > 0 && activeTab !== 'samples' && (
+                <p className="text-[10px] text-amber-600 mt-0.5 font-bold">Action</p>
               )}
             </div>
           </button>
@@ -707,22 +891,20 @@ export default function ClientOrdersPage() {
           {/* Products Awaiting Approval */}
           <button
             onClick={() => setActiveTab('products')}
-            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-4 rounded-xl border-2 transition-all text-center ${
               activeTab === 'products'
                 ? 'bg-indigo-50 border-indigo-400 shadow-md'
                 : 'bg-white border-indigo-200 hover:bg-indigo-50 hover:border-indigo-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-indigo-100 mb-2 sm:mb-3">
-                <Package className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-indigo-100 mb-2">
+                <Package className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
               </div>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{productsAwaitingApproval}</p>
-              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600 leading-tight">Products Awaiting Approval</p>
-              {productsAwaitingApproval > 0 && activeTab !== 'products' ? (
-                <p className="text-xs text-indigo-600 mt-1 font-bold">Action required</p>
-              ) : (
-                <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{productsAwaitingApproval}</p>
+              <p className="text-xs font-semibold mt-1 text-gray-600 leading-tight">Products</p>
+              {productsAwaitingApproval > 0 && activeTab !== 'products' && (
+                <p className="text-[10px] text-indigo-600 mt-0.5 font-bold">Action</p>
               )}
             </div>
           </button>
@@ -730,20 +912,18 @@ export default function ClientOrdersPage() {
           {/* Approved */}
           <button
             onClick={() => setActiveTab('approved')}
-            className={`group relative p-3 sm:p-5 rounded-xl border-2 transition-all text-center ${
+            className={`group relative p-3 sm:p-4 rounded-xl border-2 transition-all text-center ${
               activeTab === 'approved'
                 ? 'bg-green-50 border-green-400 shadow-md'
                 : 'bg-white border-green-200 hover:bg-green-50 hover:border-green-300'
             }`}
           >
             <div className="flex flex-col items-center">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center bg-green-100 mb-2 sm:mb-3">
-                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-green-100 mb-2">
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
               </div>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900">{approvedCount}</p>
-              <p className="text-xs sm:text-sm font-semibold mt-1 text-gray-600">Approved</p>
-              {/* Spacer to match height of cards with "Action required" */}
-              <p className="text-xs mt-1 invisible hidden sm:block">Action required</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{approvedCount}</p>
+              <p className="text-xs font-semibold mt-1 text-gray-600">Approved</p>
             </div>
           </button>
         </div>
@@ -752,12 +932,40 @@ export default function ClientOrdersPage() {
         <div className="bg-white rounded-lg sm:rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           {/* Tab Header */}
           <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-            <h2 className="font-semibold text-gray-900 text-sm sm:text-base">
-              {activeTab === 'orders' && 'All Orders'}
-              {activeTab === 'samples' && 'Samples Awaiting Approval'}
-              {activeTab === 'products' && 'Products Awaiting Approval'}
-              {activeTab === 'approved' && 'Approved Items'}
-            </h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {/* All Orders link/button */}
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className={`font-semibold text-sm sm:text-base transition-colors ${
+                    activeTab === 'orders' 
+                      ? 'text-blue-600' 
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  All Orders ({orders.length})
+                </button>
+                
+                {activeTab !== 'orders' && (
+                  <>
+                    <span className="text-gray-300">/</span>
+                    <h2 className="font-semibold text-gray-900 text-sm sm:text-base">
+                      {activeTab === 'shipped' && 'Shipped Orders'}
+                      {activeTab === 'samples' && 'Samples Awaiting Approval'}
+                      {activeTab === 'products' && 'Products Awaiting Approval'}
+                      {activeTab === 'approved' && 'Approved Items'}
+                    </h2>
+                  </>
+                )}
+              </div>
+              
+              {/* Show count for current filtered view */}
+              {activeTab !== 'orders' && (
+                <span className="text-xs sm:text-sm text-gray-500">
+                  {filteredOrders.length} item{filteredOrders.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
 
           {filteredOrders.length === 0 ? (
@@ -771,6 +979,7 @@ export default function ClientOrdersPage() {
               </div>
               <p className="text-gray-700 font-medium text-sm sm:text-base">
                 {activeTab === 'orders' && 'No orders yet'}
+                {activeTab === 'shipped' && 'No shipped orders yet'}
                 {activeTab === 'samples' && 'No samples awaiting approval'}
                 {activeTab === 'products' && 'No products awaiting approval'}
                 {activeTab === 'approved' && 'No approved items yet'}
@@ -780,17 +989,19 @@ export default function ClientOrdersPage() {
               </p>
               {activeTab === 'orders' && canCreateOrders && (
                 <a
-                  href="/dashboard/orders/client/create"
+                  href={viewingAsSubClient && viewAsClientId 
+                    ? `/dashboard/orders/client/create?forClient=${viewAsClientId}` 
+                    : '/dashboard/orders/client/create'}
                   className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
                 >
                   <Plus className="w-4 h-4" />
-                  Create Your First Order Request
+                  {viewingAsSubClient ? `Create Order for ${clientName}` : 'Create Your First Order Request'}
                 </a>
               )}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {filteredOrders.map((order) => {
+              {paginatedOrders.map((order) => {
                 const isExpanded = expandedOrders.has(order.id);
                 const hasSampleForClient = order.sample_required && order.sample_routed_to === 'client';
                 const sampleNeedsApproval = hasSampleForClient && order.sample_status !== 'approved';
@@ -852,9 +1063,73 @@ export default function ClientOrdersPage() {
                               <span className="text-xs sm:text-sm text-gray-400">
                                 #{order.order_number}
                               </span>
-                              {getStatusBadge(order.status)}
+                              
+                              {/* SAMPLE STATUS BADGE - on line 1 */}
+                              {order.sample_required && (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
+                                  (order.sample_status === 'shipped' || order.sample_shipped_date)
+                                    ? 'bg-cyan-100 text-cyan-700'
+                                    : order.sample_status === 'approved'
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-amber-100 text-amber-700'
+                                }`}>
+                                  <FlaskConical className="w-3 h-3" />
+                                  Sample {
+                                    (order.sample_status === 'shipped' || order.sample_shipped_date) ? 'Shipped' :
+                                    order.sample_status === 'approved' ? 'Approved' :
+                                    'In Progress'
+                                  }
+                                </span>
+                              )}
+                              
+                              {/* PRODUCT STATUS BADGES - on line 1 */}
+                              {(() => {
+                                const products = order.order_products || [];
+                                if (products.length === 0) return null;
+                                
+                                const shippedCount = products.filter(p => p.product_status === 'shipped' || p.shipped_date).length;
+                                const inProductionCount = products.filter(p => p.product_status === 'in_production').length;
+                                const otherCount = products.length - shippedCount - inProductionCount;
+                                
+                                const badges = [];
+                                
+                                if (shippedCount > 0) {
+                                  badges.push(
+                                    <span key="shipped" className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                      <Package className="w-3 h-3" />
+                                      {shippedCount} Shipped
+                                    </span>
+                                  );
+                                }
+                                
+                                if (inProductionCount > 0) {
+                                  badges.push(
+                                    <span key="production" className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                      <Package className="w-3 h-3" />
+                                      {inProductionCount} In Production
+                                    </span>
+                                  );
+                                }
+                                
+                                if (otherCount > 0 && (shippedCount > 0 || inProductionCount > 0)) {
+                                  badges.push(
+                                    <span key="other" className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium flex items-center gap-1">
+                                      <Package className="w-3 h-3" />
+                                      {otherCount} In Progress
+                                    </span>
+                                  );
+                                }
+                                
+                                // If nothing shipped or in production, show generic status
+                                if (shippedCount === 0 && inProductionCount === 0 && !order.sample_required) {
+                                  return getStatusBadge(order.status);
+                                }
+                                
+                                return badges;
+                              })()}
                             </div>
-                            <div className="flex items-center gap-3 sm:gap-4 mt-1 text-xs sm:text-sm text-gray-500 flex-wrap">
+                            {/* LINE 2: Date, Product Count, Sample ETA/Tracking, Product ETAs/Tracking */}
+                            <div className="flex items-center gap-2 sm:gap-3 mt-1 text-xs sm:text-sm text-gray-500 flex-wrap">
                               <span className="flex items-center gap-1">
                                 <Calendar className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                 <span className="hidden sm:inline">Created </span>{formatDate(order.created_at)}
@@ -863,50 +1138,138 @@ export default function ClientOrdersPage() {
                                 <Box className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                 {productCount} product{productCount !== 1 ? 's' : ''}
                               </span>
-                              {hasSampleForClient && (
-                                <span className="flex items-center gap-1">
-                                  <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                                  1 sample
-                                </span>
-                              )}
-                              {/* Sample ETA Badge */}
-                              {order.sample_eta && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
-                                  <Clock className="w-3 h-3" />
-                                  Sample ETA: {formatDate(order.sample_eta)}
-                                </span>
-                              )}
-                              {/* Product ETA Badge(s) */}
+                              
+                              {/* Sample Tracking or ETA */}
                               {(() => {
-                                const productsWithETA = order.order_products?.filter(p => {
-                                  const { eta } = calculateProductETA(p);
-                                  return eta !== null;
-                                }) || [];
+                                const sampleShipped = order.sample_status === 'shipped' || order.sample_shipped_date;
                                 
-                                if (productsWithETA.length === 0) return null;
-                                
-                                if (productsWithETA.length === 1) {
-                                  const { eta, shippingNotSelected, isEstimate } = calculateProductETA(productsWithETA[0]);
-                                  if (!eta) return null;
+                                if (sampleShipped && order.sample_tracking_number) {
+                                  const trackingUrl = getTrackingUrl(order.sample_shipping_carrier, order.sample_tracking_number);
+                                  if (trackingUrl) {
+                                    return (
+                                      <a
+                                        href={trackingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium hover:bg-cyan-200 transition-colors"
+                                      >
+                                        <FlaskConical className="w-3 h-3" />
+                                        <span>Sample: {order.sample_shipping_carrier} {order.sample_tracking_number}</span>
+                                        <ExternalLink className="w-2.5 h-2.5" />
+                                      </a>
+                                    );
+                                  }
                                   return (
-                                    <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      isEstimate ? 'bg-purple-100 text-purple-700' :
-                                      shippingNotSelected ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'
-                                    }`}>
-                                      <Truck className="w-3 h-3" />
-                                      {isEstimate ? 'Est. ' : ''}ETA: {formatETA(eta)}
-                                      {shippingNotSelected && !isEstimate && <span className="text-orange-500">*</span>}
+                                    <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                                      <FlaskConical className="w-3 h-3" />
+                                      Sample: {order.sample_shipping_carrier || ''} {order.sample_tracking_number}
                                     </span>
                                   );
                                 }
                                 
-                                // Multiple products - show count
-                                return (
-                                  <span className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                                    <Truck className="w-3 h-3" />
-                                    {productsWithETA.length} ETAs
-                                  </span>
-                                );
+                                if (sampleShipped && !order.sample_tracking_number) {
+                                  return (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                                      <FlaskConical className="w-3 h-3" />
+                                      Sample Shipped {order.sample_shipped_date ? formatDate(order.sample_shipped_date) : ''}
+                                    </span>
+                                  );
+                                }
+                                
+                                if (!sampleShipped && order.sample_eta) {
+                                  return (
+                                    <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                                      <Clock className="w-3 h-3" />
+                                      Sample ETA: {formatDate(order.sample_eta)}
+                                    </span>
+                                  );
+                                }
+                                
+                                return null;
+                              })()}
+                              
+                              {/* Product Tracking or ETAs */}
+                              {(() => {
+                                const products = order.order_products || [];
+                                const shippedProducts = products.filter(p => p.product_status === 'shipped' || p.shipped_date);
+                                const productsWithTracking = shippedProducts.filter(p => p.tracking_number);
+                                const nonShippedProducts = products.filter(p => p.product_status !== 'shipped' && !p.shipped_date);
+                                const productsWithETA = nonShippedProducts.filter(p => {
+                                  const { eta } = calculateProductETA(p);
+                                  return eta !== null;
+                                });
+                                
+                                const badges = [];
+                                
+                                // Product Tracking
+                                if (productsWithTracking.length === 1) {
+                                  const p = productsWithTracking[0];
+                                  const trackingUrl = getTrackingUrl(p.shipping_carrier, p.tracking_number);
+                                  if (trackingUrl) {
+                                    badges.push(
+                                      <a
+                                        key="tracking"
+                                        href={trackingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium hover:bg-cyan-200 transition-colors"
+                                      >
+                                        <Package className="w-3 h-3" />
+                                        <span>Product: {p.shipping_carrier} {p.tracking_number}</span>
+                                        <ExternalLink className="w-2.5 h-2.5" />
+                                      </a>
+                                    );
+                                  } else {
+                                    badges.push(
+                                      <span key="tracking" className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                                        <Package className="w-3 h-3" />
+                                        Product: {p.shipping_carrier || ''} {p.tracking_number}
+                                      </span>
+                                    );
+                                  }
+                                } else if (productsWithTracking.length > 1) {
+                                  badges.push(
+                                    <span key="tracking" className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                                      <Package className="w-3 h-3" />
+                                      {productsWithTracking.length} Product Tracking #s
+                                    </span>
+                                  );
+                                } else if (shippedProducts.length > 0) {
+                                  // Shipped but no tracking
+                                  badges.push(
+                                    <span key="shipped" className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium">
+                                      <Package className="w-3 h-3" />
+                                      {shippedProducts.length === 1 
+                                        ? `Product Shipped ${shippedProducts[0].shipped_date ? formatDate(shippedProducts[0].shipped_date) : ''}`
+                                        : `${shippedProducts.length} Products Shipped`
+                                      }
+                                    </span>
+                                  );
+                                }
+                                
+                                // Product ETAs
+                                if (productsWithETA.length === 1) {
+                                  const { eta, isEstimate } = calculateProductETA(productsWithETA[0]);
+                                  if (eta) {
+                                    badges.push(
+                                      <span key="eta" className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isEstimate ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                        <Package className="w-3 h-3" />
+                                        {isEstimate ? 'Est. ' : ''}Product ETA: {formatETA(eta)}
+                                      </span>
+                                    );
+                                  }
+                                } else if (productsWithETA.length > 1) {
+                                  badges.push(
+                                    <span key="eta" className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                      <Package className="w-3 h-3" />
+                                      {productsWithETA.length} Product ETAs
+                                    </span>
+                                  );
+                                }
+                                
+                                return badges;
                               })()}
                             </div>
                           </div>
@@ -972,7 +1335,9 @@ export default function ClientOrdersPage() {
                           {/* Sample Card - Shows for ALL orders with sample_required */}
                           {order.sample_required && (
                             <div className={`rounded-xl border-2 overflow-hidden bg-white ${
-                              order.sample_status === 'approved'
+                              order.sample_status === 'shipped' || order.sample_shipped_date
+                                ? 'border-cyan-400'
+                                : order.sample_status === 'approved'
                                 ? 'border-green-400'
                                 : 'border-amber-400'
                             }`}>
@@ -982,16 +1347,58 @@ export default function ClientOrdersPage() {
                                   {/* Sample Info */}
                                   <div className="flex items-start gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
                                     <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                      order.sample_status === 'approved' ? 'bg-green-500' : 'bg-amber-500'
+                                      order.sample_status === 'shipped' || order.sample_shipped_date
+                                        ? 'bg-cyan-500'
+                                        : order.sample_status === 'approved' 
+                                        ? 'bg-green-500' 
+                                        : 'bg-amber-500'
                                     }`}>
-                                      <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                      {order.sample_status === 'shipped' || order.sample_shipped_date ? (
+                                        <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                      ) : (
+                                        <FlaskConical className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+                                      )}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <h4 className="font-semibold text-gray-900 text-sm sm:text-base">
                                           Sample Request
                                         </h4>
-                                        {order.sample_status === 'approved' ? (
+                                        {/* Show tracking number next to title if shipped, otherwise show status */}
+                                        {order.sample_status === 'shipped' || order.sample_shipped_date ? (
+                                          // Shipped - show tracking link instead of status badge
+                                          order.sample_tracking_number ? (
+                                            (() => {
+                                              const trackingUrl = getTrackingUrl(order.sample_shipping_carrier, order.sample_tracking_number);
+                                              if (trackingUrl) {
+                                                return (
+                                                  <a
+                                                    href={trackingUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex items-center gap-1 px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium hover:bg-cyan-200 transition-colors"
+                                                  >
+                                                    <Truck className="w-3 h-3" />
+                                                    <span>{order.sample_shipping_carrier}: {order.sample_tracking_number}</span>
+                                                    <ExternalLink className="w-2.5 h-2.5" />
+                                                  </a>
+                                                );
+                                              }
+                                              return (
+                                                <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                                  <Truck className="w-3 h-3" />
+                                                  {order.sample_shipping_carrier}: {order.sample_tracking_number}
+                                                </span>
+                                              );
+                                            })()
+                                          ) : (
+                                            <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                              <Truck className="w-3 h-3" />
+                                              Shipped {order.sample_shipped_date ? formatDate(order.sample_shipped_date) : ''}
+                                            </span>
+                                          )
+                                        ) : order.sample_status === 'approved' ? (
                                           <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
                                             Approved
                                           </span>
@@ -1000,8 +1407,8 @@ export default function ClientOrdersPage() {
                                             Awaiting Approval
                                           </span>
                                         ) : (
-                                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
-                                            With Manufacturer
+                                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                                            In Progress
                                           </span>
                                         )}
                                       </div>
@@ -1014,15 +1421,18 @@ export default function ClientOrdersPage() {
                                     {/* Sample Details - Only show if not client_request */}
                                     {!isClientRequest && (
                                       <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm flex-wrap">
+                                        {/* Fee - always show if exists */}
                                         {order.sample_fee && (
                                           <div>
                                             <span className="text-gray-500">Fee:</span>
                                             <span className="font-semibold text-gray-900 ml-1">${formatCurrency(order.sample_fee)}</span>
                                           </div>
                                         )}
-                                        {order.sample_eta && (
+                                        
+                                        {/* ETA - Only show if NOT shipped */}
+                                        {!(order.sample_status === 'shipped' || order.sample_shipped_date) && order.sample_eta && (
                                           <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                                            <Truck className="w-3 h-3" />
+                                            <Clock className="w-3 h-3" />
                                             <span>ETA: {formatDate(order.sample_eta)}</span>
                                           </div>
                                         )}
@@ -1030,7 +1440,12 @@ export default function ClientOrdersPage() {
                                     )}
 
                                     {/* Approve Button or Status */}
-                                    {order.sample_status === 'approved' ? (
+                                    {order.sample_status === 'shipped' || order.sample_shipped_date ? (
+                                      <span className="px-3 py-1.5 bg-cyan-100 text-cyan-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 justify-center">
+                                        <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                        Shipped
+                                      </span>
+                                    ) : order.sample_status === 'approved' ? (
                                       <span className="px-3 py-1.5 bg-green-100 text-green-700 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 justify-center">
                                         <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                         Approved
@@ -1141,8 +1556,8 @@ export default function ClientOrdersPage() {
                                                     isEstimate ? 'bg-purple-100 text-purple-700' :
                                                     shippingNotSelected ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
                                                   }`}>
-                                                    <Truck className="w-3 h-3" />
-                                                    <span>{isEstimate ? 'Est. ' : ''}ETA: {formatETA(eta)}</span>
+                                                    <Package className="w-3 h-3" />
+                                                    <span>{isEstimate ? 'Est. ' : ''}Product ETA: {formatETA(eta)}</span>
                                                     {shippingNotSelected && !isEstimate && (
                                                       <span className="text-orange-500" title="Shipping method not selected - using sea estimate">*</span>
                                                     )}
@@ -1281,6 +1696,62 @@ export default function ClientOrdersPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+          
+          {/* Pagination Controls */}
+          {filteredOrders.length > ordersPerPage && (
+            <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 border-t border-gray-100 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm text-gray-500">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredOrders.length)} of {filteredOrders.length} orders
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 text-sm font-medium rounded-lg transition-colors ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1465,5 +1936,21 @@ export default function ClientOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrap with Suspense for useSearchParams (Next.js 15 requirement)
+export default function ClientOrdersPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
+          <p className="mt-3 text-gray-500 text-sm">Loading...</p>
+        </div>
+      </div>
+    }>
+      <ClientOrdersContent />
+    </Suspense>
   );
 }
