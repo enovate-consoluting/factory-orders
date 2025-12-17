@@ -530,7 +530,7 @@ export default function InventoryPage() {
             <p className="text-gray-500 text-xs mt-0.5">Track incoming shipments and warehouse stock</p>
           </div>
           <div className="flex items-center gap-2">
-            {user?.role === 'super_admin' && (
+            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
               <button onClick={() => setManualEntryModal(true)} className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 text-sm font-medium">
                 <Plus className="w-4 h-4" /><span className="hidden sm:inline">Add Manual</span>
               </button>
