@@ -356,7 +356,9 @@ export default function InventoryPage() {
   };
 
   // Upload photos to Supabase storage - PARALLEL for speed
-  const uploadPhotos = async (inventoryId: string, photos: { file: File; preview: string }[]): Promise<void> => {
+  const uploadPhotos = async (inventoryId: string, photos: { file: File; preview: string }[], uploadedBy: string | null = null): Promise<{ success: boolean; failedCount: number }> => {
+    let failedCount = 0;
+
     const uploadPromises = photos.map(async (photo) => {
       const fileExt = photo.file.name.split('.').pop();
       const fileName = `${inventoryId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
@@ -367,6 +369,7 @@ export default function InventoryPage() {
 
       if (uploadError) {
         console.error('Upload error:', uploadError);
+        failedCount++;
         return;
       }
 
@@ -374,16 +377,22 @@ export default function InventoryPage() {
         .from('inventory-media')
         .getPublicUrl(fileName);
 
-      await supabase.from('inventory_media').insert({
+      const { error: insertError } = await supabase.from('inventory_media').insert({
         inventory_id: inventoryId,
         file_url: publicUrl,
         file_name: photo.file.name,
         file_type: photo.file.type,
-        uploaded_by: user?.id
+        uploaded_by: uploadedBy
       });
+
+      if (insertError) {
+        console.error('Media insert error:', insertError);
+        failedCount++;
+      }
     });
 
     await Promise.all(uploadPromises);
+    return { success: failedCount === 0, failedCount };
   };
 
   const handleMarkReceived = async () => {
@@ -470,10 +479,22 @@ export default function InventoryPage() {
     if (!manualForm.product_name.trim()) { alert('Product name is required'); return; }
     setSaving(true);
 
+    // Validate user ID exists in database before using as FK
+    let validUserId: string | null = null;
+    if (user?.id) {
+      const { data: userExists } = await supabase.from('users').select('id').eq('id', user.id).single();
+      if (userExists) {
+        validUserId = user.id;
+      }
+    }
+
     try {
+      let inventoryId: string | null = null;
+      let photoUploadResult: { success: boolean; failedCount: number } | null = null;
+
       if (editingInventoryId) {
         // UPDATE existing
-        await supabase.from('inventory').update({
+        const { error: updateError } = await supabase.from('inventory').update({
           product_name: manualForm.product_name,
           order_number: manualForm.order_number || 'MANUAL',
           client_id: manualForm.client_id || null,
@@ -482,20 +503,28 @@ export default function InventoryPage() {
           notes: manualForm.notes
         }).eq('id', editingInventoryId);
 
-        // Delete old items and insert new
-        await supabase.from('inventory_items').delete().eq('inventory_id', editingInventoryId);
-        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
-        if (validVariants.length > 0) {
-          await supabase.from('inventory_items').insert(validVariants.map(v => ({
-            inventory_id: editingInventoryId, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
-            verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
-          })));
+        if (updateError) {
+          throw new Error(`Failed to update inventory: ${updateError.message}`);
         }
 
-        // Upload new photos in background
-        if (manualPhotos.length > 0) {
-          uploadPhotos(editingInventoryId, manualPhotos);
+        // Delete old items and insert new
+        const { error: deleteError } = await supabase.from('inventory_items').delete().eq('inventory_id', editingInventoryId);
+        if (deleteError) {
+          console.error('Warning: Failed to delete old variants:', deleteError);
         }
+
+        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+        if (validVariants.length > 0) {
+          const { error: variantError } = await supabase.from('inventory_items').insert(validVariants.map(v => ({
+            inventory_id: editingInventoryId, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            verified: true, verified_at: new Date().toISOString(), verified_by: validUserId
+          })));
+          if (variantError) {
+            throw new Error(`Failed to save variants: ${variantError.message}`);
+          }
+        }
+
+        inventoryId = editingInventoryId;
       } else {
         // CREATE new
         const productNum = manualForm.product_order_number || (() => {
@@ -507,8 +536,8 @@ export default function InventoryPage() {
           const seq = String(Math.floor(Math.random() * 100)).padStart(2, '0');
           return `MAN-${month}${day}${hour}${min}-${seq}`;
         })();
-        
-        const { data: invData } = await supabase.from('inventory').insert({
+
+        const { data: invData, error: insertError } = await supabase.from('inventory').insert({
           product_order_number: productNum,
           product_name: manualForm.product_name,
           order_number: manualForm.order_number || 'MANUAL',
@@ -518,34 +547,47 @@ export default function InventoryPage() {
           rack_location: manualForm.rack_location,
           notes: manualForm.notes,
           received_at: new Date().toISOString(),
-          received_by: user?.id
+          received_by: validUserId
         }).select().single();
 
-        if (invData) {
-          const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
-          if (validVariants.length > 0) {
-            await supabase.from('inventory_items').insert(validVariants.map(v => ({
-              inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
-              verified: true, verified_at: new Date().toISOString(), verified_by: user?.id
-            })));
-          }
+        if (insertError || !invData) {
+          throw new Error(`Failed to create inventory: ${insertError?.message || 'No data returned'}`);
+        }
 
-          // Upload photos in background (don't wait)
-          if (manualPhotos.length > 0) {
-            uploadPhotos(invData.id, manualPhotos);
+        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+        if (validVariants.length > 0) {
+          const { error: variantError } = await supabase.from('inventory_items').insert(validVariants.map(v => ({
+            inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            verified: true, verified_at: new Date().toISOString(), verified_by: validUserId
+          })));
+          if (variantError) {
+            throw new Error(`Failed to save variants: ${variantError.message}`);
           }
         }
+
+        inventoryId = invData.id;
       }
 
-      // Reset and close immediately
+      // Upload photos and wait for completion
+      if (manualPhotos.length > 0 && inventoryId) {
+        photoUploadResult = await uploadPhotos(inventoryId, manualPhotos, validUserId);
+      }
+
+      // Reset and close on success
       setManualForm({ product_order_number: '', product_name: '', order_number: '', client_id: '', rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }] });
       setManualPhotos([]);
       setClientSearch('');
       setEditingInventoryId(null);
       setManualEntryModal(false);
       fetchInventory(); fetchStats();
+
+      // Notify user of partial photo upload failures
+      if (photoUploadResult && !photoUploadResult.success) {
+        alert(`Inventory saved, but ${photoUploadResult.failedCount} photo(s) failed to upload. Please try adding them again.`);
+      }
     } catch (error) {
       console.error('Error saving manual entry:', error);
+      alert(error instanceof Error ? error.message : 'Failed to save inventory. Please try again.');
     }
     setSaving(false);
   };
