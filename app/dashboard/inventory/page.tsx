@@ -995,7 +995,7 @@ export default function InventoryPage() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {(user?.role === 'super_admin' || user?.role === 'admin') && (
+                        {(user?.role === 'super_admin' || user?.role === 'admin') && !record.order_product_id && (
                           <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

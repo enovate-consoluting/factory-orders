@@ -81,6 +81,7 @@ export const ManufacturerProductCardV2 = forwardRef<
   const [productMargin, setProductMargin] = useState(80);
   const [shippingMargin, setShippingMargin] = useState(5);
   const [sampleMargin, setSampleMargin] = useState(80);
+  const [clothingFee, setClothingFee] = useState(6); // Flat fee for clothing products
   const [marginsLoaded, setMarginsLoaded] = useState(false);
 
   // Collapsible state
@@ -185,20 +186,22 @@ export const ManufacturerProductCardV2 = forwardRef<
         const { data: systemConfig } = await supabase
           .from('system_config')
           .select('config_key, config_value')
-          .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage', 'default_sample_margin_percentage']);
+          .in('config_key', ['default_margin_percentage', 'default_shipping_margin_percentage', 'default_sample_margin_percentage', 'clothing_product_fee']);
 
-        let sysProduct = 80, sysShipping = 5, sysSample = 80;
+        let sysProduct = 80, sysShipping = 5, sysSample = 80, sysClothingFee = 6;
         if (systemConfig) {
           systemConfig.forEach((c) => {
             if (c.config_key === 'default_margin_percentage') sysProduct = parseFloat(c.config_value) || 80;
             if (c.config_key === 'default_shipping_margin_percentage') sysShipping = parseFloat(c.config_value) || 5;
             if (c.config_key === 'default_sample_margin_percentage') sysSample = parseFloat(c.config_value) || 80;
+            if (c.config_key === 'clothing_product_fee') sysClothingFee = parseFloat(c.config_value) || 6;
           });
         }
 
         setProductMargin(clientData?.custom_margin_percentage ?? sysProduct);
         setShippingMargin(clientData?.custom_shipping_margin_percentage ?? sysShipping);
         setSampleMargin(clientData?.custom_sample_margin_percentage ?? sysSample);
+        setClothingFee(sysClothingFee);
         setMarginsLoaded(true);
       } catch (error) {
         console.error('Error loading margins:', error);
@@ -271,7 +274,13 @@ export const ManufacturerProductCardV2 = forwardRef<
         const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
         const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
 
-        const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+        // Check if product is marked as clothing - use flat fee instead of percentage margin
+        const isClothing = (product as any).product?.is_clothing === true;
+        const clientProductPrice = mfgProductPrice
+          ? (isClothing
+              ? mfgProductPrice + clothingFee  // Clothing: add flat fee (e.g., $27.50 + $6 = $33.50)
+              : mfgProductPrice * (1 + productMargin / 100))  // Regular: apply margin %
+          : null;
         const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
         const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
 
@@ -477,7 +486,13 @@ export const ManufacturerProductCardV2 = forwardRef<
       const mfgAirPrice = shippingAirPrice ? parseFloat(shippingAirPrice) : null;
       const mfgBoatPrice = shippingBoatPrice ? parseFloat(shippingBoatPrice) : null;
 
-      const clientProductPrice = mfgProductPrice ? mfgProductPrice * (1 + productMargin / 100) : null;
+      // Check if product is marked as clothing - use flat fee instead of percentage margin
+      const isClothing = (product as any).product?.is_clothing === true;
+      const clientProductPrice = mfgProductPrice
+        ? (isClothing
+            ? mfgProductPrice + clothingFee  // Clothing: add flat fee
+            : mfgProductPrice * (1 + productMargin / 100))  // Regular: apply margin %
+        : null;
       const clientAirPrice = mfgAirPrice ? mfgAirPrice * (1 + shippingMargin / 100) : null;
       const clientBoatPrice = mfgBoatPrice ? mfgBoatPrice * (1 + shippingMargin / 100) : null;
 
