@@ -664,10 +664,13 @@ export default function InventoryPage() {
           console.error('Warning: Failed to delete old variants:', deleteError);
         }
 
-        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+        // Include variants with name OR quantity > 0, use "Default" if no name
+        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim() || v.expected_quantity > 0);
         if (validVariants.length > 0) {
           const { error: variantError } = await supabase.from('inventory_items').insert(validVariants.map(v => ({
-            inventory_id: editingInventoryId, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            inventory_id: editingInventoryId,
+            variant_combo: v.variant_combo.trim() || 'Default',
+            expected_quantity: v.expected_quantity || 0,
             verified: true, verified_at: new Date().toISOString(), verified_by: validUserId
           })));
           if (variantError) {
@@ -705,10 +708,13 @@ export default function InventoryPage() {
           throw new Error(`Failed to create inventory: ${insertError?.message || 'No data returned'}`);
         }
 
-        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+        // Include variants with name OR quantity > 0, use "Default" if no name
+        const validVariants = manualForm.variants.filter(v => v.variant_combo.trim() || v.expected_quantity > 0);
         if (validVariants.length > 0) {
           const { error: variantError } = await supabase.from('inventory_items').insert(validVariants.map(v => ({
-            inventory_id: invData.id, variant_combo: v.variant_combo, expected_quantity: v.expected_quantity || 0,
+            inventory_id: invData.id,
+            variant_combo: v.variant_combo.trim() || 'Default',
+            expected_quantity: v.expected_quantity || 0,
             verified: true, verified_at: new Date().toISOString(), verified_by: validUserId
           })));
           if (variantError) {
@@ -725,7 +731,7 @@ export default function InventoryPage() {
       }
 
       // Log the create/update action
-      const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+      const validVariants = manualForm.variants.filter(v => v.variant_combo.trim() || v.expected_quantity > 0);
       await logInventoryAction({
         action: isEditing ? 'inventory_update' : 'inventory_create',
         userId: user?.id,
