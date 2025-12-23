@@ -17,6 +17,15 @@ import {
   CheckSquare, Square, Save, X, Warehouse, Loader2, Trash2, Plus, AlertTriangle,
   ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink, Edit2
 } from 'lucide-react';
+import {
+  logInventoryAction,
+  logUploadMetrics,
+  logInventoryFetch,
+  createTimer,
+  formatBytes,
+  formatDuration,
+} from '@/lib/inventoryLogger';
+import { compressImages } from '@/lib/imageCompression';
 
 interface InventoryItem {
   id: string;
@@ -182,6 +191,7 @@ export default function InventoryPage() {
 
   const fetchInventory = async () => {
     setLoading(true);
+    const timer = createTimer();
     try {
       let query = supabase.from('inventory').select('*, items:inventory_items(*)').order('created_at', { ascending: false });
       if (activeTab === 'incoming') query = query.eq('status', 'incoming');
@@ -217,6 +227,12 @@ export default function InventoryPage() {
       }));
 
       setInventoryRecords(recordsWithMedia);
+
+      // Log fetch with timing
+      await logInventoryFetch(recordsWithMedia.length, timer.elapsed(), {
+        status: activeTab === 'incoming' ? 'incoming' : activeTab === 'inventory' ? 'in_stock' : 'archived',
+        clientId: clientFilter !== 'all' ? clientFilter : undefined,
+      });
     } catch (error) {
       console.error('Error fetching inventory:', error);
     }
@@ -355,22 +371,63 @@ export default function InventoryPage() {
     setManualPhotos(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Upload photos to Supabase storage - PARALLEL for speed
-  const uploadPhotos = async (inventoryId: string, photos: { file: File; preview: string }[], uploadedBy: string | null = null): Promise<{ success: boolean; failedCount: number }> => {
+  // Upload photos to Supabase storage - with compression and logging
+  const uploadPhotos = async (
+    inventoryId: string,
+    photos: { file: File; preview: string }[],
+    uploadedBy: string | null = null
+  ): Promise<{ success: boolean; failedCount: number; totalSavedBytes: number }> => {
+    const overallTimer = createTimer();
     let failedCount = 0;
+    let totalSavedBytes = 0;
 
-    const uploadPromises = photos.map(async (photo) => {
-      const fileExt = photo.file.name.split('.').pop();
+    // Log upload start
+    const originalTotalSize = photos.reduce((sum, p) => sum + p.file.size, 0);
+    await logInventoryAction({
+      action: 'photo_upload_start',
+      userId: uploadedBy || undefined,
+      userName: user?.name,
+      inventoryId,
+      details: {
+        fileCount: photos.length,
+        totalSize: formatBytes(originalTotalSize),
+        fileNames: photos.map(p => p.file.name),
+        fileSizes: photos.map(p => formatBytes(p.file.size)),
+      },
+    });
+
+    // Step 1: Compress images
+    const compressionTimer = createTimer();
+    const filesToUpload = photos.map(p => p.file);
+    const compressionResult = await compressImages(filesToUpload, {
+      maxWidth: 1920,
+      maxHeight: 1920,
+      quality: 0.8,
+    });
+    const compressionDuration = compressionTimer.elapsed();
+    totalSavedBytes = compressionResult.totalSavedBytes;
+
+    console.log(
+      `[UPLOAD] Compression: ${formatDuration(compressionDuration)} | ` +
+      `${formatBytes(compressionResult.totalOriginalSize)} -> ${formatBytes(compressionResult.totalCompressedSize)} ` +
+      `(saved ${formatBytes(totalSavedBytes)})`
+    );
+
+    // Step 2: Upload compressed files in parallel
+    const uploadTimer = createTimer();
+    const uploadPromises = compressionResult.files.map(async (file, index) => {
+      const singleFileTimer = createTimer();
+      const fileExt = file.name.split('.').pop();
       const fileName = `${inventoryId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('inventory-media')
-        .upload(fileName, photo.file);
+        .upload(fileName, file);
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
+        console.error(`[UPLOAD] File ${index + 1}/${photos.length} FAILED:`, uploadError.message);
         failedCount++;
-        return;
+        return { success: false, duration: singleFileTimer.elapsed(), size: file.size };
       }
 
       const { data: { publicUrl } } = supabase.storage
@@ -380,24 +437,56 @@ export default function InventoryPage() {
       const { error: insertError } = await supabase.from('inventory_media').insert({
         inventory_id: inventoryId,
         file_url: publicUrl,
-        file_name: photo.file.name,
-        file_type: photo.file.type,
+        file_name: photos[index].file.name, // Keep original name for display
+        file_type: file.type,
         uploaded_by: uploadedBy
       });
 
       if (insertError) {
-        console.error('Media insert error:', insertError);
+        console.error(`[UPLOAD] DB insert ${index + 1}/${photos.length} FAILED:`, insertError.message);
         failedCount++;
+        return { success: false, duration: singleFileTimer.elapsed(), size: file.size };
       }
+
+      const duration = singleFileTimer.elapsed();
+      console.log(
+        `[UPLOAD] File ${index + 1}/${photos.length}: ${formatBytes(file.size)} in ${formatDuration(duration)}`
+      );
+      return { success: true, duration, size: file.size };
     });
 
     await Promise.all(uploadPromises);
-    return { success: failedCount === 0, failedCount };
+    const uploadDuration = uploadTimer.elapsed();
+    const totalDuration = overallTimer.elapsed();
+
+    // Log upload complete with metrics
+    await logUploadMetrics(
+      {
+        inventoryId,
+        fileCount: photos.length,
+        totalSizeBytes: compressionResult.totalCompressedSize,
+        successCount: photos.length - failedCount,
+        failedCount,
+        durationMs: totalDuration,
+        compressionSavingsBytes: totalSavedBytes,
+        averageFileSizeBytes: Math.round(compressionResult.totalCompressedSize / photos.length),
+      },
+      uploadedBy || undefined,
+      user?.name
+    );
+
+    console.log(
+      `[UPLOAD] Complete: ${photos.length - failedCount}/${photos.length} files | ` +
+      `Total: ${formatDuration(totalDuration)} (compress: ${formatDuration(compressionDuration)}, upload: ${formatDuration(uploadDuration)})`
+    );
+
+    return { success: failedCount === 0, failedCount, totalSavedBytes };
   };
 
   const handleMarkReceived = async () => {
     if (!receiveModal.record) return;
     setSaving(true);
+    const timer = createTimer();
 
     try {
       await supabase.from('inventory').update({
@@ -405,6 +494,7 @@ export default function InventoryPage() {
         rack_location: receiveModal.rack_location
       }).eq('id', receiveModal.record.id);
 
+      const verifiedCount = receiveModal.items.filter(i => i.verified).length;
       for (const item of receiveModal.items) {
         await supabase.from('inventory_items').update({
           verified: item.verified, verified_at: item.verified ? new Date().toISOString() : null,
@@ -413,8 +503,25 @@ export default function InventoryPage() {
       }
 
       if (receiveModal.capturedPhotos.length > 0) {
-        await uploadPhotos(receiveModal.record.id, receiveModal.capturedPhotos);
+        await uploadPhotos(receiveModal.record.id, receiveModal.capturedPhotos, user?.id);
       }
+
+      // Log the received action
+      await logInventoryAction({
+        action: 'inventory_received',
+        userId: user?.id,
+        userName: user?.name,
+        inventoryId: receiveModal.record.id,
+        durationMs: timer.elapsed(),
+        details: {
+          productName: receiveModal.record.product_name,
+          orderNumber: receiveModal.record.order_number,
+          rackLocation: receiveModal.rack_location,
+          itemsVerified: verifiedCount,
+          totalItems: receiveModal.items.length,
+          photosAdded: receiveModal.capturedPhotos.length,
+        },
+      });
 
       setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] });
       fetchInventory(); fetchStats();
@@ -427,10 +534,28 @@ export default function InventoryPage() {
   const handleArchive = async () => {
     if (!archiveModal.record || !archiveModal.pickedUpBy.trim()) { alert('Please enter who picked up the items'); return; }
     setSaving(true);
+    const timer = createTimer();
+
     await supabase.from('inventory').update({
       status: 'archived', archived_at: new Date().toISOString(), archived_by: user?.id,
       picked_up_by: archiveModal.pickedUpBy.trim()
     }).eq('id', archiveModal.record.id);
+
+    // Log the archive action
+    await logInventoryAction({
+      action: 'inventory_archived',
+      userId: user?.id,
+      userName: user?.name,
+      inventoryId: archiveModal.record.id,
+      durationMs: timer.elapsed(),
+      details: {
+        productName: archiveModal.record.product_name,
+        orderNumber: archiveModal.record.order_number,
+        pickedUpBy: archiveModal.pickedUpBy.trim(),
+        rackLocation: archiveModal.record.rack_location,
+      },
+    });
+
     setArchiveModal({ isOpen: false, record: null, pickedUpBy: '' });
     fetchInventory(); fetchStats(); setSaving(false);
   };
@@ -438,9 +563,33 @@ export default function InventoryPage() {
   const handleDelete = async () => {
     if (!deleteModal.record) return;
     setDeleting(true);
+    const timer = createTimer();
+
+    // Capture details before deletion
+    const deletedRecord = {
+      productName: deleteModal.record.product_name,
+      orderNumber: deleteModal.record.order_number,
+      productOrderNumber: deleteModal.record.product_order_number,
+      clientName: deleteModal.record.client_name,
+      status: deleteModal.record.status,
+      itemCount: deleteModal.record.items?.length || 0,
+      mediaCount: (deleteModal.record.order_media?.length || 0) + (deleteModal.record.inventory_media?.length || 0),
+    };
+
     await supabase.from('inventory_items').delete().eq('inventory_id', deleteModal.record.id);
     await supabase.from('inventory_media').delete().eq('inventory_id', deleteModal.record.id);
     await supabase.from('inventory').delete().eq('id', deleteModal.record.id);
+
+    // Log the delete action
+    await logInventoryAction({
+      action: 'inventory_delete',
+      userId: user?.id,
+      userName: user?.name,
+      inventoryId: deleteModal.record.id,
+      durationMs: timer.elapsed(),
+      details: deletedRecord,
+    });
+
     setDeleteModal({ isOpen: false, record: null });
     fetchInventory(); fetchStats(); setDeleting(false);
   };
@@ -478,6 +627,8 @@ export default function InventoryPage() {
   const handleManualEntry = async () => {
     if (!manualForm.product_name.trim()) { alert('Product name is required'); return; }
     setSaving(true);
+    const timer = createTimer();
+    const isEditing = !!editingInventoryId;
 
     // Validate user ID exists in database before using as FK
     let validUserId: string | null = null;
@@ -490,7 +641,7 @@ export default function InventoryPage() {
 
     try {
       let inventoryId: string | null = null;
-      let photoUploadResult: { success: boolean; failedCount: number } | null = null;
+      let photoUploadResult: { success: boolean; failedCount: number; totalSavedBytes: number } | null = null;
 
       if (editingInventoryId) {
         // UPDATE existing
@@ -572,6 +723,26 @@ export default function InventoryPage() {
       if (manualPhotos.length > 0 && inventoryId) {
         photoUploadResult = await uploadPhotos(inventoryId, manualPhotos, validUserId);
       }
+
+      // Log the create/update action
+      const validVariants = manualForm.variants.filter(v => v.variant_combo.trim());
+      await logInventoryAction({
+        action: isEditing ? 'inventory_update' : 'inventory_create',
+        userId: user?.id,
+        userName: user?.name,
+        inventoryId: inventoryId || undefined,
+        durationMs: timer.elapsed(),
+        details: {
+          productName: manualForm.product_name,
+          orderNumber: manualForm.order_number || 'MANUAL',
+          clientName: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
+          rackLocation: manualForm.rack_location,
+          variantCount: validVariants.length,
+          totalQuantity: validVariants.reduce((sum, v) => sum + (v.expected_quantity || 0), 0),
+          photosUploaded: manualPhotos.length,
+          photosSaved: photoUploadResult ? formatBytes(photoUploadResult.totalSavedBytes) : undefined,
+        },
+      });
 
       // Reset and close on success
       setManualForm({ product_order_number: '', product_name: '', order_number: '', client_id: '', rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }] });
