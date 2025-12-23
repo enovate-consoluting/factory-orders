@@ -606,7 +606,7 @@ export default function InventoryPage() {
     setShowClientDropdown(false);
   };
 
-  const openEditManualModal = (record: InventoryRecord) => {
+  const openEditModal = (record: InventoryRecord) => {
     setEditingInventoryId(record.id);
     setManualForm({
       product_order_number: record.product_order_number || '',
@@ -615,7 +615,7 @@ export default function InventoryPage() {
       client_id: record.client_id || '',
       rack_location: record.rack_location || '',
       notes: record.notes || '',
-      variants: record.items && record.items.length > 0 
+      variants: record.items && record.items.length > 0
         ? record.items.map(item => ({ variant_combo: item.variant_combo, expected_quantity: item.expected_quantity }))
         : [{ variant_combo: '', expected_quantity: 0 }]
     });
@@ -984,6 +984,11 @@ export default function InventoryPage() {
                           title={record.notes || 'Add notes'}>
                           <MessageSquare className="w-3.5 h-3.5" />
                         </button>
+                        {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
+                          <button onClick={() => openEditModal(record)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {(user?.role === 'super_admin' || user?.role === 'admin') && (
                           <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1289,7 +1294,7 @@ export default function InventoryPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">{editingInventoryId ? 'Edit Manual Entry' : 'Add Manual Entry'}</h3>
+              <h3 className="font-semibold text-gray-900">{editingInventoryId ? 'Edit Inventory' : 'Add Manual Entry'}</h3>
               <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
