@@ -100,6 +100,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabType>('incoming');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isGlobalSearch, setIsGlobalSearch] = useState(false); // Track if searching across all tabs
   const [clientFilter, setClientFilter] = useState<string>('all');
   const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -167,7 +168,23 @@ export default function InventoryPage() {
     fetchClients(); fetchStats(); fetchInventory();
   }, [router]);
 
-  useEffect(() => { setCurrentPage(1); fetchInventory(); }, [activeTab, clientFilter]);
+  useEffect(() => { setCurrentPage(1); fetchInventory(isGlobalSearch); }, [activeTab, clientFilter, isGlobalSearch]);
+
+  // Handle search with debounce - trigger global search when typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm.trim().length >= 2) {
+        // When searching, fetch all records across all tabs
+        setIsGlobalSearch(true);
+        fetchInventory(true);
+      } else if (searchTerm.trim().length === 0 && isGlobalSearch) {
+        // When clearing search, go back to tab-filtered view
+        setIsGlobalSearch(false);
+        fetchInventory(false);
+      }
+    }, 300); // 300ms debounce
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   useEffect(() => {
     const handleClickOutside = () => {
@@ -189,14 +206,17 @@ export default function InventoryPage() {
     setStats({ incoming: incoming?.length || 0, inStock: inStock?.length || 0, archived: archived?.length || 0 });
   };
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (globalSearch = false) => {
     setLoading(true);
     const timer = createTimer();
     try {
       let query = supabase.from('inventory').select('*, items:inventory_items(*)').order('created_at', { ascending: false });
-      if (activeTab === 'incoming') query = query.eq('status', 'incoming');
-      else if (activeTab === 'inventory') query = query.eq('status', 'in_stock');
-      else query = query.eq('status', 'archived');
+      // Skip tab filter when doing global search
+      if (!globalSearch) {
+        if (activeTab === 'incoming') query = query.eq('status', 'incoming');
+        else if (activeTab === 'inventory') query = query.eq('status', 'in_stock');
+        else query = query.eq('status', 'archived');
+      }
       if (clientFilter !== 'all') query = query.eq('client_id', clientFilter);
       const { data } = await query;
 
@@ -869,6 +889,24 @@ export default function InventoryPage() {
         </div>
       ) : (
         <>
+          {/* Global Search Indicator */}
+          {isGlobalSearch && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-blue-500" />
+                <span className="text-sm text-blue-700">
+                  Searching across <strong>all tabs</strong> — {filteredRecords.length} result{filteredRecords.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <button
+                onClick={() => { setSearchTerm(''); setIsGlobalSearch(false); }}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+
           {/* Records List */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="divide-y divide-gray-100">
@@ -910,6 +948,28 @@ export default function InventoryPage() {
                           <span className="text-sm font-medium text-gray-900 truncate">{record.product_name}</span>
                           {!record.order_product_id && (
                             <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-medium flex-shrink-0">M</span>
+                          )}
+                          {/* Show status badge when searching across all tabs */}
+                          {isGlobalSearch && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSearchTerm('');
+                                setIsGlobalSearch(false);
+                                if (record.status === 'incoming') setActiveTab('incoming');
+                                else if (record.status === 'in_stock') setActiveTab('inventory');
+                                else setActiveTab('archive');
+                              }}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-medium flex-shrink-0 hover:opacity-80 ${
+                                record.status === 'incoming' ? 'bg-amber-100 text-amber-700' :
+                                record.status === 'in_stock' ? 'bg-green-100 text-green-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}
+                              title="Click to go to this tab"
+                            >
+                              {record.status === 'incoming' ? 'Incoming' :
+                               record.status === 'in_stock' ? 'In Stock' : 'Archived'}
+                            </button>
                           )}
                         </div>
                         <div className="text-[10px] text-gray-500 truncate">
