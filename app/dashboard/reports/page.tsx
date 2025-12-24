@@ -84,7 +84,7 @@ export default function ReportsPage() {
       icon: TrendingUp,
       href: '/dashboard/reports/products',
       color: 'orange',
-      available: false,
+      available: true,
     },
     {
       id: 'invoice-aging',
