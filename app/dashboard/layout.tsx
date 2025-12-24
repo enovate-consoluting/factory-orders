@@ -25,7 +25,8 @@ import {
   Globe,
   ChevronDown,
   ChevronRight,
-  Warehouse
+  Warehouse,
+  BarChart3
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTranslation } from 'react-i18next';
@@ -682,6 +683,18 @@ export default function DashboardLayout({
           roles: ['super_admin'],
         },
       ],
+    },
+    // REPORTS SECTION
+    {
+      type: 'section',
+      label: 'Reports',
+      roles: ['super_admin', 'admin'],
+    },
+    {
+      href: '/dashboard/reports',
+      label: 'Reports',
+      icon: BarChart3,
+      roles: ['super_admin', 'admin'],
     },
   ];
 
