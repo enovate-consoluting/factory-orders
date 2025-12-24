@@ -417,6 +417,7 @@ export default function SendInvoiceModal({
               <Mail className="w-4 h-4" />
               Email
             </button>
+            {/* SMS buttons temporarily hidden - SMS service needs configuration
             <button
               onClick={() => setSendMethod('sms')}
               disabled={sending || creatingPaymentLink}
@@ -441,6 +442,7 @@ export default function SendInvoiceModal({
               <Smartphone className="w-4 h-4" />
               Both
             </button>
+            */}
           </div>
         </div>
 
