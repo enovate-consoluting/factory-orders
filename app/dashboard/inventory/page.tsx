@@ -170,12 +170,12 @@ export default function InventoryPage() {
 
   useEffect(() => { setCurrentPage(1); fetchInventory(isGlobalSearch); }, [activeTab, clientFilter, isGlobalSearch]);
 
-  // Handle search with debounce - trigger global search when typing
+  // Handle search with debounce - always search globally when typing
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (searchTerm.trim().length >= 2) {
-        // When searching, fetch all records across all tabs
-        setIsGlobalSearch(true);
+      if (searchTerm.trim().length >= 1) {
+        // Any search triggers global search across all tabs
+        if (!isGlobalSearch) setIsGlobalSearch(true);
         fetchInventory(true);
       } else if (searchTerm.trim().length === 0 && isGlobalSearch) {
         // When clearing search, go back to tab-filtered view
@@ -949,28 +949,6 @@ export default function InventoryPage() {
                           {!record.order_product_id && (
                             <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded text-[9px] font-medium flex-shrink-0">M</span>
                           )}
-                          {/* Show status badge when searching across all tabs */}
-                          {isGlobalSearch && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSearchTerm('');
-                                setIsGlobalSearch(false);
-                                if (record.status === 'incoming') setActiveTab('incoming');
-                                else if (record.status === 'in_stock') setActiveTab('inventory');
-                                else setActiveTab('archive');
-                              }}
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-medium flex-shrink-0 hover:opacity-80 ${
-                                record.status === 'incoming' ? 'bg-amber-100 text-amber-700' :
-                                record.status === 'in_stock' ? 'bg-green-100 text-green-700' :
-                                'bg-gray-100 text-gray-600'
-                              }`}
-                              title="Click to go to this tab"
-                            >
-                              {record.status === 'incoming' ? 'Incoming' :
-                               record.status === 'in_stock' ? 'In Stock' : 'Archived'}
-                            </button>
-                          )}
                         </div>
                         <div className="text-[10px] text-gray-500 truncate">
                           {record.order_number} • {record.product_order_number}
@@ -982,6 +960,32 @@ export default function InventoryPage() {
                         <span className="text-[9px] text-gray-400 uppercase">Client</span>
                         <span className="text-xs text-gray-700 truncate block font-medium">{record.client_name || '—'}</span>
                       </div>
+
+                      {/* Status Column - shows during global search */}
+                      {isGlobalSearch && (
+                        <div className="w-20 flex-shrink-0">
+                          <span className="text-[9px] text-gray-400 uppercase">Status</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSearchTerm('');
+                              setIsGlobalSearch(false);
+                              if (record.status === 'incoming') setActiveTab('incoming');
+                              else if (record.status === 'in_stock') setActiveTab('inventory');
+                              else setActiveTab('archive');
+                            }}
+                            className={`block px-2 py-0.5 rounded text-xs font-medium hover:opacity-80 ${
+                              record.status === 'incoming' ? 'bg-amber-100 text-amber-700' :
+                              record.status === 'in_stock' ? 'bg-green-100 text-green-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}
+                            title="Click to go to this tab"
+                          >
+                            {record.status === 'incoming' ? 'Incoming' :
+                             record.status === 'in_stock' ? 'In Stock' : 'Archived'}
+                          </button>
+                        </div>
+                      )}
 
                       {/* Qty */}
                       <div className="w-14 flex-shrink-0 hidden sm:block">
