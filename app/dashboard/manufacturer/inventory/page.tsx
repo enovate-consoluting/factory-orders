@@ -908,9 +908,9 @@ export default function ManufacturerInventoryPage() {
             {filteredClients.map(([clientId, data]) => (
               <div key={clientId} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 {/* Client Header */}
-                <button
+                <div
                   onClick={() => toggleClientExpand(clientId)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     {expandedClients.has(clientId) ? (
@@ -977,7 +977,7 @@ export default function ManufacturerInventoryPage() {
                       </button>
                     )}
                   </div>
-                </button>
+                </div>
 
                 {/* Expanded Inventory Items */}
                 {expandedClients.has(clientId) && (
