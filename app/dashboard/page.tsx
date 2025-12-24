@@ -291,7 +291,7 @@ export default function DashboardPage() {
       });
 
       // Weekly orders (last 8 weeks) - include order details for tooltip
-      const weeklyData: { week: string; count: number; orders: { order_number: string; order_name: string }[] }[] = [];
+      const weeklyData: { week: string; count: number; orders: { id: string; order_number: string; order_name: string }[] }[] = [];
       for (let i = 7; i >= 0; i--) {
         const weekStart = new Date();
         weekStart.setDate(weekStart.getDate() - (i * 7) - 6);
