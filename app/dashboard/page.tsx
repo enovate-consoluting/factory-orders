@@ -55,16 +55,21 @@ export default function DashboardPage() {
     outstandingAmount: 0,
     revenueCollected: 0,
     productsInProduction: 0,
+    samplesInProduction: 0,
     shippedThisMonth: 0,
     totalClients: 0,
     overdueInvoices: 0,
-    overdueAmount: 0
+    overdueAmount: 0,
+    activeProducts: 0,
+    activeSamples: 0
   });
-  const [weeklyOrders, setWeeklyOrders] = useState<{ week: string; count: number }[]>([]);
+  const [weeklyOrders, setWeeklyOrders] = useState<{ week: string; count: number; orders: { order_number: string; order_name: string }[] }[]>([]);
   const [topClients, setTopClients] = useState<{ name: string; orderCount: number }[]>([]);
   const [topProducts, setTopProducts] = useState<{ name: string; count: number }[]>([]);
   const [recentAdminOrders, setRecentAdminOrders] = useState<any[]>([]);
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
+  const [overdueInvoicesList, setOverdueInvoicesList] = useState<any[]>([]);
+  const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -184,11 +189,11 @@ export default function DashboardPage() {
         productsResult,
         orderProductsResult
       ] = await Promise.all([
-        supabase.from('orders').select('id, status, workflow_status, created_at, client_id, order_number, order_name'),
-        supabase.from('invoices').select('id, status, amount, paid_amount, due_date, invoice_number, created_at, voided').or('voided.is.null,voided.eq.false'),
+        supabase.from('orders').select('id, status, workflow_status, created_at, client_id, order_number, order_name, sample_status'),
+        supabase.from('invoices').select('id, status, amount, paid_amount, due_date, invoice_number, created_at, voided, order:orders(order_number, order_name)').or('voided.is.null,voided.eq.false'),
         supabase.from('clients').select('id, name'),
         supabase.from('order_products').select('id, product_status, shipped_date').in('product_status', ['approved_for_production', 'in_production', 'shipped']),
-        supabase.from('order_products').select('id, description, product:products(title)')
+        supabase.from('order_products').select('id, description, product_status, product:products(title)')
       ]);
 
       const orders = ordersResult.data || [];
@@ -199,40 +204,72 @@ export default function DashboardPage() {
 
       // Calculate stats
       const totalOrders = orders.length;
-      const activeOrders = orders.filter(o => 
+      const activeOrders = orders.filter(o =>
         o.workflow_status !== 'completed' && o.workflow_status !== 'cancelled'
       ).length;
 
       const sentInvoices = invoices.filter(i => i.status === 'sent');
       const paidInvoices = invoices.filter(i => i.status === 'paid');
-      
-      const outstandingAmount = sentInvoices.reduce((sum, i) => 
+
+      const outstandingAmount = sentInvoices.reduce((sum, i) =>
         sum + parseFloat(i.amount || 0), 0
       );
-      
-      const revenueCollected = paidInvoices.reduce((sum, i) => 
+
+      const revenueCollected = paidInvoices.reduce((sum, i) =>
         sum + parseFloat(i.paid_amount || i.amount || 0), 0
       );
 
       // Overdue invoices
       const today = new Date();
-      const overdueInvoices = sentInvoices.filter(i => 
+      const overdueInvoices = sentInvoices.filter(i =>
         i.due_date && new Date(i.due_date) < today
       );
-      const overdueAmount = overdueInvoices.reduce((sum, i) => 
+      const overdueAmount = overdueInvoices.reduce((sum, i) =>
         sum + parseFloat(i.amount || 0), 0
       );
 
-      // Products stats
-      const productsInProduction = products.filter(p => 
+      // Store overdue invoices for tooltip
+      setOverdueInvoicesList(overdueInvoices.map(i => ({
+        invoice_number: i.invoice_number,
+        order_number: (i as any).order?.order_number || '',
+        order_name: (i as any).order?.order_name || '',
+        amount: parseFloat(i.amount || 0),
+        due_date: i.due_date
+      })));
+
+      // Products stats - include samples
+      const productsInProduction = products.filter(p =>
         p.product_status === 'approved_for_production' || p.product_status === 'in_production'
+      ).length;
+
+      // Samples in production (approved or in_production)
+      const samplesInProduction = orders.filter(o =>
+        o.sample_status === 'sample_approved' ||
+        o.sample_status === 'approved' ||
+        o.sample_status === 'sample_in_production' ||
+        o.sample_status === 'in_production'
+      ).length;
+
+      // Active products (not shipped/completed)
+      const activeProducts = allOrderProducts.filter((p: any) =>
+        p.product_status &&
+        p.product_status !== 'shipped' &&
+        p.product_status !== 'completed'
+      ).length;
+
+      // Active samples (any sample that's not shipped)
+      const activeSamples = orders.filter(o =>
+        o.sample_status &&
+        o.sample_status !== 'shipped' &&
+        o.sample_status !== 'none' &&
+        o.sample_status !== ''
       ).length;
 
       // Shipped this month
       const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const shippedThisMonth = products.filter(p => 
-        p.product_status === 'shipped' && 
-        p.shipped_date && 
+      const shippedThisMonth = products.filter(p =>
+        p.product_status === 'shipped' &&
+        p.shipped_date &&
         new Date(p.shipped_date) >= startOfMonth
       ).length;
 
@@ -242,29 +279,36 @@ export default function DashboardPage() {
         outstandingInvoices: sentInvoices.length,
         outstandingAmount,
         revenueCollected,
-        productsInProduction,
+        productsInProduction: productsInProduction + samplesInProduction,
+        samplesInProduction,
         shippedThisMonth,
         totalClients: clients.length,
         overdueInvoices: overdueInvoices.length,
-        overdueAmount
+        overdueAmount,
+        activeProducts,
+        activeSamples
       });
 
-      // Weekly orders (last 8 weeks)
-      const weeklyData: { week: string; count: number }[] = [];
+      // Weekly orders (last 8 weeks) - include order details for tooltip
+      const weeklyData: { week: string; count: number; orders: { order_number: string; order_name: string }[] }[] = [];
       for (let i = 7; i >= 0; i--) {
         const weekStart = new Date();
         weekStart.setDate(weekStart.getDate() - (i * 7) - 6);
         const weekEnd = new Date();
         weekEnd.setDate(weekEnd.getDate() - (i * 7));
-        
-        const count = orders.filter(o => {
+
+        const weekOrders = orders.filter(o => {
           const created = new Date(o.created_at);
           return created >= weekStart && created <= weekEnd;
-        }).length;
-        
+        });
+
         weeklyData.push({
           week: getWeekLabel(i),
-          count
+          count: weekOrders.length,
+          orders: weekOrders.slice(0, 10).map(o => ({
+            order_number: o.order_number,
+            order_name: o.order_name || ''
+          }))
         });
       }
       setWeeklyOrders(weeklyData);
@@ -289,7 +333,7 @@ export default function DashboardPage() {
         .map(c => ({ name: c.name, orderCount: c.count }));
       setTopClients(sortedClients);
 
-      // Top 5 products
+      // Top 10 products
       const productCounts: Record<string, { name: string; count: number }> = {};
       allOrderProducts.forEach((op: any) => {
         const productName = op.product?.title || op.description || 'Unknown Product';
@@ -298,10 +342,10 @@ export default function DashboardPage() {
         }
         productCounts[productName].count++;
       });
-      
+
       const sortedProducts = Object.values(productCounts)
         .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
+        .slice(0, 10);
       setTopProducts(sortedProducts);
 
       // Recent orders (last 5)
@@ -519,7 +563,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className={`bg-white rounded-lg shadow-sm border p-3 ${adminStats.overdueInvoices > 0 ? 'border-red-300' : 'border-gray-200'}`}>
+            <div className={`bg-white rounded-lg shadow-sm border p-3 relative group ${adminStats.overdueInvoices > 0 ? 'border-red-300' : 'border-gray-200'}`}>
               <div className="flex items-center gap-2">
                 <AlertCircle className={`w-4 h-4 ${adminStats.overdueInvoices > 0 ? 'text-red-500' : 'text-gray-400'}`} />
                 <div>
@@ -529,14 +573,36 @@ export default function DashboardPage() {
                   </p>
                 </div>
               </div>
+              {/* Overdue Tooltip */}
+              {overdueInvoicesList.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-64">
+                  <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg">
+                    <p className="font-semibold mb-2">Overdue Invoices:</p>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {overdueInvoicesList.slice(0, 8).map((inv, idx) => (
+                        <div key={idx} className="flex justify-between gap-2">
+                          <span className="truncate">{inv.invoice_number}</span>
+                          <span className="text-red-300 font-medium">${formatCurrency(inv.amount)}</span>
+                        </div>
+                      ))}
+                      {overdueInvoicesList.length > 8 && (
+                        <p className="text-gray-400 text-center pt-1">+{overdueInvoicesList.length - 8} more</p>
+                      )}
+                    </div>
+                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-orange-500" />
+                <Box className="w-4 h-4 text-orange-500" />
                 <div>
-                  <p className="text-xs text-gray-500">Active Orders</p>
-                  <p className="text-lg font-bold text-gray-900">{adminStats.activeOrders}</p>
+                  <p className="text-xs text-gray-500">Active Products</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {adminStats.activeProducts} <span className="text-sm font-normal text-gray-500">/ {adminStats.activeSamples} samples</span>
+                  </p>
                 </div>
               </div>
             </div>
@@ -560,14 +626,38 @@ export default function DashboardPage() {
                 {/* Bars */}
                 <div className="flex-1 flex items-end justify-between gap-1 sm:gap-2 h-32 sm:h-40 border-l border-b border-gray-200 pl-2 pb-1">
                   {weeklyOrders.map((week, index) => (
-                    <div key={index} className="flex-1 flex flex-col items-center justify-end h-full">
-                      <div 
-                        className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600 min-w-[8px] max-w-[40px]"
-                        style={{ 
+                    <div
+                      key={index}
+                      className="flex-1 flex flex-col items-center justify-end h-full relative group"
+                      onMouseEnter={() => setHoveredWeek(index)}
+                      onMouseLeave={() => setHoveredWeek(null)}
+                    >
+                      <div
+                        className="w-full bg-blue-500 rounded-t transition-all hover:bg-blue-600 min-w-[8px] max-w-[40px] cursor-pointer"
+                        style={{
                           height: `${Math.max((week.count / yAxisMax) * 100, 2)}%`
                         }}
                       />
                       <p className="text-[8px] sm:text-[10px] text-gray-500 mt-1 truncate w-full text-center">{week.week}</p>
+                      {/* Weekly Orders Tooltip */}
+                      {hoveredWeek === index && week.count > 0 && (
+                        <div className="absolute bottom-full mb-2 z-50 w-48 -left-16">
+                          <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg">
+                            <p className="font-semibold mb-2">Week of {week.week} ({week.count} orders)</p>
+                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                              {week.orders.map((o, idx) => (
+                                <div key={idx} className="truncate text-gray-300">
+                                  {o.order_number}{o.order_name ? ` - ${o.order_name}` : ''}
+                                </div>
+                              ))}
+                              {week.count > 10 && (
+                                <p className="text-gray-400 text-center pt-1">+{week.count - 10} more</p>
+                              )}
+                            </div>
+                            <div className="absolute -bottom-1 left-1/2 -ml-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
