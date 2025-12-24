@@ -3,7 +3,7 @@
 /**
  * Reports Page - /dashboard/reports
  * Central hub for business reports and analytics
- * Roles: Super Admin, Admin
+ * Roles: Super Admin only
  */
 
 import { useEffect, useState } from 'react';
@@ -42,7 +42,7 @@ export default function ReportsPage() {
       return;
     }
     const parsedUser = JSON.parse(userData);
-    if (!['super_admin', 'admin'].includes(parsedUser.role)) {
+    if (parsedUser.role !== 'super_admin') {
       router.push('/dashboard');
       return;
     }
@@ -57,7 +57,7 @@ export default function ReportsPage() {
       icon: DollarSign,
       href: '/dashboard/reports/sales',
       color: 'green',
-      available: false,
+      available: true,
     },
     {
       id: 'order-analytics',

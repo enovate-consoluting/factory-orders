@@ -684,17 +684,17 @@ export default function DashboardLayout({
         },
       ],
     },
-    // REPORTS SECTION
+    // REPORTS SECTION - Super Admin only
     {
       type: 'section',
       label: 'Reports',
-      roles: ['super_admin', 'admin'],
+      roles: ['super_admin'],
     },
     {
       href: '/dashboard/reports',
       label: 'Reports',
       icon: BarChart3,
-      roles: ['super_admin', 'admin'],
+      roles: ['super_admin'],
     },
   ];
 

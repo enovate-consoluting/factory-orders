@@ -111,7 +111,7 @@ export default function ProductPerformanceReport() {
       return;
     }
     const parsedUser = JSON.parse(userData);
-    if (!['super_admin', 'admin'].includes(parsedUser.role)) {
+    if (parsedUser.role !== 'super_admin') {
       router.push('/dashboard');
       return;
     }
