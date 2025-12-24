@@ -63,7 +63,7 @@ export default function DashboardPage() {
     activeProducts: 0,
     activeSamples: 0
   });
-  const [weeklyOrders, setWeeklyOrders] = useState<{ week: string; count: number; orders: { order_number: string; order_name: string }[] }[]>([]);
+  const [weeklyOrders, setWeeklyOrders] = useState<{ week: string; count: number; orders: { id: string; order_number: string; order_name: string }[] }[]>([]);
   const [topClients, setTopClients] = useState<{ name: string; orderCount: number }[]>([]);
   const [topProducts, setTopProducts] = useState<{ name: string; count: number }[]>([]);
   const [recentAdminOrders, setRecentAdminOrders] = useState<any[]>([]);
@@ -190,7 +190,7 @@ export default function DashboardPage() {
         orderProductsResult
       ] = await Promise.all([
         supabase.from('orders').select('id, status, workflow_status, created_at, client_id, order_number, order_name, sample_status'),
-        supabase.from('invoices').select('id, status, amount, paid_amount, due_date, invoice_number, created_at, voided, order:orders(order_number, order_name)').or('voided.is.null,voided.eq.false'),
+        supabase.from('invoices').select('id, status, amount, paid_amount, due_date, invoice_number, created_at, voided, order_id, order:orders(order_number, order_name)').or('voided.is.null,voided.eq.false'),
         supabase.from('clients').select('id, name'),
         supabase.from('order_products').select('id, product_status, shipped_date').in('product_status', ['approved_for_production', 'in_production', 'shipped']),
         supabase.from('order_products').select('id, description, product_status, product:products(title)')
@@ -231,6 +231,7 @@ export default function DashboardPage() {
       // Store overdue invoices for tooltip
       setOverdueInvoicesList(overdueInvoices.map(i => ({
         invoice_number: i.invoice_number,
+        order_id: (i as any).order_id || '',
         order_number: (i as any).order?.order_number || '',
         order_name: (i as any).order?.order_name || '',
         amount: parseFloat(i.amount || 0),
@@ -306,6 +307,7 @@ export default function DashboardPage() {
           week: getWeekLabel(i),
           count: weekOrders.length,
           orders: weekOrders.slice(0, 10).map(o => ({
+            id: o.id,
             order_number: o.order_number,
             order_name: o.order_name || ''
           }))
@@ -575,21 +577,30 @@ export default function DashboardPage() {
               </div>
               {/* Overdue Tooltip */}
               {overdueInvoicesList.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-64">
-                  <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg">
-                    <p className="font-semibold mb-2">Overdue Invoices:</p>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                      {overdueInvoicesList.slice(0, 8).map((inv, idx) => (
-                        <div key={idx} className="flex justify-between gap-2">
-                          <span className="truncate">{inv.invoice_number}</span>
-                          <span className="text-red-300 font-medium">${formatCurrency(inv.amount)}</span>
-                        </div>
+                <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-80">
+                  <div className="bg-white text-gray-900 text-xs rounded-xl p-3 shadow-xl border border-gray-200">
+                    <p className="font-semibold mb-2 text-gray-700">Overdue Invoices:</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {overdueInvoicesList.slice(0, 8).map((inv: any, idx) => (
+                        <Link
+                          key={idx}
+                          href={inv.order_id ? `/dashboard/orders/${inv.order_id}` : '#'}
+                          className="flex justify-between gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-medium text-gray-900">{inv.invoice_number}</span>
+                            {inv.order_number && (
+                              <span className="text-gray-500 ml-1">• {inv.order_number}</span>
+                            )}
+                          </div>
+                          <span className="text-red-600 font-semibold flex-shrink-0">${formatCurrency(inv.amount)}</span>
+                        </Link>
                       ))}
                       {overdueInvoicesList.length > 8 && (
                         <p className="text-gray-400 text-center pt-1">+{overdueInvoicesList.length - 8} more</p>
                       )}
                     </div>
-                    <div className="absolute -bottom-1 left-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <div className="absolute -bottom-1.5 left-4 w-3 h-3 bg-white border-r border-b border-gray-200 rotate-45"></div>
                   </div>
                 </div>
               )}
@@ -641,20 +652,25 @@ export default function DashboardPage() {
                       <p className="text-[8px] sm:text-[10px] text-gray-500 mt-1 truncate w-full text-center">{week.week}</p>
                       {/* Weekly Orders Tooltip */}
                       {hoveredWeek === index && week.count > 0 && (
-                        <div className="absolute bottom-full mb-2 z-50 w-48 -left-16">
-                          <div className="bg-gray-900 text-white text-xs rounded-lg p-3 shadow-lg">
-                            <p className="font-semibold mb-2">Week of {week.week} ({week.count} orders)</p>
-                            <div className="space-y-1 max-h-32 overflow-y-auto">
+                        <div className="absolute bottom-full mb-2 z-50 w-72 -left-28">
+                          <div className="bg-white text-gray-900 text-xs rounded-xl p-3 shadow-xl border border-gray-200">
+                            <p className="font-semibold mb-2 text-gray-700">Week of {week.week} ({week.count} orders)</p>
+                            <div className="space-y-0.5 max-h-40 overflow-y-auto">
                               {week.orders.map((o, idx) => (
-                                <div key={idx} className="truncate text-gray-300">
-                                  {o.order_number}{o.order_name ? ` - ${o.order_name}` : ''}
-                                </div>
+                                <Link
+                                  key={idx}
+                                  href={`/dashboard/orders/${o.id}`}
+                                  className="block p-1.5 rounded-lg hover:bg-gray-100 transition-colors truncate"
+                                >
+                                  <span className="font-medium text-gray-900">{o.order_number}</span>
+                                  {o.order_name && <span className="text-gray-500 ml-1">- {o.order_name}</span>}
+                                </Link>
                               ))}
                               {week.count > 10 && (
                                 <p className="text-gray-400 text-center pt-1">+{week.count - 10} more</p>
                               )}
                             </div>
-                            <div className="absolute -bottom-1 left-1/2 -ml-1 w-2 h-2 bg-gray-900 rotate-45"></div>
+                            <div className="absolute -bottom-1.5 left-1/2 -ml-1.5 w-3 h-3 bg-white border-r border-b border-gray-200 rotate-45"></div>
                           </div>
                         </div>
                       )}
