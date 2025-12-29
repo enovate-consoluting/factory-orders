@@ -259,7 +259,12 @@ export default function SalesSummaryReport() {
       // Recent invoices (last 10)
       const recent = (invoices || [])
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10);
+        .slice(0, 10)
+        .map((inv: any) => ({
+          ...inv,
+          order: Array.isArray(inv.order) ? inv.order[0] : inv.order,
+          client: Array.isArray(inv.client) ? inv.client[0] : inv.client
+        }));
       setRecentInvoices(recent);
 
     } catch (error) {
