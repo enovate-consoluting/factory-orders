@@ -13,6 +13,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2 } from 'lucide-react'
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@/lib/constants/fileUpload'
 
 // Translation imports
 import { useTranslation } from 'react-i18next'
@@ -674,11 +675,10 @@ export default function CreateOrderPage() {
 
   const handleFileUpload = (productIndex: number, files: FileList | null, type: 'media' | 'sample') => {
     if (!files) return
-    
-    const MAX_FILE_SIZE = 50 * 1024 * 1024
+
     const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`)
         return false
       }
       return true
@@ -713,11 +713,10 @@ export default function CreateOrderPage() {
   // Order-level sample file handlers
   const handleOrderSampleFileUpload = (files: FileList | null) => {
     if (!files) return
-    
-    const MAX_FILE_SIZE = 50 * 1024 * 1024
+
     const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`)
         return false
       }
       return true

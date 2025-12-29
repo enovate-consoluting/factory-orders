@@ -28,6 +28,7 @@ import { useBulkRouting } from './hooks/useBulkRouting';
 // Translation imports
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@/lib/constants/fileUpload';
 import { useDynamicTranslation } from '@/hooks/useDynamicTranslation';
 import '../../../i18n';
 
@@ -504,10 +505,9 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
 
   const handleOrderSampleFileUpload = (files: FileList | null) => {
     if (!files) return;
-    const MAX_FILE_SIZE = 50 * 1024 * 1024;
     const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
         return false;
       }
       return true;

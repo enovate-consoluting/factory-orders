@@ -24,12 +24,12 @@ export const ACCEPTED_MEDIA_TYPES = "image/*,video/*";
 /**
  * Maximum file size in megabytes
  */
-export const MAX_FILE_SIZE_MB = 500;
+export const MAX_FILE_SIZE_MB = 1024;
 
 /**
  * Maximum file size in bytes (for validation)
  */
-export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024; // 500MB = 524,288,000 bytes
+export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024; // 1GB = 1,073,741,824 bytes
 
 /**
  * Helper function to validate file size

@@ -16,6 +16,7 @@ import {
   Upload, FileText, ChevronLeft, Check, ArrowRight
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@/lib/constants/fileUpload';
 
 interface Product {
   id: string;
@@ -249,10 +250,9 @@ export function AddProductModal({
     const files = e.target.files;
     if (!files) return;
 
-    const MAX_SIZE = 50 * 1024 * 1024;
     const validFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_SIZE) {
-        alert(`File "${file.name}" is too large. Maximum size is 50MB.`);
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`);
         return false;
       }
       return true;

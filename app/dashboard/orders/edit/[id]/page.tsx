@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Plus, Minus, Trash2, Package, AlertCircle, ShoppingCart, Upload, X, CreditCard, Calendar } from 'lucide-react'
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@/lib/constants/fileUpload'
 
 interface Product {
   id: string
@@ -500,11 +501,10 @@ export default function EditOrderPage() {
 
   const handleFileUpload = (productIndex: number, files: FileList | null) => {
     if (!files) return
-    
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+
     const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`)
         return false
       }
       return true
@@ -521,11 +521,10 @@ export default function EditOrderPage() {
 
   const handleSampleFileUpload = (productIndex: number, files: FileList | null) => {
     if (!files) return
-    
-    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB limit
+
     const newFiles = Array.from(files).filter(file => {
-      if (file.size > MAX_FILE_SIZE) {
-        showNotification('error', `File "${file.name}" is too large. Maximum size is 50MB.`)
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showNotification('error', `File "${file.name}" is too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`)
         return false
       }
       return true
