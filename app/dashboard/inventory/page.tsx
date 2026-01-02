@@ -15,7 +15,8 @@ import { supabase } from '@/lib/supabase';
 import {
   Search, RefreshCw, Clock, Archive, MapPin, Truck,
   CheckSquare, Square, Save, X, Warehouse, Loader2, Trash2, Plus, AlertTriangle,
-  ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink, Edit2
+  ChevronLeft, ChevronRight, MessageSquare, Image as ImageIcon, Camera, FileText, ExternalLink, Edit2,
+  History, Minus, ArrowDown, ArrowUp, Pencil
 } from 'lucide-react';
 import {
   logInventoryAction,
@@ -84,6 +85,20 @@ interface InventoryRecord {
   inventory_media?: InventoryMedia[];
 }
 
+interface InventoryTransaction {
+  id: string;
+  inventory_item_id: string;
+  transaction_type: 'pickup' | 'restock' | 'adjustment' | 'manual';
+  quantity_change: number;
+  quantity_before: number;
+  quantity_after: number;
+  picked_up_by: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_by_name: string | null;
+  created_at: string;
+}
+
 type TabType = 'incoming' | 'inventory' | 'archive';
 const ITEMS_PER_PAGE = 10;
 
@@ -143,13 +158,42 @@ export default function InventoryPage() {
   // Manual Entry Modal
   const [manualEntryModal, setManualEntryModal] = useState(false);
   const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
-  const [manualForm, setManualForm] = useState({
+  const [manualForm, setManualForm] = useState<{
+    product_order_number: string;
+    product_name: string;
+    order_number: string;
+    client_id: string;
+    rack_location: string;
+    notes: string;
+    variants: { id?: string; variant_combo: string; expected_quantity: number }[];
+  }>({
     product_order_number: '', product_name: '', order_number: '', client_id: '',
     rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }]
   });
+  const [editingRecord, setEditingRecord] = useState<InventoryRecord | null>(null);
   const [manualPhotos, setManualPhotos] = useState<{ file: File; preview: string }[]>([]);
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
+
+  // Pickup Modal (for recording quantity changes)
+  const [pickupModal, setPickupModal] = useState<{
+    isOpen: boolean;
+    item: InventoryItem | null;
+    record: InventoryRecord | null;
+    quantity: number;
+    pickedUpBy: string;
+    notes: string;
+    transactionType: 'pickup' | 'restock' | 'adjustment' | 'manual';
+  }>({ isOpen: false, item: null, record: null, quantity: 0, pickedUpBy: '', notes: '', transactionType: 'pickup' });
+
+  // History Modal
+  const [historyModal, setHistoryModal] = useState<{
+    isOpen: boolean;
+    item: InventoryItem | null;
+    record: InventoryRecord | null;
+    transactions: InventoryTransaction[];
+    loading: boolean;
+  }>({ isOpen: false, item: null, record: null, transactions: [], loading: false });
 
   // Camera refs
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -626,8 +670,113 @@ export default function InventoryPage() {
     setShowClientDropdown(false);
   };
 
+  // Open pickup modal for a specific inventory item
+  const openPickupModal = (item: InventoryItem, record: InventoryRecord, type: 'pickup' | 'restock' | 'adjustment' | 'manual' = 'pickup') => {
+    setPickupModal({
+      isOpen: true,
+      item,
+      record,
+      quantity: 0,
+      pickedUpBy: '',
+      notes: '',
+      transactionType: type
+    });
+  };
+
+  // Handle pickup/restock/adjustment transaction
+  const handlePickupTransaction = async () => {
+    if (!pickupModal.item || !pickupModal.record || pickupModal.quantity <= 0) return;
+
+    setSaving(true);
+    const timer = createTimer();
+
+    try {
+      const currentQty = pickupModal.item.expected_quantity;
+      const changeAmount = pickupModal.transactionType === 'restock'
+        ? pickupModal.quantity
+        : -pickupModal.quantity;
+      const newQty = currentQty + changeAmount;
+
+      if (newQty < 0) {
+        alert('Cannot reduce quantity below 0');
+        setSaving(false);
+        return;
+      }
+
+      // Insert transaction record
+      const { error: txError } = await supabase.from('inventory_transactions').insert({
+        inventory_item_id: pickupModal.item.id,
+        transaction_type: pickupModal.transactionType,
+        quantity_change: changeAmount,
+        quantity_before: currentQty,
+        quantity_after: newQty,
+        picked_up_by: pickupModal.pickedUpBy || null,
+        notes: pickupModal.notes || null,
+        created_by: user?.id,
+        created_by_name: user?.name
+      });
+
+      if (txError) throw txError;
+
+      // Update the inventory item quantity
+      const { error: updateError } = await supabase
+        .from('inventory_items')
+        .update({ expected_quantity: newQty })
+        .eq('id', pickupModal.item.id);
+
+      if (updateError) throw updateError;
+
+      // Log the action
+      await logInventoryAction({
+        action: `inventory_${pickupModal.transactionType}`,
+        userId: user?.id,
+        userName: user?.name,
+        inventoryId: pickupModal.record.id,
+        durationMs: timer.elapsed(),
+        details: {
+          itemId: pickupModal.item.id,
+          variantCombo: pickupModal.item.variant_combo,
+          transactionType: pickupModal.transactionType,
+          quantityBefore: currentQty,
+          quantityChange: changeAmount,
+          quantityAfter: newQty,
+          pickedUpBy: pickupModal.pickedUpBy,
+          notes: pickupModal.notes
+        }
+      });
+
+      setPickupModal({ isOpen: false, item: null, record: null, quantity: 0, pickedUpBy: '', notes: '', transactionType: 'pickup' });
+      fetchInventory();
+    } catch (err) {
+      console.error('Transaction error:', err);
+      alert('Failed to record transaction');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Open history modal for an inventory item
+  const openHistoryModal = async (item: InventoryItem, record: InventoryRecord) => {
+    setHistoryModal({ isOpen: true, item, record, transactions: [], loading: true });
+
+    const { data, error } = await supabase
+      .from('inventory_transactions')
+      .select('*')
+      .eq('inventory_item_id', item.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching history:', error);
+      setHistoryModal(prev => ({ ...prev, loading: false }));
+      return;
+    }
+
+    setHistoryModal(prev => ({ ...prev, transactions: data || [], loading: false }));
+  };
+
   const openEditModal = (record: InventoryRecord) => {
     setEditingInventoryId(record.id);
+    setEditingRecord(record);
     setManualForm({
       product_order_number: record.product_order_number || '',
       product_name: record.product_name || '',
@@ -636,7 +785,7 @@ export default function InventoryPage() {
       rack_location: record.rack_location || '',
       notes: record.notes || '',
       variants: record.items && record.items.length > 0
-        ? record.items.map(item => ({ variant_combo: item.variant_combo, expected_quantity: item.expected_quantity }))
+        ? record.items.map(item => ({ id: item.id, variant_combo: item.variant_combo, expected_quantity: item.expected_quantity }))
         : [{ variant_combo: '', expected_quantity: 0 }]
     });
     setClientSearch(record.client_name || '');
@@ -1015,7 +1164,7 @@ export default function InventoryPage() {
                             <>
                               {record.items.slice(0, 3).map((item: InventoryItem) => (
                                 <span key={item.id} className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] whitespace-nowrap">
-                                  {item.variant_combo}:<span className="font-semibold ml-0.5">{item.expected_quantity}</span>
+                                  {item.variant_combo}:<span className="font-semibold ml-0.5">{item.expected_quantity.toLocaleString()}</span>
                                 </span>
                               ))}
                               {record.items.length > 3 && (
@@ -1236,7 +1385,7 @@ export default function InventoryPage() {
                             {editItem?.verified ? <CheckSquare className="w-4 h-4 text-green-600" /> : <Square className="w-4 h-4 text-gray-400" />}
                           </button>
                           <span className="flex-1 text-sm text-gray-900 truncate">{item.variant_combo}</span>
-                          <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{item.expected_quantity}</span>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded min-w-[60px] text-center">{item.expected_quantity.toLocaleString()}</span>
                         </div>
                       );
                     })}
@@ -1365,7 +1514,7 @@ export default function InventoryPage() {
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-gray-900">{editingInventoryId ? 'Edit Inventory' : 'Add Manual Entry'}</h3>
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
               <div>
@@ -1434,11 +1583,36 @@ export default function InventoryPage() {
                 </div>
                 <div className="space-y-1.5">
                   {manualForm.variants.map((variant, index) => (
-                    <div key={index} className="flex items-center gap-1.5">
+                    <div key={variant.id || index} className="flex items-center gap-1.5">
                       <input type="text" value={variant.variant_combo} onChange={(e) => updateVariant(index, 'variant_combo', e.target.value)}
                         placeholder="M / Red" className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs text-gray-900 placeholder-gray-400" />
                       <input type="number" value={variant.expected_quantity || ''} onChange={(e) => updateVariant(index, 'expected_quantity', parseInt(e.target.value) || 0)}
-                        placeholder="Qty" className="w-16 px-2 py-1 border border-gray-300 rounded text-xs text-gray-900 placeholder-gray-400" />
+                        placeholder="Qty" className="w-28 px-2 py-1 border border-gray-300 rounded text-xs text-gray-900 placeholder-gray-400" />
+                      {/* Pickup & History buttons for existing items */}
+                      {editingRecord && variant.id && (
+                        <>
+                          <button
+                            onClick={() => {
+                              const item = editingRecord.items?.find(i => i.id === variant.id);
+                              if (item) openPickupModal(item, editingRecord, 'pickup');
+                            }}
+                            className="p-1 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                            title="Record Pickup"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              const item = editingRecord.items?.find(i => i.id === variant.id);
+                              if (item) openHistoryModal(item, editingRecord);
+                            }}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="View History"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
                       {manualForm.variants.length > 1 && <button onClick={() => removeVariantRow(index)} className="p-0.5 text-red-500 hover:bg-red-50 rounded"><X className="w-3.5 h-3.5" /></button>}
                     </div>
                   ))}
@@ -1474,9 +1648,211 @@ export default function InventoryPage() {
               </div>
             </div>
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
               <button onClick={handleManualEntry} disabled={saving || !manualForm.product_name.trim()} className="flex-1 px-3 py-1.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
                 {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : editingInventoryId ? <><Save className="w-4 h-4" />Update</> : <><Plus className="w-4 h-4" />Add</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pickup/Transaction Modal */}
+      {pickupModal.isOpen && pickupModal.item && pickupModal.record && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900">
+                {pickupModal.transactionType === 'pickup' ? 'Record Pickup' :
+                 pickupModal.transactionType === 'restock' ? 'Add Stock' : 'Adjust Quantity'}
+              </h3>
+              <button onClick={() => setPickupModal({ isOpen: false, item: null, record: null, quantity: 0, pickedUpBy: '', notes: '', transactionType: 'pickup' })} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Item Info */}
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-sm font-medium text-gray-900">{pickupModal.item.variant_combo}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{pickupModal.record.product_name} • {pickupModal.record.order_number}</p>
+                <p className="text-lg font-bold text-gray-900 mt-2">Current: {pickupModal.item.expected_quantity.toLocaleString()}</p>
+              </div>
+
+              {/* Transaction Type Selector */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-2">Transaction Type</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPickupModal(prev => ({ ...prev, transactionType: 'pickup' }))}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                      pickupModal.transactionType === 'pickup' ? 'bg-amber-100 text-amber-700 border-2 border-amber-500' : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />Pickup
+                  </button>
+                  <button
+                    onClick={() => setPickupModal(prev => ({ ...prev, transactionType: 'restock' }))}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                      pickupModal.transactionType === 'restock' ? 'bg-green-100 text-green-700 border-2 border-green-500' : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />Restock
+                  </button>
+                  <button
+                    onClick={() => setPickupModal(prev => ({ ...prev, transactionType: 'adjustment' }))}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-colors ${
+                      pickupModal.transactionType === 'adjustment' ? 'bg-blue-100 text-blue-700 border-2 border-blue-500' : 'bg-gray-100 text-gray-600 border-2 border-transparent hover:bg-gray-200'
+                    }`}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />Adjust
+                  </button>
+                </div>
+              </div>
+
+              {/* Quantity */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {pickupModal.transactionType === 'pickup' ? 'Quantity Picked Up' :
+                   pickupModal.transactionType === 'restock' ? 'Quantity Added' : 'Quantity to Remove'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={pickupModal.quantity || ''}
+                  onChange={(e) => setPickupModal(prev => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
+                  min="1"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                  placeholder="Enter quantity"
+                />
+                {pickupModal.quantity > 0 && (
+                  <p className="text-xs mt-1 text-gray-500">
+                    New quantity: <span className="font-semibold">{
+                      (pickupModal.transactionType === 'restock'
+                        ? pickupModal.item.expected_quantity + pickupModal.quantity
+                        : pickupModal.item.expected_quantity - pickupModal.quantity
+                      ).toLocaleString()
+                    }</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Picked Up By */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {pickupModal.transactionType === 'pickup' ? 'Picked Up By' : 'Processed By'}
+                </label>
+                <input
+                  type="text"
+                  value={pickupModal.pickedUpBy}
+                  onChange={(e) => setPickupModal(prev => ({ ...prev, pickedUpBy: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                  placeholder="Name of person/driver"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                <textarea
+                  value={pickupModal.notes}
+                  onChange={(e) => setPickupModal(prev => ({ ...prev, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
+                  placeholder="Optional notes..."
+                />
+              </div>
+            </div>
+            <div className="p-3 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={() => setPickupModal({ isOpen: false, item: null, record: null, quantity: 0, pickedUpBy: '', notes: '', transactionType: 'pickup' })}
+                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePickupTransaction}
+                disabled={saving || pickupModal.quantity <= 0}
+                className={`flex-1 px-3 py-2 text-white font-medium rounded-lg disabled:opacity-50 text-sm flex items-center justify-center gap-1.5 ${
+                  pickupModal.transactionType === 'pickup' ? 'bg-amber-600 hover:bg-amber-700' :
+                  pickupModal.transactionType === 'restock' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Save className="w-4 h-4" />Confirm</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {historyModal.isOpen && historyModal.item && historyModal.record && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-xl max-h-[80vh] flex flex-col">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="font-semibold text-gray-900">Transaction History</h3>
+                <p className="text-xs text-gray-500">{historyModal.item.variant_combo} • {historyModal.record.product_name}</p>
+              </div>
+              <button onClick={() => setHistoryModal({ isOpen: false, item: null, record: null, transactions: [], loading: false })} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="p-3 flex-1 overflow-y-auto">
+              {historyModal.loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                </div>
+              ) : historyModal.transactions.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <History className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">No transaction history yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {historyModal.transactions.map((tx) => (
+                    <div key={tx.id} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
+                          tx.transaction_type === 'pickup' ? 'bg-amber-100 text-amber-700' :
+                          tx.transaction_type === 'restock' ? 'bg-green-100 text-green-700' :
+                          tx.transaction_type === 'adjustment' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-700'
+                        }`}>
+                          {tx.transaction_type === 'pickup' && <ArrowDown className="w-3 h-3" />}
+                          {tx.transaction_type === 'restock' && <ArrowUp className="w-3 h-3" />}
+                          {tx.transaction_type === 'adjustment' && <Pencil className="w-3 h-3" />}
+                          {tx.transaction_type.charAt(0).toUpperCase() + tx.transaction_type.slice(1)}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-gray-500">{tx.quantity_before.toLocaleString()}</span>
+                        <span className="text-gray-400">→</span>
+                        <span className="font-semibold text-gray-900">{tx.quantity_after.toLocaleString()}</span>
+                        <span className={`text-xs font-medium ${tx.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          ({tx.quantity_change > 0 ? '+' : ''}{tx.quantity_change.toLocaleString()})
+                        </span>
+                      </div>
+                      {tx.picked_up_by && (
+                        <p className="text-xs text-gray-600 mt-1">By: {tx.picked_up_by}</p>
+                      )}
+                      {tx.notes && (
+                        <p className="text-xs text-gray-500 mt-1 italic">{tx.notes}</p>
+                      )}
+                      {tx.created_by_name && (
+                        <p className="text-xs text-gray-400 mt-1">Recorded by: {tx.created_by_name}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-200 flex-shrink-0">
+              <button
+                onClick={() => setHistoryModal({ isOpen: false, item: null, record: null, transactions: [], loading: false })}
+                className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+              >
+                Close
               </button>
             </div>
           </div>
