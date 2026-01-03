@@ -97,11 +97,12 @@ export const useOrderData = (orderId: string) => {
             .in('target_type', ['order', 'order_sample'])
             .order('timestamp', { ascending: false }),
             
-          // Get all products for this order
+          // Get all products for this order (excluding soft-deleted)
           supabase
             .from('order_products')
             .select('*')
             .eq('order_id', orderId)
+            .is('deleted_at', null)
         ]);
         
         // For each product, get ALL its related data
@@ -214,9 +215,11 @@ export const useOrderData = (orderId: string) => {
           orderData.audit_log = auditLog || [];
         }
         
-        // Process products if they exist
-        let finalProducts = orderData.order_products || [];
-        
+        // Process products if they exist (filter out soft-deleted products)
+        let finalProducts = (orderData.order_products || []).filter(
+          (p: any) => !p.deleted_at
+        );
+
         if (finalProducts.length > 0) {
           // Make sure each product has its audit log
           finalProducts = await Promise.all(
@@ -307,11 +310,12 @@ export const useOrderData = (orderId: string) => {
             .in('target_type', ['order', 'order_sample'])
             .order('timestamp', { ascending: false });
           
-          // Try to get products with basic info at least
+          // Try to get products with basic info at least (excluding soft-deleted)
           const { data: products } = await supabase
             .from('order_products')
             .select('*')
-            .eq('order_id', orderId);
+            .eq('order_id', orderId)
+            .is('deleted_at', null);
           
           setOrder({
             ...basicOrder,

@@ -47,7 +47,10 @@ import { ManufacturerControlPanelV2 } from './components/manufacturer/Manufactur
 import { HistoryModal } from './components/modals/HistoryModal';
 import { ProductRouteModal } from './components/modals/ProductRouteModal';
 import { SaveAllRouteModal } from './components/modals/SaveAllRouteModal';
+import { DeleteProductModal } from './components/modals/DeleteProductModal';
+import { useProductDelete } from './hooks/useProductDelete';
 import { AccessoriesCard } from './components/shared/AccessoriesCard';
+import { DeletedProductsSection } from './components/shared/DeletedProductsSection';
 
 // Utilities
 import { getProductCounts } from '../utils/orderCalculations';
@@ -159,6 +162,18 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
     isOpen: false,
     isSaving: false
   });
+
+  // Delete Product Modal State
+  const [deleteProductModal, setDeleteProductModal] = useState<{
+    isOpen: boolean;
+    product: any;
+  }>({
+    isOpen: false,
+    product: null
+  });
+
+  // Delete product hook
+  const { deleteProduct, deleting: deletingProduct } = useProductDelete();
 
   // Track card refs for bulk operations
   const manufacturerCardRefs = useRef<Map<string, any>>(new Map());
@@ -657,49 +672,47 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
     setProductRouteModal({ isOpen: true, product });
   };
 
-  // Delete product handler
-  const handleDeleteProduct = async (productId: string) => {
+  // Delete product handler - opens modal for reason
+  const handleDeleteProduct = (productId: string) => {
     if (!order) return;
-    
-    try {
-      // Delete order_items first
-      await supabase
-        .from('order_items')
-        .delete()
-        .eq('order_product_id', productId);
-      
-      // Delete order_media
-      await supabase
-        .from('order_media')
-        .delete()
-        .eq('order_product_id', productId);
-      
-      // Delete the product itself
-      const { error } = await supabase
-        .from('order_products')
-        .delete()
-        .eq('id', productId);
-      
-      if (error) throw error;
-      
-      // Log to audit
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      await supabase.from('audit_log').insert({
-        user_id: user.id || crypto.randomUUID(),
-        user_name: user.name || user.email || 'Admin User',
-        action_type: 'product_deleted',
-        target_type: 'order_product',
-        target_id: productId,
-        old_value: JSON.stringify({ order_id: order.id }),
-        new_value: null,
-        timestamp: new Date().toISOString()
+
+    // Find the product to show in modal
+    const product = order.order_products?.find((p: any) => p.id === productId);
+    if (product) {
+      setDeleteProductModal({
+        isOpen: true,
+        product: {
+          id: product.id,
+          product_order_number: product.product_order_number,
+          description: product.description,
+          product_status: product.product_status,
+          invoiced: product.invoiced
+        }
       });
-      
-      await refetch();
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      alert('Error deleting product. Please try again.');
     }
+  };
+
+  // Confirm delete handler - called from modal with reason
+  const handleConfirmDeleteProduct = async (productId: string, reason: string) => {
+    if (!order) return { success: false, error: 'No order loaded' };
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+    const result = await deleteProduct(
+      productId,
+      order.id,
+      userRole || 'admin',
+      reason,
+      user.id,
+      user.name || user.email || 'Admin User'
+    );
+
+    if (result.success) {
+      setDeleteProductModal({ isOpen: false, product: null });
+      await refetch();
+    }
+
+    return result;
   };
 
   // Save all and route
@@ -1034,6 +1047,13 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
           </div>
         )}
 
+        {/* DELETED PRODUCTS SECTION - Super Admin only */}
+        <DeletedProductsSection
+          orderId={id}
+          userRole={userRole || 'admin'}
+          onRestore={refetch}
+        />
+
         {/* ORDER PRODUCTS */}
         <div className="space-y-3">
           <h2 className="text-sm sm:text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -1146,6 +1166,14 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
         onClose={() => setHistoryModal({ isOpen: false, productId: '', productName: '' })}
         productId={historyModal.productId}
         productName={historyModal.productName}
+      />
+
+      <DeleteProductModal
+        isOpen={deleteProductModal.isOpen}
+        onClose={() => setDeleteProductModal({ isOpen: false, product: null })}
+        product={deleteProductModal.product}
+        onConfirmDelete={handleConfirmDeleteProduct}
+        userRole={userRole || 'admin'}
       />
     </div>
   );

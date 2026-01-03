@@ -50,100 +50,96 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
 
   return (
     <div className="relative border-b border-gray-200 mb-4">
-      {/* Scroll hint shadows - improved visibility */}
-      <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-white via-white/80 to-transparent pointer-events-none z-10 lg:hidden" />
-      <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white via-white/80 to-transparent pointer-events-none z-10 lg:hidden" />
-
-      <nav className="-mb-px flex overflow-x-auto scrollbar-hide whitespace-nowrap gap-x-0.5 sm:gap-x-1 snap-x snap-mandatory scroll-smooth px-0.5">
+      <nav className="-mb-px flex flex-wrap gap-1 sm:gap-0.5">
         {/* My Orders Tab */}
         <button
           onClick={() => onTabChange('my_orders')}
-          className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+          className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
             activeTab === 'my_orders'
-              ? 'border-blue-500 text-blue-600 bg-blue-50/30'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'bg-blue-100 sm:bg-blue-50/30 text-blue-600 sm:border-blue-500'
+              : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
           }`}
         >
           <Inbox className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t('myOrders')}</span>
+          <span>{t('myOrders')}</span>
           {tabCounts.my_orders > 0 && (
-            <span className="bg-blue-100 text-blue-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+            <span className="bg-blue-200 sm:bg-blue-100 text-blue-700 sm:text-blue-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
               {tabCounts.my_orders}
             </span>
           )}
         </button>
 
-        {/* NEW: Client Requests Tab - Admin/Super Admin only */}
+        {/* Client Requests Tab - Admin/Super Admin only */}
         {isAdminOrSuperAdmin && (
           <button
             onClick={() => onTabChange('client_requests')}
-            className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+            className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
               activeTab === 'client_requests'
-                ? 'border-teal-500 text-teal-600 bg-teal-50/30'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'bg-teal-100 sm:bg-teal-50/30 text-teal-600 sm:border-teal-500'
+                : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
             }`}
           >
             <UserPlus className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-            <span className="whitespace-nowrap">{getClientRequestsLabel()}</span>
+            <span>{getClientRequestsLabel()}</span>
             {tabCounts.client_requests > 0 && (
-              <span className="bg-teal-100 text-teal-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center animate-pulse">
+              <span className="bg-teal-200 sm:bg-teal-100 text-teal-700 sm:text-teal-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center animate-pulse">
                 {tabCounts.client_requests}
               </span>
             )}
           </button>
         )}
-        
+
         {/* Invoice Approval Tab - Admin, Super Admin, Client only */}
         {(isAdminOrSuperAdmin || isClient) && (
           <button
             onClick={() => onTabChange('invoice_approval')}
-            className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+            className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
               activeTab === 'invoice_approval'
-                ? 'border-amber-500 text-amber-600 bg-amber-50/30'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'bg-amber-100 sm:bg-amber-50/30 text-amber-600 sm:border-amber-500'
+                : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
             }`}
           >
             <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-            <span className="whitespace-nowrap">{t('invoiceApproval')}</span>
+            <span>{t('invoiceApproval')}</span>
             {tabCounts.invoice_approval > 0 && (
-              <span className="bg-amber-100 text-amber-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+              <span className="bg-amber-200 sm:bg-amber-100 text-amber-700 sm:text-amber-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
                 {tabCounts.invoice_approval}
               </span>
             )}
           </button>
         )}
-        
+
         {/* Sent To Other Tab */}
         <button
           onClick={() => onTabChange('sent_to_other')}
-          className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+          className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
             activeTab === 'sent_to_other'
-              ? 'border-purple-500 text-purple-600 bg-purple-50/30'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'bg-purple-100 sm:bg-purple-50/30 text-purple-600 sm:border-purple-500'
+              : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
           }`}
         >
           <SendHorizontal className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{isManufacturer ? t('sentToAdmin') : t('sentToManufacturer')}</span>
+          <span>{isManufacturer ? t('sentToAdmin') : t('sentToManufacturer')}</span>
           {tabCounts.sent_to_other > 0 && (
-            <span className="bg-purple-100 text-purple-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+            <span className="bg-purple-200 sm:bg-purple-100 text-purple-700 sm:text-purple-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
               {tabCounts.sent_to_other}
             </span>
           )}
         </button>
-        
+
         {/* Production Status Tab */}
         <button
           onClick={onProductionTabClick}
-          className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+          className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
             activeTab === 'production_status'
-              ? 'border-indigo-500 text-indigo-600 bg-indigo-50/30'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'bg-indigo-100 sm:bg-indigo-50/30 text-indigo-600 sm:border-indigo-500'
+              : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
           }`}
         >
           <Layers className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t('productionStatus')}</span>
+          <span>{t('productionStatus')}</span>
           {tabCounts.production_total > 0 && (
-            <span className="bg-indigo-100 text-indigo-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+            <span className="bg-indigo-200 sm:bg-indigo-100 text-indigo-700 sm:text-indigo-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
               {tabCounts.production_total}
             </span>
           )}
@@ -153,18 +149,18 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {isManufacturer && (
           <button
             onClick={() => onTabChange('ready_to_ship')}
-            className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+            className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
               activeTab === 'ready_to_ship'
-                ? 'border-orange-500 text-orange-600 bg-orange-50/30'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                ? 'bg-orange-100 sm:bg-orange-50/30 text-orange-600 sm:border-orange-500'
+                : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
             }`}
           >
             <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-            <span className="whitespace-nowrap truncate max-w-[70px] sm:max-w-[100px] md:max-w-[150px]" title={shipQueueLabel}>
+            <span className="truncate max-w-[60px] sm:max-w-none" title={shipQueueLabel}>
               {shipQueueLabel}
             </span>
             {tabCounts.ready_to_ship > 0 && (
-              <span className="bg-orange-100 text-orange-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+              <span className="bg-orange-200 sm:bg-orange-100 text-orange-700 sm:text-orange-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
                 {tabCounts.ready_to_ship}
               </span>
             )}
@@ -174,16 +170,16 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
         {/* Shipped Tab */}
         <button
           onClick={() => onTabChange('shipped')}
-          className={`snap-start py-2 sm:py-2.5 md:py-3 px-2 sm:px-2.5 md:px-4 border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0 transition-colors ${
+          className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
             activeTab === 'shipped'
-              ? 'border-green-500 text-green-600 bg-green-50/30'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              ? 'bg-green-100 sm:bg-green-50/30 text-green-600 sm:border-green-500'
+              : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
           }`}
         >
           <Truck className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-          <span className="whitespace-nowrap">{t('shipped')}</span>
+          <span>{t('shipped')}</span>
           {tabCounts.shipped > 0 && (
-            <span className="bg-green-100 text-green-600 px-1 sm:px-1.5 md:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold flex-shrink-0 min-w-[18px] text-center">
+            <span className="bg-green-200 sm:bg-green-100 text-green-700 sm:text-green-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
               {tabCounts.shipped}
             </span>
           )}

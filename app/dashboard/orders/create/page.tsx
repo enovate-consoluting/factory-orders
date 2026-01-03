@@ -976,10 +976,11 @@ export default function CreateOrderPage() {
       console.log('Product status being set:', productStatus)
       console.log('Routed to:', routedTo)
       
-      const productsToInsert = orderProducts.map(orderProduct => {
+      const productsToInsert = orderProducts.map((orderProduct, index) => {
         const productCode = orderProduct.product.title?.substring(0, 3).toUpperCase() || 'PRD'
         const descCode = orderProduct.productDescription?.substring(0, 3).toUpperCase() || 'GEN'
-        const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}`
+        const sequenceNum = (index + 1).toString().padStart(2, '0')
+        const finalProductOrderNumber = `${orderNumeric}-${productCode}-${descCode}-${sequenceNum}`
         
         return {
           order_id: orderData.id,

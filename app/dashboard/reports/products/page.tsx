@@ -157,7 +157,7 @@ export default function ProductPerformanceReport() {
   const fetchProductData = async () => {
     setLoading(true);
     try {
-      // Build query
+      // Build query (excluding soft-deleted products)
       let query = supabase
         .from('order_products')
         .select(`
@@ -169,7 +169,8 @@ export default function ProductPerformanceReport() {
           created_at,
           product:products(id, title),
           order:orders(id, order_number, order_name, created_at, client_id, client:clients(id, name))
-        `);
+        `)
+        .is('deleted_at', null);
 
       // Apply date filter
       const dateFilter = getDateFilter();
@@ -284,6 +285,7 @@ export default function ProductPerformanceReport() {
           product:products(id, title),
           order:orders(id, order_number, order_name, created_at, client_id, client:clients(id, name))
         `)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       const dateFilter = getDateFilter();

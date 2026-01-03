@@ -561,16 +561,20 @@ export default function OrdersPage() {
 
   const filterOrders = () => {
     let filtered = [...orders];
-    
+
     if (searchTerm) {
-      filtered = filtered.filter(order => 
+      // When searching, search across ALL orders (ignore tab filter)
+      filtered = filtered.filter(order =>
         formatOrderNumber(order.order_number).toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.client?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.manufacturer?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order.order_name && order.order_name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
+      // Skip tab filter when searching - show results from any tab
+      setFilteredOrders(filtered);
+      return;
     }
-    
+
     filtered = getTabFilteredOrders(filtered);
     setFilteredOrders(filtered);
   };

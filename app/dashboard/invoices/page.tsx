@@ -240,18 +240,20 @@ export default function InvoicesPage() {
 
   const fetchStats = async () => {
     try {
-      // Count products for approval (not in production statuses)
+      // Count products for approval (excluding soft-deleted)
       const { data: approvalData } = await supabase
         .from('order_products')
         .select('id')
         .eq('routed_to', 'admin')
+        .is('deleted_at', null)
         .or('client_product_price.gt.0,sample_fee.gt.0')
         .not('product_status', 'in', '("approved_for_production","in_production","shipped","completed")');
-      
-      // Count products in production (approved_for_production or in_production)
+
+      // Count products in production (excluding soft-deleted)
       const { data: productionData } = await supabase
         .from('order_products')
         .select('id')
+        .is('deleted_at', null)
         .or('client_product_price.gt.0,sample_fee.gt.0')
         .in('product_status', ['approved_for_production', 'in_production']);
       

@@ -192,8 +192,8 @@ export default function DashboardPage() {
         supabase.from('orders').select('id, status, workflow_status, created_at, client_id, order_number, order_name, sample_status'),
         supabase.from('invoices').select('id, status, amount, paid_amount, due_date, invoice_number, created_at, voided, order_id, order:orders(order_number, order_name)').or('voided.is.null,voided.eq.false'),
         supabase.from('clients').select('id, name'),
-        supabase.from('order_products').select('id, product_status, shipped_date').in('product_status', ['approved_for_production', 'in_production', 'shipped']),
-        supabase.from('order_products').select('id, description, product_status, product:products(title)')
+        supabase.from('order_products').select('id, product_status, shipped_date').is('deleted_at', null).in('product_status', ['approved_for_production', 'in_production', 'shipped']),
+        supabase.from('order_products').select('id, description, product_status, product:products(title)').is('deleted_at', null)
       ]);
 
       const orders = ordersResult.data || [];
