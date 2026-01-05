@@ -90,7 +90,13 @@ export function DeletedProductsSection({
         return;
       }
 
-      setDeletedProducts(data || []);
+      // Transform data: Supabase returns product as array, extract first element
+      const transformedData = (data || []).map(item => ({
+        ...item,
+        product: Array.isArray(item.product) ? item.product[0] : item.product
+      }));
+
+      setDeletedProducts(transformedData);
     } catch (error) {
       console.error('Error:', error);
     } finally {
