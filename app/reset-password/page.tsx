@@ -1,8 +1,7 @@
-
 "use client";
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { resetPasswordWithToken, validatePasswordStrength } from '@/lib/auth';
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -25,40 +24,20 @@ function ResetPasswordContent() {
       setLoading(false);
       return;
     }
-    if (!password || password.length < 6) {
-      setError('Password must be at least 6 characters');
+
+    // Validate password strength
+    const validation = validatePasswordStrength(password);
+    if (!validation.valid) {
+      setError(validation.error || 'Invalid password');
       setLoading(false);
       return;
     }
 
-    // Find user by token
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, reset_token_expires')
-      .eq('reset_token', token)
-      .single();
+    // Reset password using auth lib (handles validation and hashing)
+    const result = await resetPasswordWithToken(token, password);
 
-    if (userError || !user) {
-      setError('Invalid or expired token');
-      setLoading(false);
-      return;
-    }
-
-    // Check expiry
-    if (new Date(user.reset_token_expires) < new Date()) {
-      setError('Token has expired');
-      setLoading(false);
-      return;
-    }
-
-    // Update password and clear token
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ password, reset_token: null, reset_token_expires: null })
-      .eq('id', user.id);
-
-    if (updateError) {
-      setError('Failed to reset password');
+    if (!result.success) {
+      setError(result.error || 'Failed to reset password');
       setLoading(false);
       return;
     }

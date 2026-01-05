@@ -2,8 +2,8 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 import { Eye, EyeOff } from 'lucide-react';
+import { getRememberedEmail, setRememberedEmail, clearRememberedEmail, setSession } from '@/lib/auth';
 
 function LoginContent() {
   const router = useRouter();
@@ -21,7 +21,7 @@ function LoginContent() {
       setMessage('Your session has expired. Please login again.');
     }
 
-    const savedEmail = localStorage.getItem('rememberedEmail');
+    const savedEmail = getRememberedEmail();
     if (savedEmail) {
       setEmail(savedEmail);
       setRememberMe(true);
@@ -33,57 +33,33 @@ function LoginContent() {
     setError('');
     setMessage('');
     setLoading(true);
- 
+
     try {
-      // Check users table directly (no Supabase Auth)
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email.toLowerCase().trim())
-        .single();
- 
-      if (userError || !userData) {
-        setError('Invalid email or password');
+      // Call server-side login API (bcrypt runs on server)
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Invalid email or password');
         setLoading(false);
         return;
       }
- 
-      // Check password (simple comparison - passwords stored as plain text)
-      if (userData.password !== password) {
-        setError('Invalid email or password');
-        setLoading(false);
-        return;
-      }
- 
-      // Successful login
+
+      // Handle "Remember me"
       if (rememberMe) {
-        localStorage.setItem('rememberedEmail', email);
+        setRememberedEmail(email);
       } else {
-        localStorage.removeItem('rememberedEmail');
+        clearRememberedEmail();
       }
 
-      // If user is a manufacturer, fetch manufacturer_id from manufacturers table
-      if (userData.role === 'manufacturer') {
-        const { data: manufacturerData, error: manufacturerError } = await supabase
-          .from('manufacturers')
-          .select('id')
-          .eq('email', email.toLowerCase().trim())
-          .single();
+      // Store session
+      setSession(result.user);
 
-        if (manufacturerData && !manufacturerError) {
-          // Add manufacturer_id to user data
-          userData.manufacturer_id = manufacturerData.id;
-        }
-      }
- 
-      // Store user session
-      localStorage.setItem('user', JSON.stringify(userData));
-     
-      // Set session expiry (7 days)
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 7);
-      localStorage.setItem('sessionExpiry', expiryDate.toISOString());
- 
       router.push('/dashboard');
     } catch (err) {
       console.error('Login error:', err);

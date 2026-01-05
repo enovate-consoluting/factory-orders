@@ -28,7 +28,7 @@ import {
   Warehouse,
   BarChart3
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, getCurrentUser, clearSession, type AuthUser } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '@/contexts/LanguageContext';
 import '../i18n';
@@ -87,8 +87,8 @@ export default function DashboardLayout({
   const { language, setLanguage } = useLanguage();
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
       router.push('/');
       return;
     }
@@ -96,7 +96,7 @@ export default function DashboardLayout({
     let cleanup: (() => void) | undefined;
 
     try {
-      const parsedUser = JSON.parse(userData);
+      const parsedUser = currentUser as User;
       console.log('Logged in user:', parsedUser);
       setUser(parsedUser);
 
@@ -516,7 +516,7 @@ export default function DashboardLayout({
   }, [pathname, user?.id, manufacturerId]);
 
   const handleLogout = () => {
-    localStorage.removeItem('user');
+    clearSession();
     router.push('/');
   };
 

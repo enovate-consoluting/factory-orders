@@ -1,39 +1,21 @@
 // app/api/users/route.ts
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { createScanacartClient } from '@/lib/scanacart/api'
-
-// Check if service role key exists
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('SUPABASE_SERVICE_ROLE_KEY is not set in environment variables')
-  console.error('Make sure it exists in both .env.local.dev and .env.local.prod files')
-}
-
-// Create admin client with service role key (bypasses RLS)
-const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY 
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
-  : null
+import { getSupabaseAdmin, isAdminClientAvailable, hashPassword } from '@/lib/auth'
 
 export async function POST(request: Request) {
   // Check if admin client is available
-  if (!supabaseAdmin) {
+  if (!isAdminClientAvailable()) {
     return NextResponse.json(
-      { 
-        error: 'Server configuration error', 
-        details: 'SUPABASE_SERVICE_ROLE_KEY not configured. Add it to your .env.local.dev and .env.local.prod files.' 
-      }, 
+      {
+        error: 'Server configuration error',
+        details: 'SUPABASE_SERVICE_ROLE_KEY not configured. Add it to your .env.local.dev and .env.local.prod files.'
+      },
       { status: 500 }
     )
   }
+
+  const supabaseAdmin = getSupabaseAdmin()
 
   try {
   const { email, password, name, role, userType, createdBy, phone_number, logo_url, logo } = await request.json()
@@ -77,13 +59,16 @@ export async function POST(request: Request) {
 
     console.log('Auth user created:', authData.user.id)
 
+    // Hash the password before storing
+    const hashedPassword = await hashPassword(password)
+
     // Step 2: Insert into users table with service role (bypasses RLS)
     const userInsertData: any = {
       id: authData.user.id,
       email,
       name,
       role,
-      password,
+      password: hashedPassword,
       phone_number,
       logo_url
     };
@@ -191,12 +176,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!supabaseAdmin) {
+  if (!isAdminClientAvailable()) {
     return NextResponse.json(
-      { error: 'Server configuration error' }, 
+      { error: 'Server configuration error' },
       { status: 500 }
     )
   }
+
+  const supabaseAdmin = getSupabaseAdmin()
 
   try {
     const { userId, userType } = await request.json()
@@ -253,12 +240,14 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!supabaseAdmin) {
+  if (!isAdminClientAvailable()) {
     return NextResponse.json(
-      { error: 'Server configuration error' }, 
+      { error: 'Server configuration error' },
       { status: 500 }
     )
   }
+
+  const supabaseAdmin = getSupabaseAdmin()
 
   try {
     const { userId, updates, userType } = await request.json()
