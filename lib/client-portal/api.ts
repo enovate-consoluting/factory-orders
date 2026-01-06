@@ -40,14 +40,6 @@ export async function syncClientToPortal(
   const portalUrl = getPortalUrl();
   const apiKey = getApiKey();
 
-  // Debug: Log env var status
-  console.log('Portal Sync Debug:', {
-    hasUrl: !!portalUrl,
-    urlValue: portalUrl ? portalUrl.substring(0, 30) + '...' : 'NOT SET',
-    hasApiKey: !!apiKey,
-    apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'NOT SET'
-  });
-
   // Check if API URL is configured
   if (!portalUrl) {
     console.warn('CLIENT_PORTAL_API_URL not configured - skipping client sync');
