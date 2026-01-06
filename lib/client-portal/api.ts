@@ -31,6 +31,14 @@ interface ClientPortalResponse {
 export async function syncClientToPortal(
   clientData: ClientPortalClientData
 ): Promise<ClientPortalResponse> {
+  // Debug: Log env var status
+  console.log('Portal Sync Debug:', {
+    hasUrl: !!CLIENT_PORTAL_API_URL,
+    urlValue: CLIENT_PORTAL_API_URL ? CLIENT_PORTAL_API_URL.substring(0, 30) + '...' : 'NOT SET',
+    hasApiKey: !!FACTORY_SYNC_API_KEY,
+    apiKeyPrefix: FACTORY_SYNC_API_KEY ? FACTORY_SYNC_API_KEY.substring(0, 10) + '...' : 'NOT SET'
+  });
+
   // Check if API URL is configured
   if (!CLIENT_PORTAL_API_URL) {
     console.warn('CLIENT_PORTAL_API_URL not configured - skipping client sync');
