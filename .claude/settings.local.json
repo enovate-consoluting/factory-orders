@@ -18,7 +18,8 @@
       "Bash(curl:*)",
       "Bash(node:*)",
       "Bash(npx supabase:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(git push:*)"
     ]
   }
 }

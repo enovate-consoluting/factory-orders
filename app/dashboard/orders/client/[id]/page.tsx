@@ -118,6 +118,19 @@ export default function ClientOrderDetailPage() {
     }).format(amount || 0);
   };
 
+  const formatDate = (dateString: string) => {
+    // Parse date-only strings (YYYY-MM-DD) as local time, not UTC
+    // This prevents timezone offset from showing wrong day
+    const datePart = dateString.split('T')[0];
+    const [year, month, day] = datePart.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   const calculateProductTotal = (product: any) => {
     let total = 0;
     
@@ -217,7 +230,7 @@ export default function ClientOrderDetailPage() {
           <div className="flex items-center gap-3 text-sm text-gray-600">
             <span className="flex items-center gap-1.5">
               <Calendar className="w-4 h-4" />
-              Created: {new Date(order.created_at).toLocaleDateString()}
+              Created: {formatDate(order.created_at)}
             </span>
           </div>
         </div>
@@ -248,7 +261,7 @@ export default function ClientOrderDetailPage() {
                     {order.sample_eta && (
                       <span className="flex items-center gap-1.5">
                         <Truck className="w-4 h-4" />
-                        ETA: {new Date(order.sample_eta).toLocaleDateString()}
+                        ETA: {formatDate(order.sample_eta)}
                       </span>
                     )}
                   </div>
