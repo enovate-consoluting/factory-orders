@@ -103,8 +103,8 @@ export async function POST(request: Request) {
           name,
           email,
           phone_number,
-          logo_url
-          // user_id: authData.user.id
+          logo_url,
+          user_id: authData.user.id
         })
 
       if (manuError) {
@@ -125,8 +125,8 @@ export async function POST(request: Request) {
           name,
           email,
           phone_number,
-          logo_url
-          // user_id: authData.user.id
+          logo_url,
+          user_id: authData.user.id
         })
 
       if (clientError) {
