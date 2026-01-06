@@ -60,6 +60,7 @@ export async function syncClientToPortal(
   try {
     const requestBody = {
       name: clientData.name,
+      contact_name: clientData.name, // Use company name as contact name
       email: clientData.email,
       phone_number: clientData.phone_number || null,
       logo_url: clientData.logo_url || null,
