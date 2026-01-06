@@ -5,8 +5,14 @@
  * Last Modified: January 2025
  */
 
-const CLIENT_PORTAL_API_URL = process.env.CLIENT_PORTAL_API_URL || '';
-const FACTORY_SYNC_API_KEY = process.env.FACTORY_SYNC_API_KEY || '';
+// Read env vars inside functions to ensure they're available in serverless
+function getPortalUrl(): string {
+  return process.env.CLIENT_PORTAL_API_URL || '';
+}
+
+function getApiKey(): string {
+  return process.env.FACTORY_SYNC_API_KEY || '';
+}
 
 interface ClientPortalClientData {
   name: string;
@@ -31,16 +37,19 @@ interface ClientPortalResponse {
 export async function syncClientToPortal(
   clientData: ClientPortalClientData
 ): Promise<ClientPortalResponse> {
+  const portalUrl = getPortalUrl();
+  const apiKey = getApiKey();
+
   // Debug: Log env var status
   console.log('Portal Sync Debug:', {
-    hasUrl: !!CLIENT_PORTAL_API_URL,
-    urlValue: CLIENT_PORTAL_API_URL ? CLIENT_PORTAL_API_URL.substring(0, 30) + '...' : 'NOT SET',
-    hasApiKey: !!FACTORY_SYNC_API_KEY,
-    apiKeyPrefix: FACTORY_SYNC_API_KEY ? FACTORY_SYNC_API_KEY.substring(0, 10) + '...' : 'NOT SET'
+    hasUrl: !!portalUrl,
+    urlValue: portalUrl ? portalUrl.substring(0, 30) + '...' : 'NOT SET',
+    hasApiKey: !!apiKey,
+    apiKeyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'NOT SET'
   });
 
   // Check if API URL is configured
-  if (!CLIENT_PORTAL_API_URL) {
+  if (!portalUrl) {
     console.warn('CLIENT_PORTAL_API_URL not configured - skipping client sync');
     return {
       success: false,
@@ -58,7 +67,7 @@ export async function syncClientToPortal(
     };
 
     console.log('Syncing client to Portal:', {
-      url: `${CLIENT_PORTAL_API_URL}/api/sync-client`,
+      url: `${portalUrl}/api/sync-client`,
       name: clientData.name,
       email: clientData.email
     });
@@ -68,11 +77,11 @@ export async function syncClientToPortal(
     };
 
     // Add API key if configured
-    if (FACTORY_SYNC_API_KEY) {
-      headers['X-API-Key'] = FACTORY_SYNC_API_KEY;
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
     }
 
-    const response = await fetch(`${CLIENT_PORTAL_API_URL}/api/sync-client`, {
+    const response = await fetch(`${portalUrl}/api/sync-client`, {
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
@@ -113,17 +122,20 @@ export async function syncClientToPortal(
  * @returns Promise<boolean> - true if API is reachable
  */
 export async function testClientPortalConnection(): Promise<boolean> {
-  if (!CLIENT_PORTAL_API_URL) {
+  const portalUrl = getPortalUrl();
+  const apiKey = getApiKey();
+
+  if (!portalUrl) {
     return false;
   }
 
   try {
     const headers: Record<string, string> = {};
-    if (FACTORY_SYNC_API_KEY) {
-      headers['X-API-Key'] = FACTORY_SYNC_API_KEY;
+    if (apiKey) {
+      headers['X-API-Key'] = apiKey;
     }
 
-    const response = await fetch(`${CLIENT_PORTAL_API_URL}/api/health`, {
+    const response = await fetch(`${portalUrl}/api/health`, {
       method: 'GET',
       headers,
     });
