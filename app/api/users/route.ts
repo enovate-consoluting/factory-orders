@@ -1,6 +1,6 @@
 // app/api/users/route.ts
 import { NextResponse } from 'next/server'
-import { createScanacartClient } from '@/lib/scanacart/api'
+import { syncClientToPortal } from '@/lib/client-portal/api'
 import { getSupabaseAdmin, isAdminClientAvailable, hashPassword } from '@/lib/auth'
 
 export async function POST(request: Request) {
@@ -141,23 +141,22 @@ export async function POST(request: Request) {
       }
       console.log('Client record created')
 
-      // Step 4: Create client in Scanacart system
-      console.log('Creating client in Scanacart system...')
-      const scanacartResult = await createScanacartClient({
-        company_name: name,
+      // Step 4: Sync client to Client Portal
+      console.log('Syncing client to Client Portal...')
+      const portalResult = await syncClientToPortal({
+        name,
         email,
-        password,
-        phone: phone_number || undefined,
-        logo: logo || null
+        phone_number: phone_number || undefined,
+        logo_url: logo_url || null
       })
 
-      if (!scanacartResult.success) {
-        console.error('Scanacart API error:', scanacartResult.error)
-        // Note: We don't rollback the local client creation if Scanacart fails
-        // The client is still created locally, but we log the Scanacart error
-        console.warn('Client created locally but failed to sync with Scanacart:', scanacartResult.error)
+      if (!portalResult.success) {
+        console.error('Client Portal sync error:', portalResult.error)
+        // Note: We don't rollback the local client creation if Portal sync fails
+        // The client is still created locally, but we log the error
+        console.warn('Client created locally but failed to sync with Client Portal:', portalResult.error)
       } else {
-        console.log('Client successfully created in Scanacart system')
+        console.log('Client successfully synced to Client Portal')
       }
     }
 
