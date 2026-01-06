@@ -49,7 +49,6 @@ export default function ClientOrderDetailPage() {
           sample_routed_to,
           sample_status,
           sample_fee,
-          client_sample_fee,
           sample_eta,
           client:clients(name),
           order_products(
@@ -142,8 +141,8 @@ export default function ClientOrderDetailPage() {
     
     let total = 0;
     
-    if (order.sample_required && (order.client_sample_fee || order.sample_fee)) {
-      total += order.client_sample_fee || order.sample_fee;
+    if (order.sample_required && order.sample_fee) {
+      total += order.sample_fee;
     }
     
     const clientProducts = order.order_products?.filter((p: any) => p.routed_to === 'client') || [];
@@ -239,10 +238,10 @@ export default function ClientOrderDetailPage() {
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">Sample Request</h2>
                   <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
-                    {(order.client_sample_fee || order.sample_fee) && (
+                    {order.sample_fee && (
                       <span className="flex items-center gap-1.5 font-medium">
                         <DollarSign className="w-4 h-4" />
-                        {formatCurrency(order.client_sample_fee || order.sample_fee)}
+                        {formatCurrency(order.sample_fee)}
                       </span>
                     )}
                     {order.sample_eta && (
@@ -386,10 +385,10 @@ export default function ClientOrderDetailPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h2 className="font-bold text-gray-900 mb-4">Order Summary</h2>
           <div className="space-y-2 text-sm">
-            {order.sample_required && (order.client_sample_fee || order.sample_fee) && (
+            {order.sample_required && order.sample_fee && (
               <div className="flex justify-between">
                 <span className="text-gray-600">Sample Fee</span>
-                <span className="font-medium text-gray-900">{formatCurrency(order.client_sample_fee || order.sample_fee)}</span>
+                <span className="font-medium text-gray-900">{formatCurrency(order.sample_fee)}</span>
               </div>
             )}
             {clientProducts.map((product: any) => (

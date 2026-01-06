@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(findstr:*)",
+      "Bash(dir:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(npm run build:*)",
+      "Bash(vercel --prod:*)",
+      "Bash(cat:*)",
+      "Bash(npm install:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(npx tsx:*)",
+      "Bash(ls:*)",
+      "Bash(npx vercel --prod)",
+      "Bash(npx vercel --prod --yes)",
+      "Bash(curl:*)",
+      "Bash(node:*)",
+      "Bash(npx supabase:*)",
+      "Bash(npm run:*)"
+    ]
+  }
+}

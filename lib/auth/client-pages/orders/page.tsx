@@ -61,7 +61,6 @@ interface Order {
   sample_routed_to?: string;
   sample_status?: string;
   sample_fee?: number;
-  client_sample_fee?: number;
   sample_eta?: string;
   sample_notes?: string;
   sample_shipped_date?: string;
@@ -303,7 +302,6 @@ function ClientOrdersContent() {
           sample_routed_to,
           sample_status,
           sample_fee,
-          client_sample_fee,
           sample_eta,
           sample_notes,
           sample_shipped_date,
@@ -386,7 +384,6 @@ function ClientOrdersContent() {
           sample_routed_to,
           sample_status,
           sample_fee,
-          client_sample_fee,
           sample_eta,
           sample_notes,
           sample_shipped_date,
@@ -1424,11 +1421,11 @@ function ClientOrdersContent() {
                                     {/* Sample Details - Only show if not client_request */}
                                     {!isClientRequest && (
                                       <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs sm:text-sm flex-wrap">
-                                        {/* Fee - always show if exists (use client_sample_fee, fallback to sample_fee) */}
-                                        {(order.client_sample_fee || order.sample_fee) && (
+                                        {/* Fee - always show if exists */}
+                                        {order.sample_fee && (
                                           <div>
                                             <span className="text-gray-500">Fee:</span>
-                                            <span className="font-semibold text-gray-900 ml-1">${formatCurrency(order.client_sample_fee || order.sample_fee)}</span>
+                                            <span className="font-semibold text-gray-900 ml-1">${formatCurrency(order.sample_fee)}</span>
                                           </div>
                                         )}
                                         
