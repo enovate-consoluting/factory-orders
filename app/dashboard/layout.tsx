@@ -26,7 +26,8 @@ import {
   ChevronDown,
   ChevronRight,
   Warehouse,
-  BarChart3
+  BarChart3,
+  Shield
 } from 'lucide-react';
 import { supabase, getCurrentUser, clearSession, type AuthUser } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
@@ -1134,6 +1135,43 @@ function SidebarContent({
           </div>
         </div>
       </div>
+
+      {/* Mode Switcher - Super Admin and Admin only */}
+      {(user?.role === 'super_admin' || user?.role === 'admin') && (
+        <div className="px-4 py-3 border-b border-gray-100">
+          <div className="flex gap-2">
+            <button
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg"
+            >
+              <Factory className="w-4 h-4" />
+              Factory
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/auth/sso-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user }),
+                  });
+                  const result = await response.json();
+                  if (result.success && result.token) {
+                    window.location.href = `https://admin.birdhausapp.com/auth/callback?token=${result.token}`;
+                  } else {
+                    window.location.href = 'https://admin.birdhausapp.com/login';
+                  }
+                } catch {
+                  window.location.href = 'https://admin.birdhausapp.com/login';
+                }
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <Shield className="w-4 h-4" />
+              Admin
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* CLIENT Notification Summary */}
       {user?.role === 'client' && notificationCounts.total > 0 && (
