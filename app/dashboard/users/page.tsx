@@ -13,6 +13,7 @@ interface User {
   role: string
   created_at: string
   phone_number?: string
+  can_access_factory_admin_toggle?: boolean
 }
 
 interface Notification {
@@ -40,7 +41,8 @@ export default function UsersPage() {
     name: '',
     role: '',
     password: 'password123',
-    phone_number: ''
+    phone_number: '',
+    can_access_factory_admin_toggle: false
   })
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [creating, setCreating] = useState(false)
@@ -149,7 +151,8 @@ export default function UsersPage() {
             updates: {
               name: formData.name,
               role: formData.role,
-              phone_number: formData.phone_number
+              phone_number: formData.phone_number,
+              can_access_factory_admin_toggle: formData.can_access_factory_admin_toggle
             },
             userType: 'admin'
           })
@@ -211,7 +214,8 @@ export default function UsersPage() {
         name: '',
         role: 'admin',
         password: 'password123',
-        phone_number: ''
+        phone_number: '',
+        can_access_factory_admin_toggle: false
       })
       fetchUsers()
     } catch (error: any) {
@@ -265,7 +269,8 @@ export default function UsersPage() {
       name: user.name,
       role: user.role,
       password: 'password123',
-      phone_number: user.phone_number || ''
+      phone_number: user.phone_number || '',
+      can_access_factory_admin_toggle: user.can_access_factory_admin_toggle || false
     })
     setShowModal(true)
   }
@@ -278,7 +283,8 @@ export default function UsersPage() {
       name: '',
       role: currentUser?.role === 'manufacturer' ? 'manufacturer_team_member' : 'admin',
       password: 'password123',
-      phone_number: ''
+      phone_number: '',
+      can_access_factory_admin_toggle: false
     })
     setShowModal(true)
   }
@@ -676,6 +682,26 @@ export default function UsersPage() {
                     </select>
                   )}
                 </div>
+                {/* Factory/Admin Toggle Access - Super Admin only */}
+                {currentUser?.role === 'super_admin' && formData.role !== 'super_admin' && (
+                  <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <input
+                      type="checkbox"
+                      id="factory_admin_toggle"
+                      checked={formData.can_access_factory_admin_toggle}
+                      onChange={(e) => setFormData({ ...formData, can_access_factory_admin_toggle: e.target.checked })}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <div>
+                      <label htmlFor="factory_admin_toggle" className="text-sm font-medium text-amber-900 cursor-pointer">
+                        Allow Factory/Admin Toggle Access
+                      </label>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Grants access to the Factory/Admin mode switcher in the sidebar (normally super admin only)
+                      </p>
+                    </div>
+                  </div>
+                )}
                 {!editingUser && (
                   <div>
                     <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Initial Password</label>

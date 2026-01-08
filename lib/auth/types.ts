@@ -25,6 +25,7 @@ export interface AuthUser {
   created_by?: string;
   created_at: string;
   updated_at?: string;
+  can_access_factory_admin_toggle?: boolean;
 }
 
 export interface Session {

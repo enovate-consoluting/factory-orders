@@ -39,6 +39,7 @@ interface User {
   email: string;
   name: string;
   role: string;
+  can_access_factory_admin_toggle?: boolean;
 }
 
 interface NotificationCount {
@@ -1136,8 +1137,8 @@ function SidebarContent({
         </div>
       </div>
 
-      {/* Mode Switcher - Super Admin and Admin only */}
-      {(user?.role === 'super_admin' || user?.role === 'admin') && (
+      {/* Mode Switcher - Super Admin or users with special access */}
+      {(user?.role === 'super_admin' || user?.can_access_factory_admin_toggle) && (
         <div className="px-4 py-3 border-b border-gray-100">
           <div className="flex gap-2">
             <button
