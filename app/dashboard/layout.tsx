@@ -41,6 +41,7 @@ interface User {
   name: string;
   role: string;
   can_access_factory_admin_toggle?: boolean;
+  can_access_ai_assistant?: boolean;
 }
 
 interface NotificationCount {
@@ -1030,8 +1031,8 @@ export default function DashboardLayout({
         </main>
       </div>
 
-      {/* AI Assistant - Admin/Super Admin only */}
-      {(user?.role === 'super_admin' || user?.role === 'admin') && (
+      {/* AI Assistant - Super Admin or users with access */}
+      {(user?.role === 'super_admin' || user?.can_access_ai_assistant) && (
         <AiAssistant userRole={user.role} userName={user.name} />
       )}
     </div>

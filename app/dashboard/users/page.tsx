@@ -21,6 +21,7 @@ interface User {
   created_at: string
   phone_number?: string
   can_access_factory_admin_toggle?: boolean
+  can_access_ai_assistant?: boolean
 }
 
 interface Notification {
@@ -49,7 +50,8 @@ export default function UsersPage() {
     role: '',
     password: 'password123',
     phone_number: '',
-    can_access_factory_admin_toggle: false
+    can_access_factory_admin_toggle: false,
+    can_access_ai_assistant: false
   })
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [creating, setCreating] = useState(false)
@@ -160,7 +162,8 @@ export default function UsersPage() {
               name: formData.name,
               role: formData.role,
               phone_number: formData.phone_number,
-              can_access_factory_admin_toggle: formData.can_access_factory_admin_toggle
+              can_access_factory_admin_toggle: formData.can_access_factory_admin_toggle,
+              can_access_ai_assistant: formData.can_access_ai_assistant
             },
             userType: 'admin'
           })
@@ -223,7 +226,8 @@ export default function UsersPage() {
         role: 'admin',
         password: 'password123',
         phone_number: '',
-        can_access_factory_admin_toggle: false
+        can_access_factory_admin_toggle: false,
+        can_access_ai_assistant: false
       })
       fetchUsers()
     } catch (error: any) {
@@ -278,7 +282,8 @@ export default function UsersPage() {
       role: user.role,
       password: 'password123',
       phone_number: user.phone_number || '',
-      can_access_factory_admin_toggle: user.can_access_factory_admin_toggle || false
+      can_access_factory_admin_toggle: user.can_access_factory_admin_toggle || false,
+      can_access_ai_assistant: user.can_access_ai_assistant || false
     })
     setShowModal(true)
   }
@@ -292,7 +297,8 @@ export default function UsersPage() {
       role: currentUser?.role === 'manufacturer' ? 'manufacturer_team_member' : 'admin',
       password: 'password123',
       phone_number: '',
-      can_access_factory_admin_toggle: false
+      can_access_factory_admin_toggle: false,
+      can_access_ai_assistant: false
     })
     setShowModal(true)
   }
@@ -677,23 +683,47 @@ export default function UsersPage() {
                     </select>
                   )}
                 </div>
-                {/* Factory/Admin Toggle Access - Super Admin only */}
+                {/* Special Access Settings - Super Admin only */}
                 {currentUser?.role === 'super_admin' && formData.role !== 'super_admin' && (
-                  <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                    <input
-                      type="checkbox"
-                      id="factory_admin_toggle"
-                      checked={formData.can_access_factory_admin_toggle}
-                      onChange={(e) => setFormData({ ...formData, can_access_factory_admin_toggle: e.target.checked })}
-                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <div>
-                      <label htmlFor="factory_admin_toggle" className="text-sm font-medium text-amber-900 cursor-pointer">
-                        Allow Factory/Admin Toggle Access
-                      </label>
-                      <p className="text-xs text-amber-700 mt-0.5">
-                        Grants access to the Factory/Admin mode switcher in the sidebar (normally super admin only)
-                      </p>
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Special Access</p>
+
+                    {/* Factory/Admin Toggle */}
+                    <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        id="factory_admin_toggle"
+                        checked={formData.can_access_factory_admin_toggle}
+                        onChange={(e) => setFormData({ ...formData, can_access_factory_admin_toggle: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <div>
+                        <label htmlFor="factory_admin_toggle" className="text-sm font-medium text-amber-900 cursor-pointer">
+                          Allow Factory/Admin Toggle Access
+                        </label>
+                        <p className="text-xs text-amber-700 mt-0.5">
+                          Grants access to the Factory/Admin mode switcher in the sidebar
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* AI Assistant */}
+                    <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                      <input
+                        type="checkbox"
+                        id="ai_assistant"
+                        checked={formData.can_access_ai_assistant}
+                        onChange={(e) => setFormData({ ...formData, can_access_ai_assistant: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <div>
+                        <label htmlFor="ai_assistant" className="text-sm font-medium text-indigo-900 cursor-pointer">
+                          Allow AI Assistant Access
+                        </label>
+                        <p className="text-xs text-indigo-700 mt-0.5">
+                          Grants access to the AI chat assistant for queries and navigation
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}

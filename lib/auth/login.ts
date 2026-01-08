@@ -46,6 +46,7 @@ export async function loginUser(credentials: LoginCredentials): Promise<LoginRes
       created_at: userData.created_at,
       updated_at: userData.updated_at,
       can_access_factory_admin_toggle: userData.can_access_factory_admin_toggle || false,
+      can_access_ai_assistant: userData.can_access_ai_assistant || false,
     };
 
     // For manufacturers, fetch manufacturer_id from manufacturers table
@@ -114,6 +115,7 @@ export async function verifyLogin(
       created_at: userData.created_at,
       updated_at: userData.updated_at,
       can_access_factory_admin_toggle: userData.can_access_factory_admin_toggle || false,
+      can_access_ai_assistant: userData.can_access_ai_assistant || false,
     };
 
     return { success: true, user };

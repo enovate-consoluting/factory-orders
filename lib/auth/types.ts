@@ -26,6 +26,7 @@ export interface AuthUser {
   created_at: string;
   updated_at?: string;
   can_access_factory_admin_toggle?: boolean;
+  can_access_ai_assistant?: boolean;
 }
 
 export interface Session {

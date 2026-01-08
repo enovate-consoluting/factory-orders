@@ -1,7 +1,7 @@
 /**
- * AI Assistant - Floating Chat Component
+ * Eddie - AI Assistant - Floating Chat Component
  * A floating chat bubble that expands into an AI-powered assistant
- * Roles: Super Admin, Admin only
+ * Roles: Super Admin, Admin, or users with can_access_ai_assistant
  * Last Modified: January 2025
  */
 
@@ -13,11 +13,90 @@ import {
   X,
   Send,
   Loader2,
-  Sparkles,
   Minimize2,
   Trash2,
-  ArrowRight
+  ArrowRight,
+  Mic,
+  MicOff
 } from 'lucide-react';
+
+// Eddie's animated icon component
+function EddieIcon({ className = "w-6 h-6", animated = true }: { className?: string; animated?: boolean }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      {/* Outer glow ring */}
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.3"
+        className={animated ? "animate-ping" : ""}
+        style={{ animationDuration: '2s' }}
+      />
+
+      {/* Main circle */}
+      <circle
+        cx="12"
+        cy="12"
+        r="8"
+        stroke="currentColor"
+        strokeWidth="2"
+        className={animated ? "animate-pulse" : ""}
+      />
+
+      {/* Inner orbs - animated */}
+      <circle
+        cx="9"
+        cy="10"
+        r="1.5"
+        fill="currentColor"
+        className={animated ? "animate-bounce" : ""}
+        style={{ animationDelay: '0ms', animationDuration: '1s' }}
+      />
+      <circle
+        cx="15"
+        cy="10"
+        r="1.5"
+        fill="currentColor"
+        className={animated ? "animate-bounce" : ""}
+        style={{ animationDelay: '150ms', animationDuration: '1s' }}
+      />
+
+      {/* Smile */}
+      <path
+        d="M8.5 14C8.5 14 9.5 16 12 16C14.5 16 15.5 14 15.5 14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+
+      {/* Sparkle accents */}
+      <circle
+        cx="18"
+        cy="6"
+        r="1"
+        fill="currentColor"
+        className={animated ? "animate-pulse" : ""}
+        style={{ animationDelay: '300ms' }}
+      />
+      <circle
+        cx="6"
+        cy="18"
+        r="0.75"
+        fill="currentColor"
+        className={animated ? "animate-pulse" : ""}
+        style={{ animationDelay: '500ms' }}
+      />
+    </svg>
+  );
+}
 
 interface Message {
   id: string;
@@ -46,8 +125,40 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Check for speech recognition support
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        setSpeechSupported(true);
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.lang = 'en-US';
+
+        recognitionRef.current.onresult = (event: any) => {
+          const transcript = Array.from(event.results)
+            .map((result: any) => result[0].transcript)
+            .join('');
+          setInput(transcript);
+        };
+
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+        };
+
+        recognitionRef.current.onerror = () => {
+          setIsListening(false);
+        };
+      }
+    }
+  }, []);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -69,7 +180,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: `Hi ${userName.split(' ')[0]}! I'm your AI assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking statistics and reports\n• Navigating the system\n• Answering questions about orders\n\nWhat would you like to know?`,
+        content: `Hey ${userName.split(' ')[0]}! I'm Eddie, your AI assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking statistics and reports\n• Navigating the system\n• Answering questions about orders\n\nWhat can I help you with today?`,
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
@@ -162,6 +273,19 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     inputRef.current?.focus();
   };
 
+  const toggleVoice = () => {
+    if (!recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      setInput('');
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
   // Quick prompts for empty state
   const quickPrompts = [
     "Show me today's orders",
@@ -177,17 +301,23 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
 
   return (
     <>
-      {/* Floating Button */}
+      {/* Floating Button - Eddie */}
       {!isOpen && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-full shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200 flex items-center justify-center z-50 group"
-          title="AI Assistant"
+          className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+          title="Ask Eddie"
         >
-          <Sparkles className="w-6 h-6 group-hover:scale-110 transition-transform" />
+          <div className="relative">
+            <EddieIcon className="w-8 h-8 group-hover:scale-110 transition-transform" animated={true} />
+          </div>
           {hasUnread && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
           )}
+          {/* Floating label */}
+          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+            Ask Eddie
+          </span>
         </button>
       )}
 
@@ -201,10 +331,10 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-2xl">
             <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-white" />
-              <span className="font-semibold text-white">AI Assistant</span>
+              <EddieIcon className="w-5 h-5 text-white" animated={false} />
+              <span className="font-semibold text-white">Eddie</span>
               {isLoading && (
                 <Loader2 className="w-4 h-4 text-white/80 animate-spin" />
               )}
@@ -325,23 +455,45 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
               {/* Input */}
               <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200">
                 <div className="flex gap-2">
+                  {/* Voice Input Button */}
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleVoice}
+                      className={`px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                        isListening
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      title={isListening ? 'Stop listening' : 'Voice input'}
+                    >
+                      {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    </button>
+                  )}
                   <input
                     ref={inputRef}
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask me anything..."
-                    className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400 text-sm"
+                    placeholder={isListening ? "Listening..." : "Ask Eddie anything..."}
+                    className={`flex-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-400 text-sm transition-colors ${
+                      isListening ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
                     disabled={isLoading}
                   />
                   <button
                     type="submit"
                     disabled={!input.trim() || isLoading}
-                    className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     <Send className="w-4 h-4" />
                   </button>
                 </div>
+                {isListening && (
+                  <p className="text-xs text-red-500 mt-2 text-center animate-pulse">
+                    Listening... speak now
+                  </p>
+                )}
               </form>
             </>
           )}
