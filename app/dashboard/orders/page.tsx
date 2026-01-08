@@ -891,7 +891,14 @@ export default function OrdersPage() {
         console.warn('Error deleting client_admin_notes:', e);
       }
 
-      // 17. Delete audit_log entries (for order and all products)
+      // 17. Delete order_accessories
+      try {
+        await supabase.from('order_accessories').delete().eq('order_id', orderId);
+      } catch (e) {
+        console.warn('Error deleting order_accessories:', e);
+      }
+
+      // 18. Delete audit_log entries (for order and all products)
       try {
         if (productIds.length > 0) {
           await supabase
@@ -905,7 +912,7 @@ export default function OrdersPage() {
         console.warn('Error deleting audit_log:', e);
       }
 
-      // 18. Finally delete the order itself
+      // 19. Finally delete the order itself
       const { error: orderError } = await supabase
         .from('orders')
         .delete()
