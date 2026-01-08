@@ -136,6 +136,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const hasGreetedRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Load speech synthesis voices
   useEffect(() => {
@@ -334,8 +335,9 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
   };
 
-  // Text-to-speech function - Eddie speaks with an Australian accent!
-  const speak = (text: string) => {
+  // Text-to-speech function - Eddie speaks with ElevenLabs natural voice!
+  // Falls back to Web Speech API if ElevenLabs is not configured
+  const speak = async (text: string) => {
     console.log('Eddie speak called:', { voiceEnabled, text: text.substring(0, 50) });
 
     if (!voiceEnabled || typeof window === 'undefined') {
@@ -343,24 +345,85 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       return;
     }
 
-    // Cancel any ongoing speech
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     window.speechSynthesis.cancel();
 
+    setIsSpeaking(true);
+
+    try {
+      // Try ElevenLabs API first
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      const data = await response.json();
+
+      if (data.audio) {
+        // Play ElevenLabs audio
+        console.log('Playing ElevenLabs audio');
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audio}`);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          console.log('Eddie finished speaking (ElevenLabs)');
+          setIsSpeaking(false);
+          audioRef.current = null;
+        };
+
+        audio.onerror = (e) => {
+          console.error('Audio playback error:', e);
+          setIsSpeaking(false);
+          audioRef.current = null;
+        };
+
+        await audio.play();
+        console.log('ElevenLabs audio started');
+        return;
+      }
+
+      // Fallback to Web Speech API
+      console.log('Falling back to Web Speech API:', data.message || data.error);
+      speakWithWebSpeech(text);
+    } catch (error) {
+      console.error('TTS API error:', error);
+      // Fallback to Web Speech API on error
+      speakWithWebSpeech(text);
+    }
+  };
+
+  // Web Speech API fallback
+  const speakWithWebSpeech = (text: string) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
-    utterance.pitch = 1.0;
+    utterance.pitch = 0.9; // Slightly lower pitch for masculine voice
     utterance.volume = 1.0;
 
-    // Try to find an Australian voice first, then fall back to other English voices
+    // Try to find a male Australian voice first, then fall back to other English male voices
     const voices = window.speechSynthesis.getVoices();
-    console.log('Available voices:', voices.length, voices.map(v => `${v.name} (${v.lang})`).slice(0, 5));
+    console.log('Available voices:', voices.length, voices.map(v => `${v.name} (${v.lang})`).slice(0, 10));
 
+    // Male Australian voice names to look for
+    const maleAustralianNames = ['Gordon', 'James', 'William', 'Lee', 'Craig'];
+    const maleEnglishNames = ['Daniel', 'James', 'David', 'George', 'Oliver', 'Thomas', 'Guy', 'Male'];
+
+    // First priority: Male Australian voice
     const australianVoice = voices.find(v =>
-      v.lang === 'en-AU' || v.name.includes('Australia') || v.name.includes('Karen') || v.name.includes('Lee')
-    );
+      (v.lang === 'en-AU' && maleAustralianNames.some(name => v.name.includes(name))) ||
+      (v.lang === 'en-AU' && v.name.toLowerCase().includes('male'))
+    ) || voices.find(v => v.lang === 'en-AU'); // Any Australian voice as backup
+
+    // Second priority: Male English voice
     const fallbackVoice = voices.find(v =>
-      v.name.includes('Google') || v.name.includes('Daniel') || v.lang.startsWith('en')
-    );
+      v.lang.startsWith('en') && maleEnglishNames.some(name => v.name.includes(name))
+    ) || voices.find(v =>
+      v.name.includes('Google') && v.name.toLowerCase().includes('male')
+    ) || voices.find(v => v.lang.startsWith('en'));
 
     if (australianVoice) {
       utterance.voice = australianVoice;
@@ -373,11 +436,10 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
 
     utterance.onstart = () => {
-      console.log('Eddie started speaking');
-      setIsSpeaking(true);
+      console.log('Eddie started speaking (WebSpeech)');
     };
     utterance.onend = () => {
-      console.log('Eddie finished speaking');
+      console.log('Eddie finished speaking (WebSpeech)');
       setIsSpeaking(false);
     };
     utterance.onerror = (e) => {
@@ -386,11 +448,17 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     };
 
     window.speechSynthesis.speak(utterance);
-    console.log('Speech synthesis speak() called');
+    console.log('Web Speech synthesis speak() called');
   };
 
   const stopSpeaking = () => {
     if (typeof window !== 'undefined') {
+      // Stop ElevenLabs audio if playing
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      // Stop Web Speech API
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     }
