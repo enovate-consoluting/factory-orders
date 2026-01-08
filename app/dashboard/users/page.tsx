@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, Edit2, Trash2, X, Shield, User as UserIcon, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
+import { Plus, Edit2, Trash2, X, Shield, User as UserIcon, CheckCircle, AlertCircle, XCircle, Search } from 'lucide-react'
 import PhoneInput from 'react-phone-input-2'
 import 'react-phone-input-2/lib/style.css'
 
@@ -49,6 +49,7 @@ export default function UsersPage() {
   const [deleting, setDeleting] = useState(false)
   const [notification, setNotification] = useState<Notification | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -323,6 +324,16 @@ export default function UsersPage() {
     showNotification('info', 'Copied!', 'Credentials copied to clipboard')
   }
 
+  // Filter users based on search query
+  const filteredUsers = users.filter(user => {
+    if (!searchQuery.trim()) return true
+    const query = searchQuery.toLowerCase()
+    return (
+      user.name.toLowerCase().includes(query) ||
+      user.email.toLowerCase().includes(query)
+    )
+  })
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -393,6 +404,28 @@ export default function UsersPage() {
         </div>
       </div>
 
+      {/* Search Field */}
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 placeholder-gray-400"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Desktop Table View */}
       <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
         <table className="w-full">
@@ -408,7 +441,7 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {users.map((user) => (
+            {filteredUsers.map((user) => (
               <tr key={user.id} className="hover:bg-gray-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
@@ -455,25 +488,43 @@ export default function UsersPage() {
           </tbody>
         </table>
 
-        {users.length === 0 && (
+        {filteredUsers.length === 0 && (
           <div className="text-center py-12">
             <UserIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No users yet</h3>
-            <p className="text-gray-500">Get started by adding your first user</p>
+            {searchQuery ? (
+              <>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
+                <p className="text-gray-500">No users match "{searchQuery}"</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No users yet</h3>
+                <p className="text-gray-500">Get started by adding your first user</p>
+              </>
+            )}
           </div>
         )}
       </div>
 
       {/* Mobile Card View */}
       <div className="block md:hidden space-y-3">
-        {users.length === 0 ? (
+        {filteredUsers.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 text-center py-12 px-4">
             <UserIcon className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-            <h3 className="text-base font-medium text-gray-900 mb-2">No users yet</h3>
-            <p className="text-sm text-gray-500">Get started by adding your first user</p>
+            {searchQuery ? (
+              <>
+                <h3 className="text-base font-medium text-gray-900 mb-2">No users found</h3>
+                <p className="text-sm text-gray-500">No users match "{searchQuery}"</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-base font-medium text-gray-900 mb-2">No users yet</h3>
+                <p className="text-sm text-gray-500">Get started by adding your first user</p>
+              </>
+            )}
           </div>
         ) : (
-          users.map((user) => (
+          filteredUsers.map((user) => (
             <div key={user.id} className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
