@@ -9,10 +9,10 @@
 
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Search, X, Check, Loader2, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@/lib/constants/fileUpload'
 
 // Translation imports
@@ -28,6 +28,33 @@ import { OrderSampleRequest } from '../shared-components/OrderSampleRequest'
 import { QuickFillTool } from '../shared-components/QuickFillTool'
 import { ProductSelector } from '../shared-components/ProductSelector'
 import { CreateProductCard } from '../shared-components/CreateProductCard'
+
+// Auto-save configuration
+const AUTO_SAVE_KEY = 'factory_orders_draft_create'
+const AUTO_SAVE_INTERVAL = 15000 // 15 seconds
+
+// Type for serializable form state (excludes File objects)
+interface SavedFormState {
+  timestamp: number
+  currentStep: number
+  orderName: string
+  selectedClient: string
+  selectedClientName: string
+  selectedManufacturer: string
+  selectedManufacturerName: string
+  clientSearchQuery: string
+  manufacturerSearchQuery: string
+  selectedProducts: {[key: string]: number}
+  orderProducts: Array<Omit<OrderProduct, 'mediaFiles' | 'sampleMediaFiles'> & {
+    mediaFileCount: number
+    sampleMediaFileCount: number
+  }>
+  orderSampleFee: string
+  orderSampleETA: string
+  orderSampleStatus: string
+  orderSampleNotes: string
+  orderSampleFileCount: number
+}
 
 interface Product {
   id: string
@@ -166,6 +193,105 @@ function LoadingOverlay({
   )
 }
 
+// Recovery Modal Component
+function RecoveryModal({
+  isVisible,
+  savedState,
+  onRestore,
+  onDiscard,
+  t
+}: {
+  isVisible: boolean
+  savedState: SavedFormState | null
+  onRestore: () => void
+  onDiscard: () => void
+  t: any
+}) {
+  if (!isVisible || !savedState) return null
+
+  const savedDate = new Date(savedState.timestamp)
+  const timeAgo = getTimeAgo(savedDate)
+  const productCount = Object.values(savedState.selectedProducts).reduce((a, b) => a + b, 0)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+            <RefreshCw className="w-6 h-6 text-amber-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Recover Previous Session?</h3>
+            <p className="text-sm text-gray-500">Unsaved work found</p>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-4">
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Order Name:</span>
+              <span className="font-medium text-gray-900">{savedState.orderName || 'Untitled'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Client:</span>
+              <span className="font-medium text-gray-900">{savedState.selectedClientName || 'Not selected'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Products:</span>
+              <span className="font-medium text-gray-900">{productCount} selected</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Step:</span>
+              <span className="font-medium text-gray-900">{savedState.currentStep} of 3</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">Last saved:</span>
+              <span className="font-medium text-gray-900">{timeAgo}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <p className="text-xs text-amber-700">
+            Note: Uploaded files cannot be recovered and will need to be re-added.
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onDiscard}
+            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+          >
+            Start Fresh
+          </button>
+          <button
+            onClick={onRestore}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+          >
+            Restore Session
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Helper function for time ago
+function getTimeAgo(date: Date): string {
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+}
+
 export default function CreateOrderPage() {
   const { translate, translateBatch } = useDynamicTranslation();
   const { t, i18n } = useTranslation();
@@ -242,6 +368,14 @@ export default function CreateOrderPage() {
   const [orderSampleNotes, setOrderSampleNotes] = useState('')
   const [orderSampleFiles, setOrderSampleFiles] = useState<File[]>([])
 
+  // Auto-save state
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false)
+  const [savedFormState, setSavedFormState] = useState<SavedFormState | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null)
+  const autoSaveIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isRestoringRef = useRef(false)
+
   // Click outside handler for client and manufacturer dropdowns
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -307,6 +441,193 @@ export default function CreateOrderPage() {
   useEffect(() => {
     fetchInitialData()
   }, [])
+
+  // ========== AUTO-SAVE FUNCTIONALITY ==========
+
+  // Get current form state for saving (excludes File objects)
+  const getFormStateForSave = useCallback((): SavedFormState => {
+    return {
+      timestamp: Date.now(),
+      currentStep,
+      orderName,
+      selectedClient,
+      selectedClientName,
+      selectedManufacturer,
+      selectedManufacturerName,
+      clientSearchQuery,
+      manufacturerSearchQuery,
+      selectedProducts,
+      orderProducts: orderProducts.map(op => ({
+        ...op,
+        mediaFiles: undefined as any,
+        sampleMediaFiles: undefined as any,
+        mediaFileCount: op.mediaFiles.length,
+        sampleMediaFileCount: op.sampleMediaFiles.length,
+      })),
+      orderSampleFee,
+      orderSampleETA,
+      orderSampleStatus,
+      orderSampleNotes,
+      orderSampleFileCount: orderSampleFiles.length,
+    }
+  }, [
+    currentStep, orderName, selectedClient, selectedClientName,
+    selectedManufacturer, selectedManufacturerName, clientSearchQuery,
+    manufacturerSearchQuery, selectedProducts, orderProducts,
+    orderSampleFee, orderSampleETA, orderSampleStatus, orderSampleNotes,
+    orderSampleFiles.length
+  ])
+
+  // Save form state to localStorage
+  const saveFormState = useCallback(() => {
+    if (isRestoringRef.current) return
+
+    try {
+      const state = getFormStateForSave()
+      localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(state))
+      setLastSaveTime(new Date())
+      setHasUnsavedChanges(false)
+      console.log('[Auto-save] Form state saved at', new Date().toLocaleTimeString())
+    } catch (error) {
+      console.error('[Auto-save] Error saving form state:', error)
+    }
+  }, [getFormStateForSave])
+
+  // Clear saved form state
+  const clearSavedFormState = useCallback(() => {
+    try {
+      localStorage.removeItem(AUTO_SAVE_KEY)
+      setHasUnsavedChanges(false)
+      console.log('[Auto-save] Form state cleared')
+    } catch (error) {
+      console.error('[Auto-save] Error clearing form state:', error)
+    }
+  }, [])
+
+  // Restore form state from saved data
+  const restoreFormState = useCallback((state: SavedFormState) => {
+    isRestoringRef.current = true
+
+    try {
+      setCurrentStep(state.currentStep)
+      setOrderName(state.orderName)
+      setSelectedClient(state.selectedClient)
+      setSelectedClientName(state.selectedClientName)
+      setSelectedManufacturer(state.selectedManufacturer)
+      setSelectedManufacturerName(state.selectedManufacturerName)
+      setClientSearchQuery(state.clientSearchQuery)
+      setManufacturerSearchQuery(state.manufacturerSearchQuery)
+      setSelectedProducts(state.selectedProducts)
+
+      // Restore order products (without files)
+      if (state.orderProducts && state.orderProducts.length > 0) {
+        const restoredProducts = state.orderProducts.map(op => ({
+          ...op,
+          mediaFiles: [] as File[],
+          sampleMediaFiles: [] as File[],
+        }))
+        setOrderProducts(restoredProducts)
+      }
+
+      setOrderSampleFee(state.orderSampleFee)
+      setOrderSampleETA(state.orderSampleETA)
+      setOrderSampleStatus(state.orderSampleStatus)
+      setOrderSampleNotes(state.orderSampleNotes)
+
+      console.log('[Auto-save] Form state restored')
+      showNotification('success', 'Previous session restored successfully!')
+    } catch (error) {
+      console.error('[Auto-save] Error restoring form state:', error)
+      showNotification('error', 'Error restoring session')
+    } finally {
+      isRestoringRef.current = false
+      setShowRecoveryModal(false)
+      clearSavedFormState()
+    }
+  }, [clearSavedFormState])
+
+  // Check for saved form state on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(AUTO_SAVE_KEY)
+      if (saved) {
+        const state: SavedFormState = JSON.parse(saved)
+        // Only show recovery if saved less than 24 hours ago and has meaningful data
+        const hoursSinceSave = (Date.now() - state.timestamp) / (1000 * 60 * 60)
+        const hasMeaningfulData = state.orderName || state.selectedClient || Object.keys(state.selectedProducts).length > 0
+
+        if (hoursSinceSave < 24 && hasMeaningfulData) {
+          setSavedFormState(state)
+          setShowRecoveryModal(true)
+        } else {
+          // Clear stale data
+          localStorage.removeItem(AUTO_SAVE_KEY)
+        }
+      }
+    } catch (error) {
+      console.error('[Auto-save] Error checking for saved state:', error)
+      localStorage.removeItem(AUTO_SAVE_KEY)
+    }
+  }, [])
+
+  // Auto-save interval (15 seconds)
+  useEffect(() => {
+    autoSaveIntervalRef.current = setInterval(() => {
+      // Only save if there's meaningful data
+      const hasMeaningfulData = orderName || selectedClient || Object.keys(selectedProducts).length > 0
+      if (hasMeaningfulData && !showRecoveryModal) {
+        saveFormState()
+      }
+    }, AUTO_SAVE_INTERVAL)
+
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current)
+      }
+    }
+  }, [saveFormState, orderName, selectedClient, selectedProducts, showRecoveryModal])
+
+  // Track unsaved changes
+  useEffect(() => {
+    if (!isRestoringRef.current && !showRecoveryModal) {
+      setHasUnsavedChanges(true)
+    }
+  }, [orderName, selectedClient, selectedManufacturer, selectedProducts, orderProducts,
+      orderSampleFee, orderSampleETA, orderSampleStatus, orderSampleNotes])
+
+  // Beforeunload warning
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const hasMeaningfulData = orderName || selectedClient || Object.keys(selectedProducts).length > 0
+      if (hasMeaningfulData && !saving) {
+        // Save before leaving
+        saveFormState()
+
+        // Show browser warning
+        e.preventDefault()
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?'
+        return e.returnValue
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [orderName, selectedClient, selectedProducts, saving, saveFormState])
+
+  // Handle recovery modal actions
+  const handleRestoreSession = () => {
+    if (savedFormState) {
+      restoreFormState(savedFormState)
+    }
+  }
+
+  const handleDiscardSession = () => {
+    setShowRecoveryModal(false)
+    setSavedFormState(null)
+    clearSavedFormState()
+  }
+
+  // ========== END AUTO-SAVE FUNCTIONALITY ==========
 
   const fetchInitialData = async () => {
     setLoading(true)
@@ -1098,15 +1419,18 @@ export default function CreateOrderPage() {
       setLoadingStep(steps.length - 1) // Move to "Finalizing..."
       
       console.log('✅ Order creation complete!')
-      
+
       // Clear the loading timer
       if (loadingTimerRef.current) {
         clearTimeout(loadingTimerRef.current)
       }
-      
+
+      // Clear auto-saved draft on successful submission
+      clearSavedFormState()
+
       // Brief pause to show completion
       await new Promise(resolve => setTimeout(resolve, 500))
-      
+
       setShowLoadingOverlay(false)
       showNotification('success', `Order ${orderNumber} ${isDraft ? 'saved as draft' : 'created'} successfully!`)
       
@@ -1171,6 +1495,15 @@ export default function CreateOrderPage() {
 
   return (
     <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+      {/* Recovery Modal */}
+      <RecoveryModal
+        isVisible={showRecoveryModal}
+        savedState={savedFormState}
+        onRestore={handleRestoreSession}
+        onDiscard={handleDiscardSession}
+        t={t}
+      />
+
       {/* Smart Loading Overlay */}
       <LoadingOverlay
         isVisible={showLoadingOverlay}
