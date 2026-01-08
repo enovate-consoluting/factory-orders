@@ -1,3 +1,10 @@
+/**
+ * Users Management Page - /dashboard/users
+ * Manage system user accounts (Admin, Super Admin, Order Creator, etc.)
+ * Roles: Super Admin, Manufacturer
+ * Last Modified: January 2025
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react'
