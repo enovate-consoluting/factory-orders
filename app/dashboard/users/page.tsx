@@ -394,7 +394,7 @@ export default function UsersPage() {
       <div className="mb-4 sm:mb-6">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">System Users</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">System Users v2</h1>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Manage admin and staff user accounts
             </p>
