@@ -22,10 +22,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiKey = process.env.BIRDHAUS_VOICE || process.env.ELEVENLABS_API_KEY;
+    const apiKey = process.env.BIRDHAUS_VOICE || process.env.Birdhaus_Voice || process.env.ELEVENLABS_API_KEY;
+
+    console.log('TTS API called, key exists:', !!apiKey, 'key length:', apiKey?.length || 0);
 
     if (!apiKey) {
       // Fall back to Web Speech API if no API key
+      console.log('No API key found. Available env vars with BIRD/ELEVEN:',
+        Object.keys(process.env).filter(k => k.includes('BIRD') || k.includes('ELEVEN') || k.includes('bird')).join(', ') || 'none'
+      );
       return NextResponse.json(
         { fallback: true, message: 'No ElevenLabs API key configured' },
         { status: 200 }
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('ElevenLabs API error:', errorText);
+      console.error('ElevenLabs API error:', response.status, errorText);
 
       // If voice not found, try fallback voice
       if (response.status === 404 && voiceId !== FALLBACK_VOICE_ID) {
