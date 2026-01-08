@@ -290,6 +290,13 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Speak Eddie's response if voice is enabled
+      if (voiceEnabled && data.message) {
+        // Extract just the first sentence or two for speaking (keep it concise)
+        const spokenText = data.message.split('\n')[0].substring(0, 200);
+        speak(spokenText);
+      }
     } catch (error: any) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -413,7 +420,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       {/* Chat Panel */}
       {isOpen && (
         <div
-          className={`fixed bottom-6 right-6 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 transition-all duration-300 ${
+          className={`fixed bottom-6 right-6 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 transition-all duration-300 flex flex-col ${
             isMinimized
               ? 'w-72 h-14'
               : 'w-[400px] h-[600px] max-h-[80vh]'
@@ -477,9 +484,9 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
 
           {/* Chat Content */}
           {!isMinimized && (
-            <>
+            <div className="flex flex-col flex-1 overflow-hidden">
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 h-[calc(100%-130px)]">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -593,7 +600,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
                   </p>
                 )}
               </form>
-            </>
+            </div>
           )}
         </div>
       )}
