@@ -131,10 +131,33 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const [speechSupported, setSpeechSupported] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voicesLoaded, setVoicesLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const hasGreetedRef = useRef(false);
+
+  // Load speech synthesis voices
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          setVoicesLoaded(true);
+        }
+      };
+
+      // Try loading immediately
+      loadVoices();
+
+      // Also listen for voices changed event (needed for Chrome)
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+
+      return () => {
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    }
+  }, []);
 
   // Check for speech recognition support
   useEffect(() => {
@@ -190,17 +213,20 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
-
-      // Speak greeting only once per session - with Aussie flair!
-      if (!hasGreetedRef.current && voiceEnabled) {
-        hasGreetedRef.current = true;
-        // Small delay to ensure voices are loaded
-        setTimeout(() => {
-          speak(`G'day ${firstName}! I'm Eddie, your AI assistant. How can I help you today mate?`);
-        }, 500);
-      }
     }
-  }, [isOpen, messages.length, userName, voiceEnabled]);
+  }, [isOpen, messages.length, userName]);
+
+  // Speak greeting when voices are loaded and chat is open
+  useEffect(() => {
+    if (isOpen && voicesLoaded && voiceEnabled && !hasGreetedRef.current && messages.length > 0) {
+      hasGreetedRef.current = true;
+      const firstName = userName.split(' ')[0];
+      // Small delay for better UX
+      setTimeout(() => {
+        speak(`G'day ${firstName}! I'm Eddie, your AI assistant. How can I help you today mate?`);
+      }, 300);
+    }
+  }, [isOpen, voicesLoaded, voiceEnabled, messages.length, userName]);
 
   const handleOpen = () => {
     setIsOpen(true);
