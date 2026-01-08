@@ -12,6 +12,7 @@ import {
   FileImage, FileText, X, Loader2, Calendar, FolderDown,
   File, Image, FileVideo, FileArchive, Clock, Truck, CheckCircle, Tag
 } from 'lucide-react';
+import JSZip from 'jszip';
 import { SetShipDatesModal } from '../modals/SetShipDatesModal';
 import { SetProductionDaysModal } from '../modals/SetProductionDaysModal';
 import { formatCurrency } from '../../../utils/orderCalculations';
@@ -59,6 +60,8 @@ export function ManufacturerControlPanelV2({
   const [selectedMediaFiles, setSelectedMediaFiles] = useState<Set<string>>(new Set());
   const [showAccessoriesModal, setShowAccessoriesModal] = useState(false);
   const [accessoriesTotal, setAccessoriesTotal] = useState(0);
+  const [creatingZip, setCreatingZip] = useState(false);
+  const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
 
   // Calculate totals (manufacturer prices - their costs)
   // Includes: products, order-level sample fee, shipping, and accessories
@@ -208,6 +211,52 @@ export function ManufacturerControlPanelV2({
     setDownloadProgress({ current: 0, total: 0 });
   };
 
+  // Download selected files as a single zip
+  const downloadAsZip = async () => {
+    const filesToDownload = allMediaFiles.filter((f) => selectedMediaFiles.has(f.id));
+    if (filesToDownload.length < 4) return;
+
+    setCreatingZip(true);
+    setZipProgress({ current: 0, total: filesToDownload.length });
+    setShowAllMediaModal(false);
+
+    try {
+      const zip = new JSZip();
+
+      // Fetch all files and add to zip
+      for (let i = 0; i < filesToDownload.length; i++) {
+        const file = filesToDownload[i];
+        const fileName = file.display_name || file.original_filename || `file-${i + 1}`;
+        setZipProgress({ current: i + 1, total: filesToDownload.length });
+
+        try {
+          const response = await fetch(file.file_url);
+          const blob = await response.blob();
+          zip.file(fileName, blob);
+        } catch (err) {
+          console.error(`Error fetching file ${fileName}:`, err);
+        }
+      }
+
+      // Generate and download the zip file
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const zipFileName = `${order.order_number || 'order'}-media.zip`;
+      const url = window.URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = zipFileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Error creating zip:', error);
+    }
+
+    setCreatingZip(false);
+    setZipProgress({ current: 0, total: 0 });
+  };
+
   const handleModalUpdate = () => {
     if (onUpdate) onUpdate();
   };
@@ -336,13 +385,18 @@ export function ManufacturerControlPanelV2({
             {allMediaFiles.length > 0 && (
               <button
                 onClick={openAllMediaModal}
-                disabled={downloadingMedia}
+                disabled={downloadingMedia || creatingZip}
                 className="px-2.5 py-1.5 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 disabled:opacity-50 transition-colors flex items-center gap-1.5 text-xs sm:text-sm font-medium border border-blue-200"
               >
                 {downloadingMedia ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span className="text-xs">{downloadProgress.current}/{downloadProgress.total}</span>
+                  </>
+                ) : creatingZip ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span className="text-xs">Zipping {zipProgress.current}/{zipProgress.total}</span>
                   </>
                 ) : (
                   <>
@@ -498,24 +552,49 @@ export function ManufacturerControlPanelV2({
               )}
             </div>
 
-            <div className="flex justify-between items-center mt-4 pt-3 border-t">
-              <span className="text-sm text-gray-500">
-                {selectedMediaFiles.size} file(s) will be downloaded
-              </span>
-              <div className="flex gap-2">
+            <div className="flex flex-col gap-3 mt-4 pt-3 border-t">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-500">
+                  {selectedMediaFiles.size} file(s) selected
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAllMediaModal(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={downloadSelectedMediaFiles}
+                    disabled={selectedMediaFiles.size === 0}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download Selected
+                  </button>
+                </div>
+              </div>
+
+              {/* Download as Zip - requires 4+ files selected */}
+              <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <FileArchive className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Download as Zip</span>
+                    {selectedMediaFiles.size < 4 ? (
+                      <p className="text-xs text-gray-500">Select 4+ files to enable</p>
+                    ) : (
+                      <p className="text-xs text-green-600">Ready to create zip</p>
+                    )}
+                  </div>
+                </div>
                 <button
-                  onClick={() => setShowAllMediaModal(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  onClick={downloadAsZip}
+                  disabled={selectedMediaFiles.size < 4}
+                  className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Cancel
-                </button>
-                <button
-                  onClick={downloadSelectedMediaFiles}
-                  disabled={selectedMediaFiles.size === 0}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Download Selected
+                  <FileArchive className="w-4 h-4" />
+                  Create Zip
                 </button>
               </div>
             </div>
