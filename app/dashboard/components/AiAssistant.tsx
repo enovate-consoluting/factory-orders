@@ -17,7 +17,9 @@ import {
   Trash2,
   ArrowRight,
   Mic,
-  MicOff
+  MicOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 // Eddie's animated icon component
@@ -127,9 +129,12 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const [hasUnread, setHasUnread] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const hasGreetedRef = useRef(false);
 
   // Check for speech recognition support
   useEffect(() => {
@@ -177,15 +182,25 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   // Add welcome message on first open
   useEffect(() => {
     if (isOpen && messages.length === 0) {
+      const firstName = userName.split(' ')[0];
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: `Hey ${userName.split(' ')[0]}! I'm Eddie, your AI assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking statistics and reports\n• Navigating the system\n• Answering questions about orders\n\nWhat can I help you with today?`,
+        content: `Hey ${firstName}! I'm Eddie, your AI assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking statistics and reports\n• Navigating the system\n• Answering questions about orders\n\nWhat can I help you with today?`,
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
+
+      // Speak greeting only once per session - with Aussie flair!
+      if (!hasGreetedRef.current && voiceEnabled) {
+        hasGreetedRef.current = true;
+        // Small delay to ensure voices are loaded
+        setTimeout(() => {
+          speak(`G'day ${firstName}! I'm Eddie, your AI assistant. How can I help you today mate?`);
+        }, 500);
+      }
     }
-  }, [isOpen, messages.length, userName]);
+  }, [isOpen, messages.length, userName, voiceEnabled]);
 
   const handleOpen = () => {
     setIsOpen(true);
@@ -286,6 +301,54 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
   };
 
+  // Text-to-speech function - Eddie speaks with an Australian accent!
+  const speak = (text: string) => {
+    if (!voiceEnabled || typeof window === 'undefined') return;
+
+    // Cancel any ongoing speech
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    // Try to find an Australian voice first, then fall back to other English voices
+    const voices = window.speechSynthesis.getVoices();
+    const australianVoice = voices.find(v =>
+      v.lang === 'en-AU' || v.name.includes('Australia') || v.name.includes('Karen') || v.name.includes('Lee')
+    );
+    const fallbackVoice = voices.find(v =>
+      v.name.includes('Google') || v.name.includes('Daniel') || v.lang.startsWith('en')
+    );
+
+    if (australianVoice) {
+      utterance.voice = australianVoice;
+    } else if (fallbackVoice) {
+      utterance.voice = fallbackVoice;
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const stopSpeaking = () => {
+    if (typeof window !== 'undefined') {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
+  const toggleVoiceOutput = () => {
+    if (voiceEnabled) {
+      stopSpeaking();
+    }
+    setVoiceEnabled(!voiceEnabled);
+  };
+
   // Quick prompts for empty state
   const quickPrompts = [
     "Show me today's orders",
@@ -342,6 +405,15 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
             <div className="flex items-center gap-1">
               {!isMinimized && (
                 <>
+                  <button
+                    onClick={toggleVoiceOutput}
+                    className={`p-1.5 hover:bg-white/10 rounded-lg transition-colors ${
+                      voiceEnabled ? 'text-white' : 'text-white/50'
+                    } ${isSpeaking ? 'animate-pulse' : ''}`}
+                    title={voiceEnabled ? 'Turn off voice' : 'Turn on voice'}
+                  >
+                    {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
                   <button
                     onClick={handleClearChat}
                     className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
