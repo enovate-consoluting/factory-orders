@@ -33,6 +33,7 @@ import { supabase, getCurrentUser, clearSession, type AuthUser } from '@/lib/aut
 import { useTranslation } from 'react-i18next';
 import { useLanguage } from '@/contexts/LanguageContext';
 import '../i18n';
+import AiAssistant from './components/AiAssistant';
 
 interface User {
   id: string;
@@ -1028,6 +1029,11 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* AI Assistant - Admin/Super Admin only */}
+      {(user?.role === 'super_admin' || user?.role === 'admin') && (
+        <AiAssistant userRole={user.role} userName={user.name} />
+      )}
     </div>
   );
 }
