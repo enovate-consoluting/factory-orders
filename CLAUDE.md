@@ -4,8 +4,11 @@
 ## Quick Start
 
 ```bash
-# Development
+# Development (local database)
 npm run dev
+
+# Development with PRODUCTION data (preferred for testing)
+npm run dev:prod
 
 # ALWAYS before pushing
 npm run build

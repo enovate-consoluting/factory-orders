@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import { useLanguage } from '@/contexts/LanguageContext';
 import '../i18n';
 import AiAssistant from './components/AiAssistant';
+import ArrivalAlertBar from './components/ArrivalAlertBar';
 
 interface User {
   id: string;
@@ -1024,6 +1025,9 @@ export default function DashboardLayout({
             </div>
           </div>
         </header>
+
+        {/* Arrival Alert Bar - Shows when inventory items are checked in */}
+        <ArrivalAlertBar />
 
         {/* Main Content Area */}
         <main className="flex-1 bg-gray-50">

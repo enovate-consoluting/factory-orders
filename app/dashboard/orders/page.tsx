@@ -19,11 +19,11 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  Plus, Search, Eye, Package, Users, 
+import {
+  Plus, Search, Eye, Package, Users,
   Calendar, ChevronRight, Edit, Building,
   ChevronDown, AlertCircle, Trash2, DollarSign,
-  EyeOff, FlaskConical
+  EyeOff, FlaskConical, Truck
 } from 'lucide-react';
 import { StatusBadge } from './shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -85,6 +85,38 @@ const isWithinShipThreshold = (estimatedShipDate: string | undefined, thresholdD
 // Default names for comparison
 const DEFAULT_SHIP_QUEUE_NAME = 'Ready to Ship';
 const DEFAULT_SHIP_QUEUE_NAME_ZH = '准备发货';
+
+// Helper function to get tracking URL based on carrier
+const getTrackingUrl = (trackingNumber: string, carrier?: string): string | null => {
+  if (!trackingNumber || !carrier) return null;
+
+  const carrierLower = carrier.toLowerCase();
+  if (carrierLower.includes('dhl')) {
+    return `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${trackingNumber}`;
+  } else if (carrierLower.includes('ups')) {
+    return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  } else if (carrierLower.includes('fedex')) {
+    return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  } else if (carrierLower.includes('usps')) {
+    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`;
+  }
+  return null;
+};
+
+// Helper function to get first tracking number from order products
+const getOrderTrackingInfo = (order: Order): { trackingNumber: string; carrier?: string } | null => {
+  if (!order.order_products) return null;
+
+  // Find first product with tracking number
+  const productWithTracking = order.order_products.find(p => p.tracking_number);
+  if (productWithTracking) {
+    return {
+      trackingNumber: productWithTracking.tracking_number!,
+      carrier: productWithTracking.shipping_carrier
+    };
+  }
+  return null;
+};
 
 export default function OrdersPage() {
   // Dynamic translation hook
@@ -293,7 +325,9 @@ export default function OrdersPage() {
             client_shipping_air_price,
             client_shipping_boat_price,
             selected_shipping_method,
-            estimated_ship_date
+            estimated_ship_date,
+            tracking_number,
+            shipping_carrier
           ),
           sample_routed_to,
           sample_required,
@@ -1457,6 +1491,33 @@ export default function OrdersPage() {
                                   {visibleProducts.length} {language === 'zh' ? '产品' : `product${visibleProducts.length !== 1 ? 's' : ''}`}
                                 </div>
                               )}
+                              {/* Tracking Number Display */}
+                              {(() => {
+                                const trackingInfo = getOrderTrackingInfo(order);
+                                if (!trackingInfo) return null;
+                                const trackingUrl = getTrackingUrl(trackingInfo.trackingNumber, trackingInfo.carrier);
+                                return (
+                                  <div className="mt-1">
+                                    {trackingUrl ? (
+                                      <a
+                                        href={trackingUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200 transition-colors"
+                                      >
+                                        <Truck className="w-3 h-3" />
+                                        {trackingInfo.trackingNumber}
+                                      </a>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                                        <Truck className="w-3 h-3" />
+                                        {trackingInfo.trackingNumber}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </td>
@@ -1549,6 +1610,29 @@ export default function OrdersPage() {
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                      {/* Product Tracking Number */}
+                                      {product.tracking_number && (
+                                        (() => {
+                                          const trackingUrl = getTrackingUrl(product.tracking_number, product.shipping_carrier);
+                                          return trackingUrl ? (
+                                            <a
+                                              href={trackingUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200 transition-colors"
+                                            >
+                                              <Truck className="w-3 h-3" />
+                                              {product.tracking_number}
+                                            </a>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                                              <Truck className="w-3 h-3" />
+                                              {product.tracking_number}
+                                            </span>
+                                          );
+                                        })()
+                                      )}
                                       {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
                                         <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
                                           {showPrices ? formatCurrencyWithLanguage(productTotal, language) : 'XXXXX'}
@@ -1604,6 +1688,33 @@ export default function OrdersPage() {
                           <span className="ml-1.5 sm:ml-2">• {visibleProducts.length} {language === 'zh' ? '产品' : `product${visibleProducts.length !== 1 ? 's' : ''}`}</span>
                         )}
                       </div>
+                      {/* Mobile Tracking Number Display */}
+                      {(() => {
+                        const trackingInfo = getOrderTrackingInfo(order);
+                        if (!trackingInfo) return null;
+                        const trackingUrl = getTrackingUrl(trackingInfo.trackingNumber, trackingInfo.carrier);
+                        return (
+                          <div className="mt-1">
+                            {trackingUrl ? (
+                              <a
+                                href={trackingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium rounded hover:bg-purple-200 transition-colors"
+                              >
+                                <Truck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                {trackingInfo.trackingNumber}
+                              </a>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium rounded">
+                                <Truck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                {trackingInfo.trackingNumber}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="flex-shrink-0">
                       {renderRoutingBadges(order)}

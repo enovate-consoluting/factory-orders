@@ -13,11 +13,11 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { 
-  FileText, Calendar, Search, CheckCircle, Clock, Send, 
+import {
+  FileText, Calendar, Search, CheckCircle, Clock, Send,
   AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
   ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
-  Package, Shield, Inbox, Play, FileX, Ban, CreditCard, Loader2
+  Package, Shield, Inbox, Play, FileX, Ban, CreditCard, Loader2, Truck
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 
@@ -50,6 +50,10 @@ interface Invoice {
     id: string;
     order_number: string;
     order_name: string;
+    order_products?: Array<{
+      tracking_number?: string;
+      shipping_carrier?: string;
+    }>;
   };
   client?: {
     id: string;
@@ -57,6 +61,38 @@ interface Invoice {
     email: string;
   };
 }
+
+// Helper function to get tracking URL based on carrier
+const getTrackingUrl = (trackingNumber: string, carrier?: string): string | null => {
+  if (!trackingNumber || !carrier) return null;
+
+  const carrierLower = carrier.toLowerCase();
+  if (carrierLower.includes('dhl')) {
+    return `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${trackingNumber}`;
+  } else if (carrierLower.includes('ups')) {
+    return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  } else if (carrierLower.includes('fedex')) {
+    return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  } else if (carrierLower.includes('usps')) {
+    return `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`;
+  }
+  return null;
+};
+
+// Helper to get first tracking number from invoice order products
+const getInvoiceTrackingInfo = (invoice: Invoice): { trackingNumber: string; carrier?: string } | null => {
+  const products = invoice.order?.order_products;
+  if (!products) return null;
+
+  const productWithTracking = products.find(p => p.tracking_number);
+  if (productWithTracking) {
+    return {
+      trackingNumber: productWithTracking.tracking_number!,
+      carrier: productWithTracking.shipping_carrier
+    };
+  }
+  return null;
+};
 
 interface OrderForApproval {
   id: string;
@@ -497,7 +533,7 @@ export default function InvoicesPage() {
         .from('invoices')
         .select(`
           *,
-          order:orders(id, order_number, order_name),
+          order:orders(id, order_number, order_name, order_products(tracking_number, shipping_carrier)),
           client:clients(id, name, email)
         `)
         .order('created_at', { ascending: false });
@@ -1095,6 +1131,33 @@ export default function InvoicesPage() {
                         {invoice.order?.order_number && invoice.order?.order_name && (
                           <p className="text-xs text-gray-500">#{invoice.order.order_number}</p>
                         )}
+                        {/* Tracking Number Display */}
+                        {(() => {
+                          const trackingInfo = getInvoiceTrackingInfo(invoice);
+                          if (!trackingInfo) return null;
+                          const trackingUrl = getTrackingUrl(trackingInfo.trackingNumber, trackingInfo.carrier);
+                          return (
+                            <div className="mt-1">
+                              {trackingUrl ? (
+                                <a
+                                  href={trackingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded hover:bg-purple-200 transition-colors"
+                                >
+                                  <Truck className="w-3 h-3" />
+                                  {trackingInfo.trackingNumber}
+                                </a>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded">
+                                  <Truck className="w-3 h-3" />
+                                  {trackingInfo.trackingNumber}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </td>
                     {!isClient && (
@@ -1216,6 +1279,34 @@ export default function InvoicesPage() {
                       <span className="text-gray-900 font-medium">{invoice.order.order_name || invoice.order.order_number || '-'}</span>
                     </div>
                   )}
+
+                  {/* Mobile Tracking Number Display */}
+                  {(() => {
+                    const trackingInfo = getInvoiceTrackingInfo(invoice);
+                    if (!trackingInfo) return null;
+                    const trackingUrl = getTrackingUrl(trackingInfo.trackingNumber, trackingInfo.carrier);
+                    return (
+                      <div className="mt-1">
+                        {trackingUrl ? (
+                          <a
+                            href={trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium rounded hover:bg-purple-200 transition-colors"
+                          >
+                            <Truck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            {trackingInfo.trackingNumber}
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] sm:text-xs font-medium rounded">
+                            <Truck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            {trackingInfo.trackingNumber}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {/* Client (if not client user) */}
                   {!isClient && invoice.client && (

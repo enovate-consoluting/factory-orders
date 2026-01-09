@@ -587,6 +587,46 @@ export default function InventoryPage() {
         },
       });
 
+      // Create arrival notifications for all admin/super_admin users
+      try {
+        // Get all admin and super_admin users
+        const { data: adminUsers, error: usersError } = await supabase
+          .from('users')
+          .select('id, name')
+          .in('role', ['admin', 'super_admin']);
+
+        if (!usersError && adminUsers && adminUsers.length > 0) {
+          // Get total quantity from the inventory record
+          const totalQty = receiveModal.record?.total_quantity || 0;
+
+          // Create a notification for each admin user
+          const notifications = adminUsers.map(adminUser => ({
+            inventory_id: receiveModal.record!.id,
+            user_id: adminUser.id,
+            product_name: receiveModal.record!.product_name,
+            order_number: receiveModal.record!.order_number,
+            client_name: receiveModal.record!.client_name,
+            received_at: new Date().toISOString(),
+            received_by_name: user?.name || 'Unknown',
+            rack_location: receiveModal.rack_location || null,
+            total_quantity: totalQty,
+            dismissed: false,
+          }));
+
+          const { error: notifError } = await supabase
+            .from('arrival_notifications')
+            .insert(notifications);
+
+          if (notifError) {
+            // Log but don't fail the receive operation
+            console.error('Error creating arrival notifications:', notifError);
+          }
+        }
+      } catch (notifErr) {
+        // Log but don't fail the receive operation
+        console.error('Error in notification creation:', notifErr);
+      }
+
       setReceiveModal({ isOpen: false, record: null, rack_location: '', items: [], capturedPhotos: [] });
       fetchInventory(); fetchStats();
     } catch (error) {

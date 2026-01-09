@@ -26,6 +26,8 @@ export interface OrderProduct {
   shipping_boat_price?: number;
   selected_shipping_method?: string;
   estimated_ship_date?: string;  // For ready to ship queue
+  tracking_number?: string;      // Tracking number when shipped
+  shipping_carrier?: string;     // Carrier (DHL, UPS, FedEx, USPS)
   product?: {
     title: string;
   };
