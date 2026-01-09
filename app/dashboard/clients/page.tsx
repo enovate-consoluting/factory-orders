@@ -716,8 +716,8 @@ export default function ClientsPage() {
                     onChange={(phone) => setFormData({ ...formData, phone_number: phone })}
                     inputStyle={{
                       width: '100%',
-                      height: '42px',
-                      fontSize: '14px',
+                      height: '44px',
+                      fontSize: '16px',
                       paddingLeft: '48px',
                       borderRadius: '0.5rem',
                       border: '1px solid #d1d5db',
@@ -726,7 +726,8 @@ export default function ClientsPage() {
                     buttonStyle={{
                       borderRadius: '0.5rem 0 0 0.5rem',
                       border: '1px solid #d1d5db',
-                      borderRight: 'none'
+                      borderRight: 'none',
+                      minWidth: '44px'
                     }}
                     containerStyle={{
                       width: '100%'

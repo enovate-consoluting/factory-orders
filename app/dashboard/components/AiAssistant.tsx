@@ -382,8 +382,19 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
           audioRef.current = null;
         };
 
-        await audio.play();
-        console.log('ElevenLabs audio started');
+        try {
+          await audio.play();
+          console.log('ElevenLabs audio started');
+        } catch (playError: any) {
+          // Mobile browsers block autoplay - fall back to Web Speech API
+          console.log('Audio play blocked (likely mobile autoplay restriction):', playError.name);
+          if (playError.name === 'NotAllowedError') {
+            // Try Web Speech API as fallback on mobile
+            speakWithWebSpeech(text);
+          } else {
+            setIsSpeaking(false);
+          }
+        }
         return;
       }
 
@@ -490,33 +501,33 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       {!isOpen && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-6 right-6 w-16 h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+          className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
           title="Ask Eddie"
         >
           <div className="relative">
-            <EddieIcon className="w-8 h-8 group-hover:scale-110 transition-transform" animated={true} />
+            <EddieIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
           </div>
           {hasUnread && (
             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
           )}
-          {/* Floating label */}
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+          {/* Floating label - hidden on mobile */}
+          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
             Ask Eddie
           </span>
         </button>
       )}
 
-      {/* Chat Panel */}
+      {/* Chat Panel - Full screen on mobile, floating on desktop */}
       {isOpen && (
         <div
-          className={`fixed bottom-6 right-6 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 transition-all duration-300 flex flex-col ${
+          className={`fixed z-50 transition-all duration-300 flex flex-col bg-white shadow-2xl border border-gray-200 ${
             isMinimized
-              ? 'w-72 h-14'
-              : 'w-[400px] h-[600px] max-h-[80vh]'
+              ? 'bottom-6 right-6 w-72 h-14 rounded-2xl'
+              : 'inset-0 sm:inset-auto sm:bottom-6 sm:right-6 sm:w-[400px] sm:h-[600px] sm:max-h-[80vh] sm:rounded-2xl'
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-t-2xl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 sm:rounded-t-2xl">
             <div className="flex items-center gap-2">
               <EddieIcon className="w-5 h-5 text-white" animated={false} />
               <span className="font-semibold text-white">Eddie</span>
@@ -647,14 +658,14 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
               )}
 
               {/* Input - Always visible at bottom */}
-              <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white flex-shrink-0">
+              <form onSubmit={handleSubmit} className="p-3 sm:p-4 border-t border-gray-200 bg-white flex-shrink-0 pb-safe">
                 <div className="flex gap-2">
                   {/* Voice Input Button */}
                   {speechSupported && (
                     <button
                       type="button"
                       onClick={toggleVoice}
-                      className={`px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                      className={`px-3 py-2.5 rounded-xl transition-all duration-200 flex-shrink-0 ${
                         isListening
                           ? 'bg-red-500 text-white animate-pulse'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -670,7 +681,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder={isListening ? "Listening..." : "Ask Eddie anything..."}
-                    className={`flex-1 px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-400 text-sm transition-colors ${
+                    className={`flex-1 min-w-0 px-3 sm:px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-400 text-sm transition-colors ${
                       isListening ? 'border-red-300 bg-red-50' : 'border-gray-300'
                     }`}
                     disabled={isLoading}
@@ -678,7 +689,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
                   <button
                     type="submit"
                     disabled={!input.trim() || isLoading}
-                    className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    className="px-3 sm:px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
                   >
                     <Send className="w-4 h-4" />
                   </button>

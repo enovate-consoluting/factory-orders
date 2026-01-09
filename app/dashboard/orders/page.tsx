@@ -1462,7 +1462,7 @@ export default function OrdersPage() {
                                   e.stopPropagation();
                                   toggleOrderExpansion(order.id);
                                 }}
-                                className="p-1 hover:bg-gray-200 rounded"
+                                className="p-2 hover:bg-gray-200 rounded min-w-[36px] min-h-[36px] flex items-center justify-center"
                               >
                                 {isExpanded ? (
                                   <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -1752,11 +1752,11 @@ export default function OrdersPage() {
                         {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
                           <Link
                             href={`/dashboard/orders/edit/${order.id}`}
-                            className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-colors"
+                            className="p-2 sm:p-2 text-blue-600 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                             title={t('editOrder')}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <Edit className="w-6 h-6 sm:w-5 sm:h-5" />
+                            <Edit className="w-5 h-5" />
                           </Link>
                         )}
                         {canDelete && (
@@ -1765,22 +1765,22 @@ export default function OrdersPage() {
                               e.stopPropagation();
                               setShowDeleteConfirm(order.id);
                             }}
-                            className={`p-1.5 sm:p-2 rounded-lg transition-colors ${
+                            className={`p-2 sm:p-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${
                               userRole === 'super_admin'
                                 ? 'text-red-600 hover:bg-red-50 active:bg-red-100'
                                 : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
                             }`}
                             title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
                           >
-                            <Trash2 className="w-6 h-6 sm:w-5 sm:h-5" />
+                            <Trash2 className="w-5 h-5" />
                           </button>
                         )}
                         <button
                           onClick={() => navigateToOrder(order.id)}
-                          className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors"
+                          className="p-2 sm:p-2 text-gray-600 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
                           title={t('viewDetails')}
                         >
-                          <Eye className="w-6 h-6 sm:w-5 sm:h-5" />
+                          <Eye className="w-5 h-5" />
                         </button>
                       </div>
                     </div>

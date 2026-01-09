@@ -626,8 +626,8 @@ export default function UsersPage() {
                     onChange={(phone) => setFormData({ ...formData, phone_number: phone })}
                     inputStyle={{
                       width: '100%',
-                      height: '42px',
-                      fontSize: '14px',
+                      height: '44px',
+                      fontSize: '16px',
                       paddingLeft: '48px',
                       borderRadius: '0.5rem',
                       border: '1px solid #d1d5db',
@@ -636,7 +636,8 @@ export default function UsersPage() {
                     buttonStyle={{
                       borderRadius: '0.5rem 0 0 0.5rem',
                       border: '1px solid #d1d5db',
-                      borderRight: 'none'
+                      borderRight: 'none',
+                      minWidth: '44px'
                     }}
                     containerStyle={{
                       width: '100%'
@@ -689,42 +690,48 @@ export default function UsersPage() {
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Special Access</p>
 
                     {/* Factory/Admin Toggle */}
-                    <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <label
+                      htmlFor="factory_admin_toggle"
+                      className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors min-h-[52px]"
+                    >
                       <input
                         type="checkbox"
                         id="factory_admin_toggle"
                         checked={formData.can_access_factory_admin_toggle}
                         onChange={(e) => setFormData({ ...formData, can_access_factory_admin_toggle: e.target.checked })}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 flex-shrink-0"
                       />
                       <div>
-                        <label htmlFor="factory_admin_toggle" className="text-sm font-medium text-amber-900 cursor-pointer">
+                        <span className="text-sm font-medium text-amber-900">
                           Allow Factory/Admin Toggle Access
-                        </label>
+                        </span>
                         <p className="text-xs text-amber-700 mt-0.5">
                           Grants access to the Factory/Admin mode switcher in the sidebar
                         </p>
                       </div>
-                    </div>
+                    </label>
 
                     {/* AI Assistant */}
-                    <div className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    <label
+                      htmlFor="ai_assistant"
+                      className="flex items-center gap-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors min-h-[52px]"
+                    >
                       <input
                         type="checkbox"
                         id="ai_assistant"
                         checked={formData.can_access_ai_assistant}
                         onChange={(e) => setFormData({ ...formData, can_access_ai_assistant: e.target.checked })}
-                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        className="w-5 h-5 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500 flex-shrink-0"
                       />
                       <div>
-                        <label htmlFor="ai_assistant" className="text-sm font-medium text-indigo-900 cursor-pointer">
+                        <span className="text-sm font-medium text-indigo-900">
                           Allow AI Assistant Access
-                        </label>
+                        </span>
                         <p className="text-xs text-indigo-700 mt-0.5">
                           Grants access to the AI chat assistant for queries and navigation
                         </p>
                       </div>
-                    </div>
+                    </label>
                   </div>
                 )}
                 {!editingUser && (
