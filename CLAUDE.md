@@ -188,6 +188,8 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Sample request routing (independent)
 - Tabbed order listing
 - Client Portal sync (auto-sync clients on creation)
+- Eddie AI Assistant (with ElevenLabs voice)
+- Special Access permissions (Factory/Admin toggle, AI Assistant)
 
 ### 🔄 In Progress (Phase 2)
 - Extract shared components to reduce duplication
@@ -213,9 +215,57 @@ RESEND_API_KEY=         # Email (optional)
 TEXTBELT_API_KEY=       # SMS (optional)
 CLIENT_PORTAL_API_URL=  # Client Portal sync (production only)
 FACTORY_SYNC_API_KEY=   # API key for Portal sync
+ANTHROPIC_API_KEY=      # Claude AI for Eddie assistant
+Birdhaus_Voice=         # ElevenLabs API for Eddie's voice
 ```
 
 **Vercel:** Add same vars in Dashboard → Settings → Environment Variables
+
+---
+
+## Eddie - AI Assistant
+
+A floating AI chat assistant that helps users with orders, statistics, and navigation.
+
+### Access Control
+- **Visible to:** Super Admin, Admin, or users with `can_access_ai_assistant = true`
+- **Toggle access:** User Management → Edit User → Special Access → AI Assistant checkbox
+- Only Super Admin can see/modify Special Access settings
+
+### Features
+- Floating chat bubble (bottom-right corner)
+- Voice input (microphone button) - uses Web Speech API
+- Voice output (speaker) - uses ElevenLabs TTS
+- Natural language queries about orders, clients, products
+- Quick action buttons for navigation
+
+### Files
+- `app/dashboard/components/AiAssistant.tsx` - Main component
+- `app/api/assistant/route.ts` - Claude AI backend
+- `app/api/tts/route.ts` - ElevenLabs text-to-speech
+
+### Environment Variables
+```
+ANTHROPIC_API_KEY=       # Claude API for AI responses
+Birdhaus_Voice=          # ElevenLabs API key for TTS
+```
+
+### ElevenLabs TTS Configuration
+- **Model:** `eleven_turbo_v2_5` (free tier compatible)
+- **Default Voice:** Daniel (voice ID: `onwK4e9ZLuTAKqWW03F9`)
+- **Fallback Voice:** Adam (voice ID: `pNInz6obpgDQGcFmaJgB`)
+- **Fallback:** Web Speech API if ElevenLabs unavailable
+
+### Changing Eddie's Voice
+1. Browse voices at [ElevenLabs Voice Library](https://elevenlabs.io/voice-library)
+2. Copy the voice ID
+3. Update `DEFAULT_VOICE_ID` in `app/api/tts/route.ts`
+
+### Database Fields (users table)
+```sql
+can_access_ai_assistant BOOLEAN DEFAULT false  -- Controls Eddie visibility
+can_access_factory_admin_toggle BOOLEAN DEFAULT false  -- Controls Factory/Admin toggle
+```
 
 ---
 
