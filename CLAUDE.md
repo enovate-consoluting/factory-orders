@@ -41,6 +41,11 @@ git push
 - **Package Manager:** npm
 - **Node:** 18.x+
 
+### Dev Machine Specs (January 2025)
+- **RAM:** 64GB DDR5 6000MHz CL38 (TEAMGROUP T-Force Delta RGB)
+  - Upgraded from 32GB (2x16GB) to 64GB (2x32GB)
+- **Check RAM:** `wmic memorychip get capacity, speed, manufacturer`
+
 ---
 
 ## User Roles & Permissions
