@@ -202,6 +202,11 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Phase 4: Simplify Order Detail page
 - Real authentication (Supabase Auth)
 - Export to Excel/PDF
+- **Eddie AI Enhancements:**
+  - Order creation via conversation
+  - More natural dialogue flow
+  - Additional voice options/accents
+  - Query history/favorites
 
 ---
 
