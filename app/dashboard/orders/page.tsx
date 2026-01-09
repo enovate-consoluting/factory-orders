@@ -182,10 +182,19 @@ export default function OrdersPage() {
       });
     }
 
+    // Refresh orders when page becomes visible (user returns from order detail)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchOrders(user);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       if (unsubscribe) {
         unsubscribe();
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [router]);
 
