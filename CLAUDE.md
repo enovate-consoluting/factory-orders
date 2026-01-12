@@ -191,13 +191,16 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Complete order CRUD
 - Product routing system
 - Dual pricing (cost vs client)
-- Notification system
+- Notification system (with product numbers & click-to-navigate)
 - Audit logging
 - Sample request routing (independent)
 - Tabbed order listing
 - Client Portal sync (auto-sync clients on creation)
 - Eddie AI Assistant (with ElevenLabs voice)
 - Special Access permissions (Factory/Admin toggle, AI Assistant)
+- Tracking numbers with carrier links (DHL, UPS, FedEx, USPS)
+- Arrival Alert Bar (inventory check-in notifications)
+- Mobile-optimized UI (44px touch targets, responsive design)
 
 ### 🔄 In Progress (Phase 2)
 - Extract shared components to reduce duplication
@@ -279,6 +282,88 @@ Birdhaus_Voice=          # ElevenLabs API key for TTS
 can_access_ai_assistant BOOLEAN DEFAULT false  -- Controls Eddie visibility
 can_access_factory_admin_toggle BOOLEAN DEFAULT false  -- Controls Factory/Admin toggle
 ```
+
+---
+
+## Notification Bell
+
+Enhanced notification system for all user roles.
+
+### Features
+- **Product Order Number Display**: Shows product number prominently (e.g., "PO-001")
+- **Order Reference**: Shows order number in parentheses
+- **Click Navigation**: Click any notification to mark as read AND navigate to order
+- **External Link Icon**: Visual indicator that notification is clickable
+- **Real-time Updates**: Subscribes to database changes
+
+### Database Tables
+- `notifications` - For admins/super admins (joins to orders, order_products)
+- `manufacturer_notifications` - For manufacturers (joins to orders, order_products)
+
+### How It Works
+1. Click notification bell to see dropdown
+2. Each notification shows product order number + order number
+3. Click notification → marks as read + navigates to order
+4. After refresh, read notifications don't appear
+
+---
+
+## Tracking Numbers
+
+Displays shipping tracking numbers with clickable carrier links.
+
+### Supported Carriers
+- **DHL**: `https://www.dhl.com/us-en/home/tracking.html?tracking-id={number}`
+- **UPS**: `https://www.ups.com/track?tracknum={number}`
+- **FedEx**: `https://www.fedex.com/fedextrack/?trknbr={number}`
+- **USPS**: `https://tools.usps.com/go/TrackConfirmAction?tLabels={number}`
+
+### Where Displayed
+- Orders List page (desktop table + mobile cards)
+- Invoices List page
+- Expanded product rows
+
+### Database Fields (order_products table)
+```sql
+tracking_number VARCHAR     -- The tracking number
+shipping_carrier VARCHAR    -- 'dhl', 'ups', 'fedex', 'usps'
+```
+
+---
+
+## Arrival Alert Bar
+
+Red notification banner for admins when inventory items are checked in.
+
+### Features
+- **Per-User Dismissal**: Each admin sees their own notifications
+- **Red Banner**: Appears at top of dashboard below header
+- **Expandable List**: Double-click or click "View Details" to see all arrivals
+- **Quick Actions**: View Inventory (opens in new tab), Dismiss All
+- **Confirmation**: "Clear all?" confirmation before dismissing all
+
+### Visibility
+- Admin and Super Admin only
+- Automatically hidden when no notifications
+
+### Database Table: `arrival_notifications`
+```sql
+id UUID PRIMARY KEY
+user_id UUID             -- Which admin this notification is for
+inventory_id UUID        -- Link to inventory item
+product_name VARCHAR
+order_number VARCHAR
+client_name VARCHAR
+received_at TIMESTAMP
+received_by_name VARCHAR
+rack_location VARCHAR
+total_quantity INTEGER
+dismissed BOOLEAN
+dismissed_at TIMESTAMP
+```
+
+### File
+- `app/dashboard/components/ArrivalAlertBar.tsx`
 
 ---
 

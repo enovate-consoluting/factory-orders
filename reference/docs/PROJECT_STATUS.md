@@ -90,6 +90,37 @@
    - Daily draft cleanup at 3 AM UTC
    - Auto-deletes drafts older than 7 days
 
+6. **Tracking Number Display** (NEW)
+   - Shows tracking numbers on Orders List and Invoices List
+   - Clickable carrier links (DHL, UPS, FedEx, USPS)
+   - Displays in desktop table and mobile cards
+   - Shows in expanded product rows
+
+7. **Arrival Alert Bar** (NEW)
+   - Red notification banner for inventory check-ins
+   - Per-user dismissal (each admin sees their own)
+   - Expandable list with product details
+   - "View Inventory" opens in new tab
+   - Confirmation before dismissing all
+
+8. **Notification Bell Improvements** (NEW)
+   - Shows product order number prominently
+   - Click navigates directly to order
+   - Marks as read on click
+   - External link icon indicates clickable
+   - Works for admins and manufacturers
+
+9. **Mobile Responsiveness Fixes** (NEW)
+   - AI Assistant full-screen on mobile
+   - 44px minimum touch targets (WCAG compliant)
+   - PhoneInput 16px font to prevent iOS zoom
+   - Button heights standardized
+   - Checkbox touch areas improved
+
+10. **Order List Auto-Refresh** (NEW)
+    - Auto-refreshes when returning to page
+    - Syncs routing status between list and detail views
+
 #### Previous Updates (December 2024)
 
 1. **Order List Enhancements**
@@ -130,12 +161,12 @@
 - **File Uploads**: Configured (needs testing)
 - **Concurrent Users**: Supported
 
-### Database Tables (13 Active)
+### Database Tables (17 Active)
 1. `users` - System users
 2. `clients` - Customer accounts
 3. `manufacturers` - Production partners
 4. `orders` - Main orders
-5. `order_products` - Products in orders
+5. `order_products` - Products in orders (includes tracking_number, shipping_carrier)
 6. `order_items` - Variant combinations
 7. `products` - Product catalog
 8. `product_variants` - Variant mappings
@@ -143,9 +174,11 @@
 10. `variant_options` - S, M, L, Red, Blue, etc.
 11. `order_media` - File attachments
 12. `audit_log` - Change history
-13. `notifications` - User notifications
-14. `invoices` - Billing records
-15. `workflow_log` - Status transitions
+13. `notifications` - User notifications (admin/super_admin)
+14. `manufacturer_notifications` - Manufacturer notifications
+15. `arrival_notifications` - Inventory arrival alerts (per-user)
+16. `invoices` - Billing records
+17. `workflow_log` - Status transitions
 
 ---
 
@@ -256,7 +289,7 @@ git push          # Deploy to Vercel
 ---
 
 **System Status**: ðŸŸ¢ Fully Operational
-**Last Deployment**: December 2024
+**Last Deployment**: January 2025
 **Next Review**: Weekly
 
 ---
