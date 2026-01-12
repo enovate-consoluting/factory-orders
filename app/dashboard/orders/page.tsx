@@ -1544,7 +1544,10 @@ export default function OrdersPage() {
                         {(userRole === 'admin' || userRole === 'super_admin') && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             {orderTotal > 0 && (
-                              <span className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1">
+                              <span
+                                className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <DollarSign className="w-3.5 h-3.5" />
                                 {showPrices ? formatCurrencyWithLanguage(orderTotal, language).replace(/[$¥]/, '') : 'XXXXX'}
                               </span>
@@ -1643,7 +1646,10 @@ export default function OrdersPage() {
                                         })()
                                       )}
                                       {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
-                                        <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                                        <span
+                                          className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
                                           {showPrices ? formatCurrencyWithLanguage(productTotal, language) : 'XXXXX'}
                                         </span>
                                       )}
@@ -1751,7 +1757,10 @@ export default function OrdersPage() {
 
                     <div className="flex items-center gap-1.5 sm:gap-2">
                       {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
-                        <span className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-green-100 text-green-700 text-[10px] sm:text-xs font-semibold rounded-full inline-flex items-center gap-0.5 sm:gap-1 whitespace-nowrap">
+                        <span
+                          className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-green-100 text-green-700 text-[10px] sm:text-xs font-semibold rounded-full inline-flex items-center gap-0.5 sm:gap-1 whitespace-nowrap"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <DollarSign className="w-2.5 h-2.5 sm:w-3 sm:h-3 flex-shrink-0" />
                           {showPrices ? formatCurrencyWithLanguage(orderTotal, language).replace(/[$¥]/, '') : 'XXXXX'}
                         </span>

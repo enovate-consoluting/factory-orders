@@ -27,7 +27,8 @@ import {
   ChevronRight,
   Warehouse,
   BarChart3,
-  Shield
+  Shield,
+  ExternalLink
 } from 'lucide-react';
 import { supabase, getCurrentUser, clearSession, type AuthUser } from '@/lib/auth';
 import { useTranslation } from 'react-i18next';
@@ -62,6 +63,22 @@ interface ManufacturerNotification {
   message: string;
   is_read: boolean;
   created_at: string;
+  // Joined data
+  order_number?: string;
+  product_order_number?: string;
+}
+
+interface AdminNotification {
+  id: string;
+  order_id?: string;
+  order_product_id?: string;
+  type: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+  // Joined data
+  order?: { order_number: string };
+  order_product?: { product_order_number: string };
 }
 
 export default function DashboardLayout({
@@ -284,15 +301,20 @@ export default function DashboardLayout({
       console.log('Skipping notification load - already in progress');
       return;
     }
-    
+
     isLoadingNotificationsRef.current = true;
-    
+
     try {
       console.log('Loading notifications for manufacturer ID:', manufacturerId);
-      
+
+      // Fetch notifications with joined order and product data
       const { data: notifs, error } = await supabase
         .from('manufacturer_notifications')
-        .select('*')
+        .select(`
+          *,
+          orders:order_id (order_number),
+          order_products:product_id (product_order_number)
+        `)
         .eq('manufacturer_id', manufacturerId)
         .eq('is_read', false)
         .order('created_at', { ascending: false });
@@ -304,25 +326,32 @@ export default function DashboardLayout({
         return;
       }
 
+      // Transform data to flatten the joined fields
+      const transformedNotifs = notifs?.map(notif => ({
+        ...notif,
+        order_number: notif.orders?.order_number,
+        product_order_number: notif.order_products?.product_order_number
+      })) || [];
+
       // Count by type
       let samples = 0;
       let production = 0;
       let orders = 0;
 
-      notifs?.forEach(notif => {
+      transformedNotifs.forEach(notif => {
         if (notif.type === 'sample_requested') samples++;
         else if (notif.type === 'approved_for_production' || notif.type === 'route_to_production') production++;
         else if (notif.type === 'new_order' || notif.type === 'status_changed') orders++;
       });
 
-      console.log('Notification counts - Total:', notifs?.length || 0, 'Samples:', samples, 'Production:', production, 'Orders:', orders);
-      console.log('Updating notification state with unread count:', notifs?.length || 0);
+      console.log('Notification counts - Total:', transformedNotifs.length, 'Samples:', samples, 'Production:', production, 'Orders:', orders);
+      console.log('Updating notification state with unread count:', transformedNotifs.length);
 
-      setNotifications(notifs || []);
+      setNotifications(transformedNotifs);
       const newCounts = {
         orders,
         products: 0,
-        total: notifs?.length || 0,
+        total: transformedNotifs.length,
         samples,
         production
       };
@@ -400,9 +429,14 @@ export default function DashboardLayout({
 
   const loadNotificationCounts = async (userId: string) => {
     try {
+      // Fetch notifications with joined order and product data
       const { data: notifs, error } = await supabase
         .from('notifications')
-        .select('*')
+        .select(`
+          *,
+          order:orders(order_number),
+          order_product:order_products(product_order_number)
+        `)
         .eq('user_id', userId)
         .eq('is_read', false)
         .order('created_at', { ascending: false });
@@ -989,29 +1023,74 @@ export default function DashboardLayout({
                       )}
 
                       {notifications.length > 0 ? (
-                        notifications.slice(0, 10).map((notif) => (
-                          <div
-                            key={notif.id}
-                            onClick={() => !notif.is_read && markAsRead(notif.id)}
-                            className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 ${
-                              !notif.is_read ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-xs sm:text-sm ${!notif.is_read ? 'font-semibold' : ''} text-gray-900 break-words`}>
-                                  {notif.message}
-                                </p>
+                        notifications.slice(0, 10).map((notif) => {
+                          // Get product order number from notification data
+                          const productOrderNum = notif.product_order_number ||
+                            notif.order_product?.product_order_number;
+                          const orderNum = notif.order_number || notif.order?.order_number;
+                          const orderId = notif.order_id;
+
+                          return (
+                            <div
+                              key={notif.id}
+                              onClick={() => {
+                                // Mark as read
+                                if (!notif.is_read) {
+                                  markAsRead(notif.id);
+                                }
+                                // Navigate to order if we have order_id
+                                if (orderId) {
+                                  setShowNotifications(false);
+                                  router.push(`/dashboard/orders/${orderId}`);
+                                }
+                              }}
+                              className={`p-3 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${
+                                !notif.is_read ? 'bg-blue-50' : ''
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  {/* Product Order Number - prominently displayed */}
+                                  {productOrderNum && (
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                      <Package className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                                      <span className="text-xs sm:text-sm font-bold text-blue-600">
+                                        {productOrderNum}
+                                      </span>
+                                      {orderNum && (
+                                        <span className="text-[10px] sm:text-xs text-gray-400">
+                                          (Order #{orderNum})
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {/* Message */}
+                                  <p className={`text-xs sm:text-sm ${!notif.is_read ? 'font-medium' : ''} text-gray-700 break-words`}>
+                                    {notif.message}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  {/* View Order Icon */}
+                                  {orderId && (
+                                    <span
+                                      className="p-1 hover:bg-blue-100 rounded transition-colors"
+                                      title="View Order"
+                                    >
+                                      <ExternalLink className="w-4 h-4 text-blue-500" />
+                                    </span>
+                                  )}
+                                  {/* Unread indicator */}
+                                  {!notif.is_read && (
+                                    <span className="w-2 h-2 bg-blue-600 rounded-full" />
+                                  )}
+                                </div>
                               </div>
-                              {!notif.is_read && (
-                                <span className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0 mt-1.5" />
-                              )}
+                              <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
+                                {formatNotificationTime(notif.created_at)}
+                              </p>
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">
-                              {formatNotificationTime(notif.created_at)}
-                            </p>
-                          </div>
-                        ))
+                          );
+                        })
                       ) : (
                         <div className="p-6 sm:p-8 text-center text-sm text-gray-500">
                           {user?.role === 'client' ? 'No orders need your attention' : 'No new notifications'}
