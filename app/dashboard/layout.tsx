@@ -1024,16 +1024,23 @@ export default function DashboardLayout({
 
                       {notifications.length > 0 ? (
                         notifications.slice(0, 10).map((notif) => {
-                          // Get product order number from notification data
+                          // Get product order number from notification data (multiple fallbacks)
                           const productOrderNum = notif.product_order_number ||
-                            notif.order_product?.product_order_number;
-                          const orderNum = notif.order_number || notif.order?.order_number;
+                            notif.order_product?.product_order_number ||
+                            notif.order_products?.product_order_number;
+                          const orderNum = notif.order_number ||
+                            notif.order?.order_number ||
+                            notif.orders?.order_number;
                           const orderId = notif.order_id;
+
+                          // Debug log
+                          console.log('Notification:', notif.id, 'order_id:', orderId, 'message:', notif.message);
 
                           return (
                             <div
                               key={notif.id}
                               onClick={() => {
+                                console.log('Clicked notification, order_id:', orderId);
                                 // Mark as read
                                 if (!notif.is_read) {
                                   markAsRead(notif.id);
@@ -1070,13 +1077,13 @@ export default function DashboardLayout({
                                   </p>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                  {/* View Order Icon */}
+                                  {/* View Order Icon - always show if we have order_id */}
                                   {orderId && (
                                     <span
-                                      className="p-1 hover:bg-blue-100 rounded transition-colors"
-                                      title="View Order"
+                                      className="p-1.5 bg-blue-100 hover:bg-blue-200 rounded transition-colors"
+                                      title="Click to view order"
                                     >
-                                      <ExternalLink className="w-4 h-4 text-blue-500" />
+                                      <ExternalLink className="w-4 h-4 text-blue-600" />
                                     </span>
                                   )}
                                   {/* Unread indicator */}
