@@ -1,5 +1,5 @@
 ﻿# CLAUDE.md - Factory Orders Management System
-# Last Updated: January 2025
+# Last Updated: January 13, 2025
 
 ## Quick Start
 
@@ -436,6 +436,37 @@ npm run build  # Check error output
 - Check role permissions
 - Verify `routed_to` field for products
 - Check browser console for errors
+
+---
+
+## Latest Session (January 13, 2025)
+
+### Completed This Session
+1. **Price Display Fix** - Added `stopPropagation` to XXXXX price displays to prevent accidental navigation when clicking prices on Orders List
+2. **Notification Bell Improvements** - Updated to show product order numbers, click-to-navigate, mark as read on click
+3. **Debug Logging Added** - Console logs for notification data to troubleshoot navigation issues
+4. **Documentation Updated** - Added sections for Notification Bell, Tracking Numbers, Arrival Alert Bar
+
+### Current Issue (IN PROGRESS)
+**Notification click-to-navigate not working as expected**
+- Clicking notification marks as read but doesn't navigate to order
+- Added debug logging to diagnose - check browser console (F12) for:
+  - `Notification: [id] order_id: [value]` - shows if order_id exists
+  - `Clicked notification, order_id: [value]` - shows what happens on click
+- If `order_id` is undefined, notifications in database don't have that field populated
+- Need to test with a NEW notification (route something to trigger one)
+
+### Files Modified This Session
+- `app/dashboard/layout.tsx` - Notification bell UI and click handlers
+- `app/dashboard/orders/page.tsx` - Price display stopPropagation fix
+- `CLAUDE.md` - Documentation updates
+- `reference/docs/PROJECT_STATUS.md` - Status updates
+
+### Next Steps
+1. Test notification click with a fresh notification (route a product)
+2. Check browser console for debug output
+3. If order_id is undefined, fix notification creation to include order_id
+4. Remove debug logging once issue is resolved
 
 ---
 
