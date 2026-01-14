@@ -272,6 +272,7 @@ export default function CreateInvoicePage() {
             routed_to,
             invoiced,
             invoice_id,
+            sample_approved,
             order_items (
               quantity
             )
@@ -284,18 +285,19 @@ export default function CreateInvoicePage() {
 
       // Check if we should only show uninvoiced products
       const uninvoicedOnly = searchParams.get('uninvoiced_only') === 'true';
-      
+
       let invoiceableProducts = orderData.order_products.filter((p: any) => {
-        const hasFeesAndRoutedToAdmin = 
-          p.routed_to === 'admin' && 
-          (parseFloat(p.client_product_price || p.product_price || 0) > 0 || parseFloat(p.sample_fee || 0) > 0);
-        
+        // Sample fee only counts if sample_approved is true
+        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+        const hasClientPrice = parseFloat(p.client_product_price || p.product_price || 0) > 0;
+        const hasFeesAndRoutedToAdmin = p.routed_to === 'admin' && (hasClientPrice || hasApprovedSampleFee);
+
         return hasFeesAndRoutedToAdmin ||
-               p.product_status === 'approved_for_production' || 
+               p.product_status === 'approved_for_production' ||
                p.product_status === 'in_production' ||
                p.product_status === 'completed';
       });
-      
+
       // If uninvoiced_only, filter out products that are already invoiced
       if (uninvoicedOnly) {
         invoiceableProducts = invoiceableProducts.filter((p: any) => !p.invoiced);
@@ -304,7 +306,10 @@ export default function CreateInvoicePage() {
       let subtotal = 0;
       invoiceableProducts.forEach((product: any) => {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        subtotal += (product.sample_fee || 0);
+        // Only add sample fee if sample is approved
+        if (product.sample_approved === true) {
+          subtotal += (product.sample_fee || 0);
+        }
         const clientPrice = product.client_product_price || product.product_price || 0;
         subtotal += (clientPrice * totalQty);
         if (product.selected_shipping_method === 'air') {
@@ -351,17 +356,20 @@ export default function CreateInvoicePage() {
 
   const calculateSelectedTotal = () => {
     if (!invoiceData) return 0;
-    
+
     const productTotal = invoiceData.products
       .filter(p => selectedProducts.includes(p.id))
       .reduce((sum, product) => {
         const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
         let productSum = 0;
-        
-        productSum += (product.sample_fee || 0);
+
+        // Only add sample fee if sample is approved
+        if (product.sample_approved === true) {
+          productSum += (product.sample_fee || 0);
+        }
         const clientPrice = product.client_product_price || product.product_price || 0;
         productSum += (clientPrice * totalQty);
-        
+
         if (product.selected_shipping_method === 'air') {
           const clientAirPrice = product.client_shipping_air_price || product.shipping_air_price || 0;
           productSum += clientAirPrice;
@@ -369,12 +377,12 @@ export default function CreateInvoicePage() {
           const clientBoatPrice = product.client_shipping_boat_price || product.shipping_boat_price || 0;
           productSum += clientBoatPrice;
         }
-        
+
         return sum + productSum;
       }, 0);
-      
+
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-    
+
     return productTotal + customTotal;
   };
 
@@ -482,8 +490,9 @@ export default function CreateInvoicePage() {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                 const clientUnitPrice = product.client_product_price || 0;
                 let rows = [];
-                
-                if (product.sample_fee > 0) {
+
+                // Only include sample fee if sample is approved
+                if (product.sample_approved === true && product.sample_fee > 0) {
                   rows.push(`
                     <tr>
                       <td>${product.description || product.product?.title || 'Product'} - Sample Fee</td>
@@ -727,7 +736,8 @@ export default function CreateInvoicePage() {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
         
-        if (product.sample_fee > 0) {
+        // Only add sample fee if sample is approved
+        if (product.sample_approved === true && product.sample_fee > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
@@ -735,7 +745,7 @@ export default function CreateInvoicePage() {
             amount: product.sample_fee
           });
         }
-        
+
         if (clientPrice > 0 && totalQty > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -744,7 +754,7 @@ export default function CreateInvoicePage() {
             amount: clientPrice * totalQty
           });
         }
-        
+
         if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -761,7 +771,7 @@ export default function CreateInvoicePage() {
           });
         }
       }
-      
+
       // Add custom items - THIS IS THE KEY FIX
       for (const item of customItems) {
         if (item.description && item.price > 0) {
@@ -951,15 +961,16 @@ export default function CreateInvoicePage() {
 
       // Create invoice items
       const invoiceItems = [];
-      
+
       for (const productId of selectedProducts) {
         const product = invoiceData?.products.find(p => p.id === productId);
         if (!product) continue;
-        
+
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
-        
-        if (product.sample_fee > 0) {
+
+        // Only add sample fee if sample is approved
+        if (product.sample_approved === true && product.sample_fee > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
@@ -967,7 +978,7 @@ export default function CreateInvoicePage() {
             amount: product.sample_fee
           });
         }
-        
+
         if (clientPrice > 0 && totalQty > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -976,7 +987,7 @@ export default function CreateInvoicePage() {
             amount: clientPrice * totalQty
           });
         }
-        
+
         if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
@@ -993,7 +1004,7 @@ export default function CreateInvoicePage() {
           });
         }
       }
-      
+
       for (const item of customItems) {
         if (item.description && item.price > 0) {
           invoiceItems.push({
@@ -1388,7 +1399,9 @@ export default function CreateInvoicePage() {
                   {invoiceData.products.map((product) => {
                     const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                     const clientUnitPrice = product.client_product_price || 0;
-                    let productTotal = (product.sample_fee || 0) + (clientUnitPrice * totalQty);
+                    // Only include sample fee if approved
+                    const approvedSampleFee = product.sample_approved === true ? (product.sample_fee || 0) : 0;
+                    let productTotal = approvedSampleFee + (clientUnitPrice * totalQty);
                     let shippingAmount = 0;
                     
                     if (product.selected_shipping_method === 'air') {
@@ -1430,7 +1443,7 @@ export default function CreateInvoicePage() {
                         </td>
                         <td className="py-3 px-2 text-right text-black font-medium">{totalQty}</td>
                         <td className="py-3 px-2 text-right text-gray-900">${clientUnitPrice.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right text-gray-900">${(product.sample_fee || 0).toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-gray-900">${approvedSampleFee.toFixed(2)}</td>
                         <td className="py-3 px-2 text-right text-gray-900">
                           {shippingAmount > 0 ? (
                             <div className="flex flex-col items-end">
@@ -1512,7 +1525,9 @@ export default function CreateInvoicePage() {
               {invoiceData.products.map((product) => {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                 const clientUnitPrice = product.client_product_price || 0;
-                let productTotal = (product.sample_fee || 0) + (clientUnitPrice * totalQty);
+                // Only include sample fee if approved
+                const approvedSampleFee = product.sample_approved === true ? (product.sample_fee || 0) : 0;
+                let productTotal = approvedSampleFee + (clientUnitPrice * totalQty);
                 let shippingAmount = 0;
                 
                 if (product.selected_shipping_method === 'air') {
@@ -1554,10 +1569,10 @@ export default function CreateInvoicePage() {
                               <span className="text-gray-900">${clientUnitPrice.toFixed(2)}</span>
                             </div>
                           )}
-                          {product.sample_fee > 0 && (
+                          {approvedSampleFee > 0 && (
                             <div className="flex justify-between">
                               <span className="text-gray-600">Sample Fee:</span>
-                              <span className="text-gray-900">${product.sample_fee.toFixed(2)}</span>
+                              <span className="text-gray-900">${approvedSampleFee.toFixed(2)}</span>
                             </div>
                           )}
                           {shippingAmount > 0 && (

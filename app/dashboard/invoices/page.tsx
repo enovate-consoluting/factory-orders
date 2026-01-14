@@ -113,6 +113,7 @@ interface ProductForApproval {
   product_order_number: string;
   description: string;
   sample_fee: number;
+  sample_approved: boolean;
   client_product_price: number;
   client_shipping_air_price: number;
   client_shipping_boat_price: number;
@@ -229,7 +230,9 @@ export default function InvoicesPage() {
       return;
     }
     fetchData();
-  }, [activeTab, isClient, clientId]);
+    // Only re-fetch on initial load or when client status changes
+    // Tab changes don't need re-fetch since we load all data upfront
+  }, [isClient, clientId]);
 
   const fetchClientId = async (email: string) => {
     try {
@@ -256,14 +259,15 @@ export default function InvoicesPage() {
     setLoading(true);
     try {
       if (!isClient) {
-        await fetchStats();
-      }
-      
-      if (activeTab === 'approval' && !isClient) {
-        await fetchOrdersForApproval();
-      } else if (activeTab === 'inproduction' && !isClient) {
-        await fetchOrdersInProduction();
+        // Fetch ALL data types to enable search across all tabs
+        await Promise.all([
+          fetchStats(),
+          fetchOrdersForApproval(),
+          fetchOrdersInProduction(),
+          fetchInvoices()
+        ]);
       } else {
+        // Clients only see their invoices
         await fetchInvoices();
       }
     } catch (error) {
@@ -277,31 +281,44 @@ export default function InvoicesPage() {
   const fetchStats = async () => {
     try {
       // Count products for approval (excluding soft-deleted)
+      // Note: Sample fees only count if sample_approved = true
       const { data: approvalData } = await supabase
         .from('order_products')
-        .select('id')
+        .select('id, client_product_price, sample_fee, sample_approved')
         .eq('routed_to', 'admin')
         .is('deleted_at', null)
-        .or('client_product_price.gt.0,sample_fee.gt.0')
         .not('product_status', 'in', '("approved_for_production","in_production","shipped","completed")');
+
+      // Filter to only count products with client price OR approved sample fees
+      const approvalCount = approvalData?.filter((p: any) => {
+        const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+        return hasClientPrice || hasApprovedSampleFee;
+      }).length || 0;
 
       // Count products in production (excluding soft-deleted)
       const { data: productionData } = await supabase
         .from('order_products')
-        .select('id')
+        .select('id, client_product_price, sample_fee, sample_approved')
         .is('deleted_at', null)
-        .or('client_product_price.gt.0,sample_fee.gt.0')
         .in('product_status', ['approved_for_production', 'in_production']);
+
+      // Filter to only count products with client price OR approved sample fees
+      const productionCount = productionData?.filter((p: any) => {
+        const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+        return hasClientPrice || hasApprovedSampleFee;
+      }).length || 0;
       
       // Count invoices by status (exclude voided)
       const { data: invoiceData } = await supabase
         .from('invoices')
         .select('id, status, voided')
         .or('voided.is.null,voided.eq.false');
-      
+
       setStats({
-        forApproval: approvalData?.length || 0,
-        inProduction: productionData?.length || 0,
+        forApproval: approvalCount,
+        inProduction: productionCount,
         drafts: invoiceData?.filter(i => i.status === 'draft').length || 0,
         sent: invoiceData?.filter(i => i.status === 'sent').length || 0,
         paid: invoiceData?.filter(i => i.status === 'paid').length || 0
@@ -329,6 +346,7 @@ export default function InvoicesPage() {
             routed_to,
             routed_at,
             sample_fee,
+            sample_approved,
             client_product_price,
             client_shipping_air_price,
             client_shipping_boat_price,
@@ -343,16 +361,20 @@ export default function InvoicesPage() {
 
       // Process orders - filter to only those with invoiceable products (NOT in production)
       const processed: OrderForApproval[] = [];
-      
+
       data?.forEach(order => {
-        const invoiceableProducts = order.order_products?.filter((p: any) => 
-          p.routed_to === 'admin' && 
-          (parseFloat(p.sample_fee || 0) > 0 || parseFloat(p.client_product_price || 0) > 0) &&
-          p.product_status !== 'approved_for_production' &&
-          p.product_status !== 'in_production' &&
-          p.product_status !== 'shipped' &&
-          p.product_status !== 'completed'
-        ) || [];
+        // Sample fee only counts if sample_approved is true
+        const invoiceableProducts = order.order_products?.filter((p: any) => {
+          const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+          const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+
+          return p.routed_to === 'admin' &&
+            (hasApprovedSampleFee || hasClientPrice) &&
+            p.product_status !== 'approved_for_production' &&
+            p.product_status !== 'in_production' &&
+            p.product_status !== 'shipped' &&
+            p.product_status !== 'completed';
+        }) || [];
 
         if (invoiceableProducts.length === 0) return;
 
@@ -361,10 +383,13 @@ export default function InvoicesPage() {
 
         const products: ProductForApproval[] = invoiceableProducts.map((p: any) => {
           const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
-          
-          let productTotal = parseFloat(p.sample_fee || 0);
+
+          // Only include sample fee if sample is approved
+          const approvedSampleFee = p.sample_approved === true ? parseFloat(p.sample_fee || 0) : 0;
+
+          let productTotal = approvedSampleFee;
           productTotal += parseFloat(p.client_product_price || 0) * totalQty;
-          
+
           if (p.selected_shipping_method === 'air') {
             productTotal += parseFloat(p.client_shipping_air_price || 0);
           } else if (p.selected_shipping_method === 'boat') {
@@ -384,7 +409,8 @@ export default function InvoicesPage() {
             id: p.id,
             product_order_number: p.product_order_number,
             description: p.description || p.product?.title || 'Product',
-            sample_fee: parseFloat(p.sample_fee || 0),
+            sample_fee: approvedSampleFee, // Only pass approved sample fee
+            sample_approved: p.sample_approved === true,
             client_product_price: parseFloat(p.client_product_price || 0),
             client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
             client_shipping_boat_price: parseFloat(p.client_shipping_boat_price || 0),
@@ -439,6 +465,7 @@ export default function InvoicesPage() {
             routed_to,
             routed_at,
             sample_fee,
+            sample_approved,
             client_product_price,
             client_shipping_air_price,
             client_shipping_boat_price,
@@ -453,12 +480,16 @@ export default function InvoicesPage() {
 
       // Process orders - filter to only those with products IN PRODUCTION
       const processed: OrderForApproval[] = [];
-      
+
       data?.forEach(order => {
-        const productionProducts = order.order_products?.filter((p: any) => 
-          (parseFloat(p.sample_fee || 0) > 0 || parseFloat(p.client_product_price || 0) > 0) &&
-          (p.product_status === 'approved_for_production' || p.product_status === 'in_production')
-        ) || [];
+        // Sample fee only counts if sample_approved is true
+        const productionProducts = order.order_products?.filter((p: any) => {
+          const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+          const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+
+          return (hasApprovedSampleFee || hasClientPrice) &&
+            (p.product_status === 'approved_for_production' || p.product_status === 'in_production');
+        }) || [];
 
         if (productionProducts.length === 0) return;
 
@@ -467,10 +498,13 @@ export default function InvoicesPage() {
 
         const products: ProductForApproval[] = productionProducts.map((p: any) => {
           const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
-          
-          let productTotal = parseFloat(p.sample_fee || 0);
+
+          // Only include sample fee if sample is approved
+          const approvedSampleFee = p.sample_approved === true ? parseFloat(p.sample_fee || 0) : 0;
+
+          let productTotal = approvedSampleFee;
           productTotal += parseFloat(p.client_product_price || 0) * totalQty;
-          
+
           if (p.selected_shipping_method === 'air') {
             productTotal += parseFloat(p.client_shipping_air_price || 0);
           } else if (p.selected_shipping_method === 'boat') {
@@ -490,7 +524,8 @@ export default function InvoicesPage() {
             id: p.id,
             product_order_number: p.product_order_number,
             description: p.description || p.product?.title || 'Product',
-            sample_fee: parseFloat(p.sample_fee || 0),
+            sample_fee: approvedSampleFee, // Only pass approved sample fee
+            sample_approved: p.sample_approved === true,
             client_product_price: parseFloat(p.client_product_price || 0),
             client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
             client_shipping_boat_price: parseFloat(p.client_shipping_boat_price || 0),
@@ -544,17 +579,9 @@ export default function InvoicesPage() {
           .eq('client_id', clientId)
           .eq('status', 'sent')
           .or('voided.is.null,voided.eq.false');
-      } else {
-        // Admin filters - exclude voided from normal views
-        if (activeTab === 'drafts') {
-          query = query.eq('status', 'draft').or('voided.is.null,voided.eq.false');
-        } else if (activeTab === 'sent') {
-          query = query.eq('status', 'sent').or('voided.is.null,voided.eq.false');
-        } else if (activeTab === 'paid') {
-          query = query.eq('status', 'paid').or('voided.is.null,voided.eq.false');
-        }
-        // 'all' tab shows everything including voided
       }
+      // For admins, fetch ALL invoices - we filter by status client-side
+      // This allows search to work across all tabs
 
       const { data, error } = await query;
       if (error) throw error;
@@ -670,36 +697,64 @@ export default function InvoicesPage() {
     }
   };
 
-  // Filter based on search
-  const filteredOrders = ordersForApproval.filter(order => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
+  // Helper function to filter orders by search term
+  const filterOrderBySearch = (order: OrderForApproval, search: string) => {
     return (
       order.order_name?.toLowerCase().includes(search) ||
       order.order_number?.toLowerCase().includes(search) ||
       order.client?.name?.toLowerCase().includes(search)
     );
-  });
+  };
 
-  const filteredProductionOrders = ordersInProduction.filter(order => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      order.order_name?.toLowerCase().includes(search) ||
-      order.order_number?.toLowerCase().includes(search) ||
-      order.client?.name?.toLowerCase().includes(search)
-    );
-  });
-
-  const filteredInvoices = invoices.filter(invoice => {
-    if (!searchTerm) return true;
-    const search = searchTerm.toLowerCase();
+  // Helper function to filter invoices by search term
+  const filterInvoiceBySearch = (invoice: Invoice, search: string) => {
     return (
       invoice.invoice_number?.toLowerCase().includes(search) ||
       invoice.order?.order_name?.toLowerCase().includes(search) ||
       invoice.order?.order_number?.toLowerCase().includes(search) ||
       invoice.client?.name?.toLowerCase().includes(search)
     );
+  };
+
+  // When searching, combine ALL orders from both tabs and search across them
+  const isSearching = searchTerm.trim().length > 0;
+  const search = searchTerm.toLowerCase();
+
+  // Combine all orders when searching, otherwise filter by current tab
+  const filteredOrders = isSearching
+    ? [...ordersForApproval, ...ordersInProduction].filter(order => filterOrderBySearch(order, search))
+    : ordersForApproval.filter(order => filterOrderBySearch(order, search));
+
+  const filteredProductionOrders = isSearching
+    ? [...ordersForApproval, ...ordersInProduction].filter(order => filterOrderBySearch(order, search))
+    : ordersInProduction.filter(order => filterOrderBySearch(order, search));
+
+  // When searching invoices, search across ALL invoices (all statuses)
+  // When not searching, filter by current tab status
+  const filteredInvoices = invoices.filter(invoice => {
+    // When searching, skip status filter - search across ALL invoices
+    if (isSearching) {
+      return filterInvoiceBySearch(invoice, search);
+    }
+
+    // When not searching, filter by tab status
+    // Exclude voided from normal views (except 'all' tab)
+    if (activeTab !== 'all' && invoice.voided) {
+      return false;
+    }
+
+    switch (activeTab) {
+      case 'drafts':
+        return invoice.status === 'draft';
+      case 'sent':
+        return invoice.status === 'sent';
+      case 'paid':
+        return invoice.status === 'paid';
+      case 'all':
+        return true; // Show everything including voided
+      default:
+        return true;
+    }
   });
 
   const getStatusBadge = (invoice: Invoice) => {
