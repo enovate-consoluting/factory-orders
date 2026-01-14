@@ -205,6 +205,11 @@ export default function CreateInvoicePage() {
   const [invoiceReserved, setInvoiceReserved] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
+  const [includedSampleFees, setIncludedSampleFees] = useState<string[]>([]);
+  // Order-level sample fee
+  const [orderSampleFee, setOrderSampleFee] = useState<number>(0);
+  const [orderSampleNotes, setOrderSampleNotes] = useState<string>('');
+  const [includeOrderSampleFee, setIncludeOrderSampleFee] = useState(true);
   
   useEffect(() => {
     if (orderId) {
@@ -287,10 +292,10 @@ export default function CreateInvoicePage() {
       const uninvoicedOnly = searchParams.get('uninvoiced_only') === 'true';
 
       let invoiceableProducts = orderData.order_products.filter((p: any) => {
-        // Sample fees require: fee > 0 AND sample_approved = true
-        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+        // Sample fees: just check if fee > 0 (removed sample_approved requirement)
+        const hasSampleFee = parseFloat(p.sample_fee || 0) > 0;
         const hasClientPrice = parseFloat(p.client_product_price || p.product_price || 0) > 0;
-        const hasFeesAndRoutedToAdmin = p.routed_to === 'admin' && (hasClientPrice || hasApprovedSampleFee);
+        const hasFeesAndRoutedToAdmin = p.routed_to === 'admin' && (hasClientPrice || hasSampleFee);
 
         return hasFeesAndRoutedToAdmin ||
                p.product_status === 'approved_for_production' ||
@@ -306,9 +311,10 @@ export default function CreateInvoicePage() {
       let subtotal = 0;
       invoiceableProducts.forEach((product: any) => {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        // Only add sample fee if approved
-        if (product.sample_approved === true) {
-          subtotal += (product.sample_fee || 0);
+        // Add sample fee if > 0 (no longer requires approval)
+        const sampleFee = parseFloat(product.sample_fee || 0);
+        if (sampleFee > 0) {
+          subtotal += sampleFee;
         }
         const clientPrice = product.client_product_price || product.product_price || 0;
         subtotal += (clientPrice * totalQty);
@@ -344,6 +350,18 @@ export default function CreateInvoicePage() {
       });
 
       setSelectedProducts(invoiceableProducts.map((p: any) => p.id));
+      // Initialize product-level sample fees - include by default if they have a value > 0
+      const productsWithSampleFees = invoiceableProducts
+        .filter((p: any) => parseFloat(p.sample_fee || 0) > 0)
+        .map((p: any) => p.id);
+      setIncludedSampleFees(productsWithSampleFees);
+
+      // Set ORDER-level sample fee (use client_sample_fee for client invoices)
+      const clientSampleFee = parseFloat(orderData.client_sample_fee || 0);
+      setOrderSampleFee(clientSampleFee);
+      setOrderSampleNotes(orderData.sample_notes || '');
+      setIncludeOrderSampleFee(clientSampleFee > 0);
+
       setBillToName(orderData.client.name || '');
       setBillToEmail(orderData.client.email || '');
     } catch (error) {
@@ -357,15 +375,24 @@ export default function CreateInvoicePage() {
   const calculateSelectedTotal = () => {
     if (!invoiceData) return 0;
 
+    // Add ORDER-level sample fee if checkbox is checked
+    let orderSampleTotal = 0;
+    if (includeOrderSampleFee && orderSampleFee > 0) {
+      orderSampleTotal = orderSampleFee;
+    }
+
     const productTotal = invoiceData.products
       .filter(p => selectedProducts.includes(p.id))
       .reduce((sum, product) => {
         const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
         let productSum = 0;
 
-        // Only add sample fee if approved
-        if (product.sample_approved === true) {
-          productSum += (product.sample_fee || 0);
+        // Add product-level sample fee if checkbox is checked for this product
+        if (includedSampleFees.includes(product.id)) {
+          const sampleFee = parseFloat(product.sample_fee || 0);
+          if (sampleFee > 0) {
+            productSum += sampleFee;
+          }
         }
         const clientPrice = product.client_product_price || product.product_price || 0;
         productSum += (clientPrice * totalQty);
@@ -383,7 +410,7 @@ export default function CreateInvoicePage() {
 
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
-    return productTotal + customTotal;
+    return orderSampleTotal + productTotal + customTotal;
   };
 
   // Generate PDF HTML content
@@ -484,66 +511,64 @@ export default function CreateInvoicePage() {
             </tr>
           </thead>
           <tbody>
-            ${invoiceData?.products
-              .filter(p => selectedProducts.includes(p.id))
-              .sort((a, b) => {
-                // Sort: products with approved sample fees first
-                const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
-                const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
-                if (aHasSampleFee && !bHasSampleFee) return -1;
-                if (!aHasSampleFee && bHasSampleFee) return 1;
-                return 0;
-              })
-              .map(product => {
-                const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-                const clientUnitPrice = product.client_product_price || 0;
-                let rows = [];
+            ${(() => {
+              const rows: string[] = [];
 
-                // Only include sample fee if sample is approved
-                if (product.sample_approved === true && product.sample_fee > 0) {
-                  rows.push(`
-                    <tr>
-                      <td>${product.description || product.product?.title || 'Product'} - Sample Fee</td>
-                      <td class="text-right">1</td>
-                      <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
-                      <td class="text-right">$${product.sample_fee.toFixed(2)}</td>
-                    </tr>
-                  `);
-                }
-                
-                if (clientUnitPrice > 0 && totalQty > 0) {
-                  rows.push(`
-                    <tr>
-                      <td>${product.description || product.product?.title || 'Product'} - Production</td>
-                      <td class="text-right">${totalQty}</td>
-                      <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
-                      <td class="text-right">$${(clientUnitPrice * totalQty).toFixed(2)}</td>
-                    </tr>
-                  `);
-                }
-                
-                if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
-                  rows.push(`
-                    <tr>
-                      <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
-                      <td class="text-right">1</td>
-                      <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
-                      <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
-                    </tr>
-                  `);
-                } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
-                  rows.push(`
-                    <tr>
-                      <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
-                      <td class="text-right">1</td>
-                      <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
-                      <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
-                    </tr>
-                  `);
-                }
-                
-                return rows.join('');
-              }).join('')}
+              // ORDER-LEVEL SAMPLE FEE - Always at the very top
+              if (includeOrderSampleFee && orderSampleFee > 0) {
+                rows.push(`
+                  <tr style="background-color: #fef3c7;">
+                    <td><strong>Sample Fee</strong>${orderSampleNotes ? `<br><span style="font-size: 11px; color: #666; font-weight: normal;">${orderSampleNotes.replace(/\n/g, '<br>')}</span>` : ''}</td>
+                    <td class="text-right">1</td>
+                    <td class="text-right">$${orderSampleFee.toFixed(2)}</td>
+                    <td class="text-right">$${orderSampleFee.toFixed(2)}</td>
+                  </tr>
+                `);
+              }
+
+              // Then product rows
+              invoiceData?.products
+                .filter(p => selectedProducts.includes(p.id))
+                .forEach(product => {
+                  const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+                  const clientUnitPrice = product.client_product_price || 0;
+
+                  // Add production costs
+                  if (clientUnitPrice > 0 && totalQty > 0) {
+                    rows.push(`
+                      <tr>
+                        <td>${product.description || product.product?.title || 'Product'} - Production</td>
+                        <td class="text-right">${totalQty}</td>
+                        <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
+                        <td class="text-right">$${(clientUnitPrice * totalQty).toFixed(2)}</td>
+                      </tr>
+                    `);
+                  }
+
+                  // Add shipping
+                  if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
+                    rows.push(`
+                      <tr>
+                        <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
+                        <td class="text-right">1</td>
+                        <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+                        <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
+                      </tr>
+                    `);
+                  } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
+                    rows.push(`
+                      <tr>
+                        <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
+                        <td class="text-right">1</td>
+                        <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+                        <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
+                      </tr>
+                    `);
+                  }
+                });
+
+              return rows.join('');
+            })()}
             
             ${customItems.map(item => `
               <tr>
@@ -735,7 +760,17 @@ export default function CreateInvoicePage() {
 
       // Create invoice items (including custom items!)
       const invoiceItems = [];
-      
+
+      // ORDER-LEVEL SAMPLE FEE - Add first
+      if (includeOrderSampleFee && orderSampleFee > 0) {
+        invoiceItems.push({
+          invoice_id: invoiceId,
+          order_product_id: null,
+          description: `Sample Fee${orderSampleNotes ? ` - ${orderSampleNotes.split('\n')[0]}` : ''}`,
+          amount: orderSampleFee
+        });
+      }
+
       // Add selected products
       for (const productId of selectedProducts) {
         const product = invoiceData?.products.find((p: any) => p.id === productId);
@@ -743,14 +778,15 @@ export default function CreateInvoicePage() {
         
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
-        
-        // Only add sample fee if sample is approved
-        if (product.sample_approved === true && product.sample_fee > 0) {
+        const sampleFee = parseFloat(product.sample_fee || 0);
+
+        // Add sample fee if checkbox is checked and fee > 0
+        if (includedSampleFees.includes(product.id) && sampleFee > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
             description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
-            amount: product.sample_fee
+            amount: sampleFee
           });
         }
 
@@ -780,7 +816,7 @@ export default function CreateInvoicePage() {
         }
       }
 
-      // Add custom items - THIS IS THE KEY FIX
+      // Add custom items
       for (const item of customItems) {
         if (item.description && item.price > 0) {
           invoiceItems.push({
@@ -970,22 +1006,22 @@ export default function CreateInvoicePage() {
       // Create invoice items
       const invoiceItems = [];
 
+      // ORDER-LEVEL SAMPLE FEE - Add first
+      if (includeOrderSampleFee && orderSampleFee > 0) {
+        invoiceItems.push({
+          invoice_id: invoiceId,
+          order_product_id: null,
+          description: `Sample Fee${orderSampleNotes ? ` - ${orderSampleNotes.split('\n')[0]}` : ''}`,
+          amount: orderSampleFee
+        });
+      }
+
       for (const productId of selectedProducts) {
         const product = invoiceData?.products.find(p => p.id === productId);
         if (!product) continue;
 
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
-
-        // Only add sample fee if sample is approved
-        if (product.sample_approved === true && product.sample_fee > 0) {
-          invoiceItems.push({
-            invoice_id: invoiceId,
-            order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
-            amount: product.sample_fee
-          });
-        }
 
         if (clientPrice > 0 && totalQty > 0) {
           invoiceItems.push({
@@ -1398,36 +1434,64 @@ export default function CreateInvoicePage() {
                     <th className="text-left py-3 px-2 text-sm font-medium text-gray-700">Product</th>
                     <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Qty</th>
                     <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Unit Price</th>
-                    <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Sample Fee</th>
+                    <th className="text-center py-3 px-2 text-sm font-medium text-gray-700">Sample Fee</th>
                     <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Shipping</th>
                     <th className="text-right py-3 px-2 text-sm font-medium text-gray-700">Total</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Sort products: those with approved sample fees first */}
+                  {/* ORDER-LEVEL SAMPLE FEE - Always at the top */}
+                  {orderSampleFee > 0 && (
+                    <tr className={`border-b bg-amber-50 ${!includeOrderSampleFee ? 'opacity-50' : ''}`}>
+                      <td className="py-3 px-2">
+                        <input
+                          type="checkbox"
+                          checked={includeOrderSampleFee}
+                          onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
+                          className="w-4 h-4 text-amber-600"
+                        />
+                      </td>
+                      <td className="py-3 px-2">
+                        <div>
+                          <p className="font-bold text-amber-800">Sample Fee</p>
+                          {orderSampleNotes && (
+                            <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-right text-black font-medium">1</td>
+                      <td className="py-3 px-2 text-right text-amber-800 font-medium">${orderSampleFee.toFixed(2)}</td>
+                      <td className="py-3 px-2 text-center text-gray-400">-</td>
+                      <td className="py-3 px-2 text-right text-gray-400">-</td>
+                      <td className="py-3 px-2 text-right font-bold text-amber-800">${orderSampleFee.toFixed(2)}</td>
+                    </tr>
+                  )}
+                  {/* Products */}
                   {[...invoiceData.products].sort((a, b) => {
-                    const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
-                    const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
+                    const aHasSampleFee = parseFloat(a.sample_fee || 0) > 0;
+                    const bHasSampleFee = parseFloat(b.sample_fee || 0) > 0;
                     if (aHasSampleFee && !bHasSampleFee) return -1;
                     if (!aHasSampleFee && bHasSampleFee) return 1;
                     return 0;
                   }).map((product) => {
                     const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                     const clientUnitPrice = product.client_product_price || 0;
-                    // Only include sample fee if approved
-                    const approvedSampleFee = product.sample_approved === true ? (product.sample_fee || 0) : 0;
-                    let productTotal = approvedSampleFee + (clientUnitPrice * totalQty);
+                    const sampleFee = parseFloat(product.sample_fee || 0);
+                    const isSampleFeeIncluded = includedSampleFees.includes(product.id);
+                    // Only include sample fee in total if checkbox is checked
+                    const includedSampleFeeAmount = isSampleFeeIncluded ? sampleFee : 0;
+                    let productTotal = includedSampleFeeAmount + (clientUnitPrice * totalQty);
                     let shippingAmount = 0;
-                    
+
                     if (product.selected_shipping_method === 'air') {
                       shippingAmount = product.client_shipping_air_price || 0;
                     } else if (product.selected_shipping_method === 'boat') {
                       shippingAmount = product.client_shipping_boat_price || 0;
                     }
-                    
+
                     productTotal += shippingAmount;
                     const isSelected = selectedProducts.includes(product.id);
-                    
+
                     return (
                       <tr key={product.id} className={`border-b ${!isSelected ? 'opacity-50' : ''}`}>
                         <td className="py-3 px-2">
@@ -1458,7 +1522,30 @@ export default function CreateInvoicePage() {
                         </td>
                         <td className="py-3 px-2 text-right text-black font-medium">{totalQty}</td>
                         <td className="py-3 px-2 text-right text-gray-900">${clientUnitPrice.toFixed(2)}</td>
-                        <td className="py-3 px-2 text-right text-gray-900">${approvedSampleFee.toFixed(2)}</td>
+                        <td className="py-3 px-2">
+                          {sampleFee > 0 ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isSampleFeeIncluded}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setIncludedSampleFees([...includedSampleFees, product.id]);
+                                  } else {
+                                    setIncludedSampleFees(includedSampleFees.filter(id => id !== product.id));
+                                  }
+                                }}
+                                className="w-4 h-4 text-amber-600"
+                                title="Include sample fee in invoice"
+                              />
+                              <span className={`font-medium ${isSampleFeeIncluded ? 'text-amber-700' : 'text-gray-400 line-through'}`}>
+                                ${sampleFee.toFixed(2)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-center block">-</span>
+                          )}
+                        </td>
                         <td className="py-3 px-2 text-right text-gray-900">
                           {shippingAmount > 0 ? (
                             <div className="flex flex-col items-end">
@@ -1537,30 +1624,55 @@ export default function CreateInvoicePage() {
             
             {/* Mobile Cards */}
             <div className="lg:hidden space-y-2">
-              {/* Sort products: those with approved sample fees first */}
+              {/* ORDER-LEVEL SAMPLE FEE - Always at the top */}
+              {orderSampleFee > 0 && (
+                <div className={`border-2 border-amber-400 rounded-lg p-2.5 bg-amber-50 ${!includeOrderSampleFee ? 'opacity-50' : ''}`}>
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={includeOrderSampleFee}
+                      onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
+                      className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-amber-800 text-sm">Sample Fee</p>
+                      {orderSampleNotes && (
+                        <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
+                      )}
+                      <div className="mt-2 flex justify-between border-t border-amber-300 pt-1">
+                        <span className="font-medium text-amber-800 text-sm">Total:</span>
+                        <span className="font-bold text-amber-800 text-sm">${orderSampleFee.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Products */}
               {[...invoiceData.products].sort((a, b) => {
-                const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
-                const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
+                const aHasSampleFee = parseFloat(a.sample_fee || 0) > 0;
+                const bHasSampleFee = parseFloat(b.sample_fee || 0) > 0;
                 if (aHasSampleFee && !bHasSampleFee) return -1;
                 if (!aHasSampleFee && bHasSampleFee) return 1;
                 return 0;
               }).map((product) => {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                 const clientUnitPrice = product.client_product_price || 0;
-                // Only include sample fee if approved
-                const approvedSampleFee = product.sample_approved === true ? (product.sample_fee || 0) : 0;
-                let productTotal = approvedSampleFee + (clientUnitPrice * totalQty);
+                const sampleFee = parseFloat(product.sample_fee || 0);
+                const isSampleFeeIncluded = includedSampleFees.includes(product.id);
+                // Only include sample fee in total if checkbox is checked
+                const includedSampleFeeAmount = isSampleFeeIncluded ? sampleFee : 0;
+                let productTotal = includedSampleFeeAmount + (clientUnitPrice * totalQty);
                 let shippingAmount = 0;
-                
+
                 if (product.selected_shipping_method === 'air') {
                   shippingAmount = product.client_shipping_air_price || 0;
                 } else if (product.selected_shipping_method === 'boat') {
                   shippingAmount = product.client_shipping_boat_price || 0;
                 }
-                
+
                 productTotal += shippingAmount;
                 const isSelected = selectedProducts.includes(product.id);
-                
+
                 return (
                   <div key={product.id} className={`border rounded-lg p-2.5 ${!isSelected ? 'opacity-50 bg-gray-50' : 'bg-white'}`}>
                     <div className="flex items-start gap-2">
@@ -1579,7 +1691,7 @@ export default function CreateInvoicePage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-900 text-sm leading-tight">{product.description || product.product?.title}</p>
                         <p className="text-xs text-gray-600 mt-0.5">{product.product_order_number}</p>
-                        
+
                         <div className="mt-2 space-y-1 text-xs">
                           <div className="flex justify-between">
                             <span className="text-gray-600">Qty:</span>
@@ -1591,10 +1703,26 @@ export default function CreateInvoicePage() {
                               <span className="text-gray-900">${clientUnitPrice.toFixed(2)}</span>
                             </div>
                           )}
-                          {approvedSampleFee > 0 && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">Sample Fee:</span>
-                              <span className="text-gray-900">${approvedSampleFee.toFixed(2)}</span>
+                          {sampleFee > 0 && (
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isSampleFeeIncluded}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setIncludedSampleFees([...includedSampleFees, product.id]);
+                                    } else {
+                                      setIncludedSampleFees(includedSampleFees.filter(id => id !== product.id));
+                                    }
+                                  }}
+                                  className="w-3.5 h-3.5 text-amber-600"
+                                />
+                                <span className="text-gray-600">Sample Fee:</span>
+                              </div>
+                              <span className={`${isSampleFeeIncluded ? 'text-amber-700 font-medium' : 'text-gray-400 line-through'}`}>
+                                ${sampleFee.toFixed(2)}
+                              </span>
                             </div>
                           )}
                           {shippingAmount > 0 && (
