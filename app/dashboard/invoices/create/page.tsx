@@ -287,7 +287,7 @@ export default function CreateInvoicePage() {
       const uninvoicedOnly = searchParams.get('uninvoiced_only') === 'true';
 
       let invoiceableProducts = orderData.order_products.filter((p: any) => {
-        // Sample fee only counts if sample_approved is true
+        // Sample fees require: fee > 0 AND sample_approved = true
         const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
         const hasClientPrice = parseFloat(p.client_product_price || p.product_price || 0) > 0;
         const hasFeesAndRoutedToAdmin = p.routed_to === 'admin' && (hasClientPrice || hasApprovedSampleFee);
@@ -306,7 +306,7 @@ export default function CreateInvoicePage() {
       let subtotal = 0;
       invoiceableProducts.forEach((product: any) => {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-        // Only add sample fee if sample is approved
+        // Only add sample fee if approved
         if (product.sample_approved === true) {
           subtotal += (product.sample_fee || 0);
         }
@@ -363,7 +363,7 @@ export default function CreateInvoicePage() {
         const totalQty = product.order_items.reduce((qty: number, item: any) => qty + item.quantity, 0);
         let productSum = 0;
 
-        // Only add sample fee if sample is approved
+        // Only add sample fee if approved
         if (product.sample_approved === true) {
           productSum += (product.sample_fee || 0);
         }
@@ -486,6 +486,14 @@ export default function CreateInvoicePage() {
           <tbody>
             ${invoiceData?.products
               .filter(p => selectedProducts.includes(p.id))
+              .sort((a, b) => {
+                // Sort: products with approved sample fees first
+                const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
+                const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
+                if (aHasSampleFee && !bHasSampleFee) return -1;
+                if (!aHasSampleFee && bHasSampleFee) return 1;
+                return 0;
+              })
               .map(product => {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                 const clientUnitPrice = product.client_product_price || 0;
@@ -1396,7 +1404,14 @@ export default function CreateInvoicePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {invoiceData.products.map((product) => {
+                  {/* Sort products: those with approved sample fees first */}
+                  {[...invoiceData.products].sort((a, b) => {
+                    const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
+                    const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
+                    if (aHasSampleFee && !bHasSampleFee) return -1;
+                    if (!aHasSampleFee && bHasSampleFee) return 1;
+                    return 0;
+                  }).map((product) => {
                     const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                     const clientUnitPrice = product.client_product_price || 0;
                     // Only include sample fee if approved
@@ -1522,7 +1537,14 @@ export default function CreateInvoicePage() {
             
             {/* Mobile Cards */}
             <div className="lg:hidden space-y-2">
-              {invoiceData.products.map((product) => {
+              {/* Sort products: those with approved sample fees first */}
+              {[...invoiceData.products].sort((a, b) => {
+                const aHasSampleFee = a.sample_approved === true && (a.sample_fee || 0) > 0;
+                const bHasSampleFee = b.sample_approved === true && (b.sample_fee || 0) > 0;
+                if (aHasSampleFee && !bHasSampleFee) return -1;
+                if (!aHasSampleFee && bHasSampleFee) return 1;
+                return 0;
+              }).map((product) => {
                 const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                 const clientUnitPrice = product.client_product_price || 0;
                 // Only include sample fee if approved

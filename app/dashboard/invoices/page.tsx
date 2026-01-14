@@ -281,7 +281,7 @@ export default function InvoicesPage() {
   const fetchStats = async () => {
     try {
       // Count products for approval (excluding soft-deleted)
-      // Note: Sample fees only count if sample_approved = true
+      // Sample fees require: fee > 0 AND sample_approved = true
       const { data: approvalData } = await supabase
         .from('order_products')
         .select('id, client_product_price, sample_fee, sample_approved')
@@ -363,7 +363,7 @@ export default function InvoicesPage() {
       const processed: OrderForApproval[] = [];
 
       data?.forEach(order => {
-        // Sample fee only counts if sample_approved is true
+        // Sample fees require: fee > 0 AND sample_approved = true
         const invoiceableProducts = order.order_products?.filter((p: any) => {
           const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
           const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
@@ -384,7 +384,7 @@ export default function InvoicesPage() {
         const products: ProductForApproval[] = invoiceableProducts.map((p: any) => {
           const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
 
-          // Only include sample fee if sample is approved
+          // Only include sample fee if approved
           const approvedSampleFee = p.sample_approved === true ? parseFloat(p.sample_fee || 0) : 0;
 
           let productTotal = approvedSampleFee;
@@ -409,7 +409,7 @@ export default function InvoicesPage() {
             id: p.id,
             product_order_number: p.product_order_number,
             description: p.description || p.product?.title || 'Product',
-            sample_fee: approvedSampleFee, // Only pass approved sample fee
+            sample_fee: approvedSampleFee,
             sample_approved: p.sample_approved === true,
             client_product_price: parseFloat(p.client_product_price || 0),
             client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
@@ -482,7 +482,7 @@ export default function InvoicesPage() {
       const processed: OrderForApproval[] = [];
 
       data?.forEach(order => {
-        // Sample fee only counts if sample_approved is true
+        // Sample fees require: fee > 0 AND sample_approved = true
         const productionProducts = order.order_products?.filter((p: any) => {
           const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
           const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
@@ -499,7 +499,7 @@ export default function InvoicesPage() {
         const products: ProductForApproval[] = productionProducts.map((p: any) => {
           const totalQty = p.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
 
-          // Only include sample fee if sample is approved
+          // Only include sample fee if approved
           const approvedSampleFee = p.sample_approved === true ? parseFloat(p.sample_fee || 0) : 0;
 
           let productTotal = approvedSampleFee;
@@ -524,7 +524,7 @@ export default function InvoicesPage() {
             id: p.id,
             product_order_number: p.product_order_number,
             description: p.description || p.product?.title || 'Product',
-            sample_fee: approvedSampleFee, // Only pass approved sample fee
+            sample_fee: approvedSampleFee,
             sample_approved: p.sample_approved === true,
             client_product_price: parseFloat(p.client_product_price || 0),
             client_shipping_air_price: parseFloat(p.client_shipping_air_price || 0),
