@@ -210,6 +210,12 @@ export default function CreateInvoicePage() {
   const [orderSampleFee, setOrderSampleFee] = useState<number>(0);
   const [orderSampleNotes, setOrderSampleNotes] = useState<string>('');
   const [includeOrderSampleFee, setIncludeOrderSampleFee] = useState(true);
+  // Sample fee payment tracking
+  const [sampleFeePaid, setSampleFeePaid] = useState(false);
+  const [sampleFeePaidAt, setSampleFeePaidAt] = useState<string | null>(null);
+  const [sampleFeePaidByName, setSampleFeePaidByName] = useState<string | null>(null);
+  const [showMarkAsPaidForm, setShowMarkAsPaidForm] = useState(false);
+  const [markingAsPaid, setMarkingAsPaid] = useState(false);
   
   useEffect(() => {
     if (orderId) {
@@ -360,7 +366,15 @@ export default function CreateInvoicePage() {
       const clientSampleFee = parseFloat(orderData.client_sample_fee || 0);
       setOrderSampleFee(clientSampleFee);
       setOrderSampleNotes(orderData.sample_notes || '');
-      setIncludeOrderSampleFee(clientSampleFee > 0);
+
+      // Check if sample fee is already paid
+      const isPaid = orderData.sample_fee_paid === true;
+      setSampleFeePaid(isPaid);
+      setSampleFeePaidAt(orderData.sample_fee_paid_at || null);
+      setSampleFeePaidByName(orderData.sample_fee_paid_by_name || null);
+
+      // Only include sample fee if it exists AND is not already paid
+      setIncludeOrderSampleFee(clientSampleFee > 0 && !isPaid);
 
       setBillToName(orderData.client.name || '');
       setBillToEmail(orderData.client.email || '');
@@ -411,6 +425,51 @@ export default function CreateInvoicePage() {
     const customTotal = customItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
 
     return orderSampleTotal + productTotal + customTotal;
+  };
+
+  // Mark sample fee as paid manually
+  const markSampleFeeAsPaid = async () => {
+    if (!orderId || !invoiceData) return;
+
+    try {
+      setMarkingAsPaid(true);
+
+      // Get current user info from localStorage
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const userName = user?.name || user?.email || 'Unknown';
+      const userId = user?.id || null;
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          sample_fee_paid: true,
+          sample_fee_paid_at: new Date().toISOString(),
+          sample_fee_paid_by: userId,
+          sample_fee_paid_by_name: userName
+        })
+        .eq('id', orderId);
+
+      if (error) {
+        console.error('Error marking sample fee as paid:', error);
+        notify.error('Failed to mark sample fee as paid');
+        return;
+      }
+
+      // Update local state
+      setSampleFeePaid(true);
+      setSampleFeePaidAt(new Date().toISOString());
+      setSampleFeePaidByName(userName);
+      setIncludeOrderSampleFee(false);
+      setShowMarkAsPaidForm(false);
+
+      notify.success('Sample fee marked as paid');
+    } catch (err) {
+      console.error('Error:', err);
+      notify.error('Failed to mark sample fee as paid');
+    } finally {
+      setMarkingAsPaid(false);
+    }
   };
 
   // Generate PDF HTML content
@@ -649,8 +708,8 @@ export default function CreateInvoicePage() {
 
   // FIXED: handleShowQRCode with detailed error logging
   const handleShowQRCode = async () => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
+    if (selectedProducts.length === 0 && customItems.length === 0 && !(includeOrderSampleFee && orderSampleFee > 0)) {
+      notify.error('Please select at least one item to invoice');
       return;
     }
 
@@ -864,8 +923,8 @@ export default function CreateInvoicePage() {
   };
 
   const handleDownloadInvoice = () => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
+    if (selectedProducts.length === 0 && customItems.length === 0 && !(includeOrderSampleFee && orderSampleFee > 0)) {
+      notify.error('Please select at least one item to invoice');
       return;
     }
 
@@ -901,8 +960,8 @@ export default function CreateInvoicePage() {
   };
 
   const handleCreateInvoice = async (status: 'draft' | 'sent', sendData?: any) => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
+    if (selectedProducts.length === 0 && customItems.length === 0 && !(includeOrderSampleFee && orderSampleFee > 0)) {
+      notify.error('Please select at least one item to invoice');
       return;
     }
 
@@ -1080,9 +1139,23 @@ export default function CreateInvoicePage() {
             invoice_id: invoiceId
           })
           .in('id', selectedProducts);
-        
+
         if (markError) {
           console.error('Error marking products as invoiced:', markError);
+        }
+      }
+
+      // Link invoice to sample fee when sample fee is included
+      if (status === 'sent' && includeOrderSampleFee && orderSampleFee > 0 && !sampleFeePaid) {
+        const { error: sampleFeeError } = await supabase
+          .from('orders')
+          .update({
+            sample_fee_invoice_id: invoiceId
+          })
+          .eq('id', orderId);
+
+        if (sampleFeeError) {
+          console.error('Error linking invoice to sample fee:', sampleFeeError);
         }
       }
 
@@ -1131,8 +1204,8 @@ export default function CreateInvoicePage() {
   };
 
   const handleSendClick = () => {
-    if (selectedProducts.length === 0 && customItems.length === 0) {
-      notify.error('Please select at least one product or add a custom item');
+    if (selectedProducts.length === 0 && customItems.length === 0 && !(includeOrderSampleFee && orderSampleFee > 0)) {
+      notify.error('Please select at least one item to invoice');
       return;
     }
     setShowEmailPreview(true);
@@ -1442,28 +1515,79 @@ export default function CreateInvoicePage() {
                 <tbody>
                   {/* ORDER-LEVEL SAMPLE FEE - Always at the top */}
                   {orderSampleFee > 0 && (
-                    <tr className={`border-b bg-amber-50 ${!includeOrderSampleFee ? 'opacity-50' : ''}`}>
+                    <tr className={`border-b ${sampleFeePaid ? 'bg-green-50' : 'bg-amber-50'} ${!includeOrderSampleFee && !sampleFeePaid ? 'opacity-50' : ''}`}>
                       <td className="py-3 px-2">
-                        <input
-                          type="checkbox"
-                          checked={includeOrderSampleFee}
-                          onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
-                          className="w-4 h-4 text-amber-600"
-                        />
+                        {sampleFeePaid ? (
+                          <span className="text-green-600 font-bold text-lg">✓</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={includeOrderSampleFee}
+                            onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
+                            className="w-4 h-4 text-amber-600"
+                          />
+                        )}
                       </td>
                       <td className="py-3 px-2">
                         <div>
-                          <p className="font-bold text-amber-800">Sample Fee</p>
+                          <div className="flex items-center gap-2">
+                            <p className={`font-bold ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>
+                              Sample Fee
+                            </p>
+                            {sampleFeePaid && (
+                              <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                                PAID
+                              </span>
+                            )}
+                          </div>
+                          {sampleFeePaid && sampleFeePaidAt && (
+                            <p className="text-xs text-green-600 mt-1">
+                              Paid {new Date(sampleFeePaidAt).toLocaleDateString()} by {sampleFeePaidByName || 'Unknown'}
+                            </p>
+                          )}
                           {orderSampleNotes && (
                             <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
+                          )}
+                          {!sampleFeePaid && (
+                            <button
+                              onClick={() => setShowMarkAsPaidForm(true)}
+                              className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                            >
+                              Mark as Paid Manually
+                            </button>
+                          )}
+                          {showMarkAsPaidForm && !sampleFeePaid && (
+                            <div className="mt-2 p-2 bg-white border border-gray-200 rounded-lg">
+                              <p className="text-sm font-medium text-gray-700 mb-2">Confirm Manual Payment</p>
+                              <p className="text-xs text-gray-600 mb-2">Amount: ${orderSampleFee.toFixed(2)}</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={markSampleFeeAsPaid}
+                                  disabled={markingAsPaid}
+                                  className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+                                >
+                                  {markingAsPaid ? 'Saving...' : 'Confirm Paid'}
+                                </button>
+                                <button
+                                  onClick={() => setShowMarkAsPaidForm(false)}
+                                  className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-2 text-right text-black font-medium">1</td>
-                      <td className="py-3 px-2 text-right text-amber-800 font-medium">${orderSampleFee.toFixed(2)}</td>
+                      <td className={`py-3 px-2 text-right font-medium ${sampleFeePaid ? 'text-green-700 line-through' : 'text-amber-800'}`}>
+                        ${orderSampleFee.toFixed(2)}
+                      </td>
                       <td className="py-3 px-2 text-center text-gray-400">-</td>
                       <td className="py-3 px-2 text-right text-gray-400">-</td>
-                      <td className="py-3 px-2 text-right font-bold text-amber-800">${orderSampleFee.toFixed(2)}</td>
+                      <td className={`py-3 px-2 text-right font-bold ${sampleFeePaid ? 'text-green-700 line-through' : 'text-amber-800'}`}>
+                        {sampleFeePaid ? '$0.00' : `$${orderSampleFee.toFixed(2)}`}
+                      </td>
                     </tr>
                   )}
                   {/* Products */}
@@ -1626,22 +1750,69 @@ export default function CreateInvoicePage() {
             <div className="lg:hidden space-y-2">
               {/* ORDER-LEVEL SAMPLE FEE - Always at the top */}
               {orderSampleFee > 0 && (
-                <div className={`border-2 border-amber-400 rounded-lg p-2.5 bg-amber-50 ${!includeOrderSampleFee ? 'opacity-50' : ''}`}>
+                <div className={`border-2 ${sampleFeePaid ? 'border-green-400 bg-green-50' : 'border-amber-400 bg-amber-50'} rounded-lg p-2.5 ${!includeOrderSampleFee && !sampleFeePaid ? 'opacity-50' : ''}`}>
                   <div className="flex items-start gap-2">
-                    <input
-                      type="checkbox"
-                      checked={includeOrderSampleFee}
-                      onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
-                      className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0"
-                    />
+                    {sampleFeePaid ? (
+                      <span className="text-green-600 font-bold text-lg mt-0.5 flex-shrink-0">✓</span>
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={includeOrderSampleFee}
+                        onChange={(e) => setIncludeOrderSampleFee(e.target.checked)}
+                        className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0"
+                      />
+                    )}
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-amber-800 text-sm">Sample Fee</p>
+                      <div className="flex items-center gap-2">
+                        <p className={`font-bold text-sm ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>Sample Fee</p>
+                        {sampleFeePaid && (
+                          <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-medium">
+                            PAID
+                          </span>
+                        )}
+                      </div>
+                      {sampleFeePaid && sampleFeePaidAt && (
+                        <p className="text-xs text-green-600 mt-1">
+                          Paid {new Date(sampleFeePaidAt).toLocaleDateString()} by {sampleFeePaidByName || 'Unknown'}
+                        </p>
+                      )}
                       {orderSampleNotes && (
                         <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
                       )}
-                      <div className="mt-2 flex justify-between border-t border-amber-300 pt-1">
-                        <span className="font-medium text-amber-800 text-sm">Total:</span>
-                        <span className="font-bold text-amber-800 text-sm">${orderSampleFee.toFixed(2)}</span>
+                      {!sampleFeePaid && (
+                        <button
+                          onClick={() => setShowMarkAsPaidForm(true)}
+                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                        >
+                          Mark as Paid Manually
+                        </button>
+                      )}
+                      {showMarkAsPaidForm && !sampleFeePaid && (
+                        <div className="mt-2 p-2 bg-white border border-gray-200 rounded-lg">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Confirm Manual Payment</p>
+                          <p className="text-xs text-gray-600 mb-2">Amount: ${orderSampleFee.toFixed(2)}</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={markSampleFeeAsPaid}
+                              disabled={markingAsPaid}
+                              className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+                            >
+                              {markingAsPaid ? 'Saving...' : 'Confirm Paid'}
+                            </button>
+                            <button
+                              onClick={() => setShowMarkAsPaidForm(false)}
+                              className="px-3 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div className={`mt-2 flex justify-between border-t ${sampleFeePaid ? 'border-green-300' : 'border-amber-300'} pt-1`}>
+                        <span className={`font-medium text-sm ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>Total:</span>
+                        <span className={`font-bold text-sm ${sampleFeePaid ? 'text-green-700 line-through' : 'text-amber-800'}`}>
+                          {sampleFeePaid ? '$0.00' : `$${orderSampleFee.toFixed(2)}`}
+                        </span>
                       </div>
                     </div>
                   </div>
