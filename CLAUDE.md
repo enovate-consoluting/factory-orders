@@ -1,5 +1,5 @@
 ﻿# CLAUDE.md - Factory Orders Management System
-# Last Updated: January 13, 2025
+# Last Updated: January 14, 2025
 
 ## Quick Start
 
@@ -367,6 +367,46 @@ dismissed_at TIMESTAMP
 
 ---
 
+## Sample Fee Invoice System
+
+Order-level sample fees on invoices with payment tracking.
+
+### How It Works
+1. **Order has sample fee** → `client_sample_fee` field on `orders` table
+2. **Create Invoice** → Sample fee shows at TOP with checkbox
+3. **Can send invoice with ONLY sample fee** (no products required)
+4. **Mark as Paid** → Click "Mark as Paid Manually" → Confirm → Saves who/when
+5. **Already Paid** → Shows green with ✓, "PAID" badge, doesn't add to total
+
+### Invoice Creation UI
+- **Unpaid Sample Fee**: Amber/gold row, checkbox to include, "Mark as Paid Manually" link
+- **Paid Sample Fee**: Green row, ✓ checkmark, "PAID" badge, strikethrough price, shows date/who paid
+
+### Database Fields (orders table)
+```sql
+client_sample_fee NUMERIC           -- Amount client pays for sample
+sample_fee NUMERIC                   -- Manufacturer cost
+sample_notes TEXT                    -- Description/breakdown
+sample_fee_paid BOOLEAN DEFAULT false
+sample_fee_paid_at TIMESTAMP
+sample_fee_paid_by UUID              -- FK to users
+sample_fee_paid_by_name TEXT         -- Display name
+sample_fee_invoice_id UUID           -- FK to invoices (linked when invoice sent)
+```
+
+### Key Files
+- `app/dashboard/invoices/create/page.tsx` - Invoice creation with sample fee UI
+- `app/api/square/webhook/route.ts` - Square payment webhook (auto-marks paid)
+
+### Flow
+```
+Order Created → Sample Fee Set → Create Invoice →
+Check Sample Fee → Send Invoice → Client Pays via Square →
+Webhook Marks Paid → Next Invoice Won't Show Sample Fee
+```
+
+---
+
 ## Client Portal Integration
 
 When clients are created in Factory Orders, they sync to the Client Portal database.
@@ -439,34 +479,42 @@ npm run build  # Check error output
 
 ---
 
-## Latest Session (January 13, 2025)
+## Latest Session (January 14, 2025)
 
 ### Completed This Session
-1. **Price Display Fix** - Added `stopPropagation` to XXXXX price displays to prevent accidental navigation when clicking prices on Orders List
-2. **Notification Bell Improvements** - Updated to show product order numbers, click-to-navigate, mark as read on click
-3. **Debug Logging Added** - Console logs for notification data to troubleshoot navigation issues
-4. **Documentation Updated** - Added sections for Notification Bell, Tracking Numbers, Arrival Alert Bar
-
-### Current Issue (IN PROGRESS)
-**Notification click-to-navigate not working as expected**
-- Clicking notification marks as read but doesn't navigate to order
-- Added debug logging to diagnose - check browser console (F12) for:
-  - `Notification: [id] order_id: [value]` - shows if order_id exists
-  - `Clicked notification, order_id: [value]` - shows what happens on click
-- If `order_id` is undefined, notifications in database don't have that field populated
-- Need to test with a NEW notification (route something to trigger one)
+1. **Sample Fee on Invoices** - Order-level sample fee (`client_sample_fee`) now shows on invoice creation
+   - Shows at TOP of invoice with amber/gold styling
+   - Includes `sample_notes` description
+   - Has checkbox to include/exclude
+2. **Send Invoice with Only Sample Fee** - Fixed validation so you can send invoice with just sample fee (no products required)
+3. **Sample Fee Payment Tracking** - Added manual "Mark as Paid" functionality
+   - Click "Mark as Paid Manually" → Confirm dialog → Saves to database
+   - Shows PAID status with date and who marked it
+   - Paid sample fees show green, strikethrough, don't add to total
+4. **Database Migration** - Added fields: `sample_fee_paid`, `sample_fee_paid_at`, `sample_fee_paid_by`, `sample_fee_paid_by_name`, `sample_fee_invoice_id`
+5. **Invoice Linking** - When invoice with sample fee is sent, links `sample_fee_invoice_id`
+6. **Square Webhook** - Added webhook endpoint to auto-mark sample fee as paid when Square payment completes
 
 ### Files Modified This Session
-- `app/dashboard/layout.tsx` - Notification bell UI and click handlers
-- `app/dashboard/orders/page.tsx` - Price display stopPropagation fix
+- `app/dashboard/invoices/create/page.tsx` - Sample fee UI, payment tracking, validation fixes
+- `app/api/square/webhook/route.ts` - NEW: Square payment webhook
 - `CLAUDE.md` - Documentation updates
-- `reference/docs/PROJECT_STATUS.md` - Status updates
 
-### Next Steps
-1. Test notification click with a fresh notification (route a product)
-2. Check browser console for debug output
-3. If order_id is undefined, fix notification creation to include order_id
-4. Remove debug logging once issue is resolved
+### Database Changes
+```sql
+-- Added to orders table
+sample_fee_paid BOOLEAN DEFAULT false
+sample_fee_paid_at TIMESTAMP WITH TIME ZONE
+sample_fee_paid_by UUID REFERENCES users(id)
+sample_fee_paid_by_name TEXT
+sample_fee_invoice_id UUID REFERENCES invoices(id)
+```
+
+### Square Webhook Setup Required
+1. Go to Square Developer Dashboard → Webhooks
+2. Add endpoint: `https://your-domain.com/api/square/webhook`
+3. Subscribe to: `payment.completed`
+4. Copy signing key to env var: `SQUARE_WEBHOOK_SIGNATURE_KEY`
 
 ---
 
