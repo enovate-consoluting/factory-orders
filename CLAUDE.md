@@ -1,5 +1,5 @@
 ﻿# CLAUDE.md - Factory Orders Management System
-# Last Updated: January 14, 2025
+# Last Updated: January 15, 2025
 
 ## Quick Start
 
@@ -526,49 +526,82 @@ npm run build  # Check error output
 
 ---
 
-## Latest Session (January 14, 2025)
+## Latest Session (January 15, 2025)
 
-### Completed This Session
-1. **Sample Fee on Invoices** - Order-level sample fee (`client_sample_fee`) now shows on invoice creation
-   - Shows at TOP of invoice with amber/gold styling
-   - Includes `sample_notes` description
-   - Has checkbox to include/exclude
-2. **Send Invoice with Only Sample Fee** - Fixed validation so you can send invoice with just sample fee (no products required)
-3. **Sample Fee Payment Tracking** - Added manual "Mark as Paid" functionality
-   - Click "Mark as Paid Manually" → Confirm dialog → Saves to database
-   - Shows PAID status with date and who marked it
-   - Paid sample fees show green, strikethrough, don't add to total
-4. **Database Migration** - Added fields: `sample_fee_paid`, `sample_fee_paid_at`, `sample_fee_paid_by`, `sample_fee_paid_by_name`, `sample_fee_invoice_id`
-5. **Invoice Linking** - When invoice with sample fee is sent, links `sample_fee_invoice_id`
-6. **Square Webhook** - Added webhook endpoint to auto-mark sample fee as paid when Square payment completes
+### Completed This Session - Inventory Page Fixes
 
-### Files Modified This Session
-- `app/dashboard/invoices/create/page.tsx` - Sample fee UI, payment tracking, validation fixes
-- `app/api/square/webhook/route.ts` - NEW: Square payment webhook
-- `CLAUDE.md` - Documentation updates
+#### 1. **Incoming Count Bug Fix** (Critical)
+The incoming tab was showing count of 43 but only displaying 7 items. Root cause was **silent query failure** due to incorrect column names:
 
-### Database Changes
-```sql
--- Added to orders table
-sample_fee_paid BOOLEAN DEFAULT false
-sample_fee_paid_at TIMESTAMP WITH TIME ZONE
-sample_fee_paid_by UUID REFERENCES users(id)
-sample_fee_paid_by_name TEXT
-sample_fee_invoice_id UUID REFERENCES invoices(id)
+| Wrong Column | Correct Column | Table |
+|--------------|----------------|-------|
+| `size` | doesn't exist | order_items |
+| `color` | doesn't exist | order_items |
+| `variant_combo` | ✅ correct | order_items |
+| `name` | doesn't exist | products |
+| `title` | ✅ correct | products |
+
+**Fix:** Updated the `fetchInventory` query at line ~345 to use correct column names.
+
+#### 2. **Trash Can Visibility**
+- **Before:** Delete button only showed for manual entries (`!record.order_product_id`)
+- **After:** Delete button shows for ALL inventory items
+- Admins can now delete any inventory record
+
+#### 3. **Column Alignment**
+Fixed column widths to prevent misalignment:
+| Column | Before | After |
+|--------|--------|-------|
+| Client | `w-28` | `w-32` |
+| Qty | `w-16` | `w-20` |
+| Rack | `w-16` | `w-20` |
+
+#### 4. **Incoming Tab Status Logic**
+Updated to include `shipped` status items that don't have inventory records:
+```javascript
+.in('product_status', ['in_production', 'sample_in_production', 'shipped'])
 ```
+
+Status badges now properly show:
+- **In Production** (amber) - `in_production`
+- **Sample Production** (purple) - `sample_in_production`
+- **Shipped** (green) - `shipped` or inventory records
+
+### Files Modified
+- `app/dashboard/inventory/page.tsx` - All fixes above
+
+### Git Commits
+```
+eeb03a3 - fix: Inventory page - column alignment, trash can visibility, incoming count
+ddc1bb6 - fix: Incoming count - correct database column names
+```
+
+### Database Schema Reference (order_items table)
+```
+id, order_product_id, variant_combo, quantity, notes, admin_status,
+manufacturer_status, standard_price, bulk_price, created_at,
+manufacturer_standard_price, manufacturer_bulk_price, cost_price,
+client_price, margin_percentage, inventory_notes, inventory_verified
+```
+
+### Database Schema Reference (products table)
+```
+id, title, description, created_at, image_url, is_clothing
+```
+
+---
+
+## Previous Session (January 14, 2025)
+
+### Completed
+1. **Sample Fee on Invoices** - Order-level sample fee (`client_sample_fee`) now shows on invoice creation
+2. **Send Invoice with Only Sample Fee** - Fixed validation
+3. **Sample Fee Payment Tracking** - Manual "Mark as Paid" functionality
+4. **Square Webhook** - Auto-mark sample fee as paid when Square payment completes
 
 ### Square Webhook Setup ✅ COMPLETED
-1. Square Developer Dashboard → Webhooks → "Factory Orders Payments"
-2. Endpoint: `https://factory-orders.vercel.app/api/square/webhook`
-3. Subscribed to: `payment.completed`
-4. Signature key added to Vercel: `SQUARE_WEBHOOK_SIGNATURE_KEY`
-
-### How Square Webhook Works
-```
-Customer Pays Invoice via Square → Square sends payment.completed event →
-Webhook receives & verifies signature → Finds invoice by checkout ID or invoice number →
-Marks invoice as paid → If linked to sample fee, marks sample fee as paid
-```
+- Endpoint: `https://factory-orders.vercel.app/api/square/webhook`
+- Subscribed to: `payment.completed`
 
 ---
 
