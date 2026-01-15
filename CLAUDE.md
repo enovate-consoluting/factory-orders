@@ -201,6 +201,8 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Tracking numbers with carrier links (DHL, UPS, FedEx, USPS)
 - Arrival Alert Bar (inventory check-in notifications)
 - Mobile-optimized UI (44px touch targets, responsive design)
+- Sample Fee Invoice System (order-level fees, payment tracking)
+- Square Webhook Integration (auto-mark invoices/sample fees as paid)
 
 ### 🔄 In Progress (Phase 2)
 - Extract shared components to reduce duplication
@@ -233,6 +235,9 @@ CLIENT_PORTAL_API_URL=  # Client Portal sync (production only)
 FACTORY_SYNC_API_KEY=   # API key for Portal sync
 ANTHROPIC_API_KEY=      # Claude AI for Eddie assistant
 Birdhaus_Voice=         # ElevenLabs API for Eddie's voice
+SQUARE_ACCESS_TOKEN=    # Square API for payments
+SQUARE_ENVIRONMENT=     # 'sandbox' or 'production'
+SQUARE_WEBHOOK_SIGNATURE_KEY=  # Square webhook signature verification
 ```
 
 **Vercel:** Add same vars in Dashboard → Settings → Environment Variables
@@ -407,6 +412,48 @@ Webhook Marks Paid → Next Invoice Won't Show Sample Fee
 
 ---
 
+## Square Webhook Integration
+
+Auto-marks invoices and sample fees as paid when Square payment completes.
+
+### Endpoint
+`POST /api/square/webhook`
+
+### Events Handled
+- `payment.completed` - Main payment success event
+- `payment.updated` - Payment status changes
+
+### How It Works
+1. Square sends webhook when payment completes
+2. Webhook verifies HMAC SHA256 signature
+3. Finds invoice by `square_checkout_id` OR by parsing invoice number from line items
+4. Updates invoice: `status='paid'`, `paid_amount`, `paid_at`, `square_transaction_id`
+5. If invoice is linked to sample fee (`sample_fee_invoice_id`), marks sample fee as paid
+
+### Signature Verification
+```typescript
+const hmac = crypto.createHmac('sha256', signatureKey);
+hmac.update(rawBody);
+const expectedSignature = hmac.digest('base64');
+// Compare with x-square-hmacsha256-signature header
+```
+
+### Environment Variables
+```
+SQUARE_ACCESS_TOKEN=           # For API calls to Square
+SQUARE_ENVIRONMENT=            # 'sandbox' or 'production'
+SQUARE_WEBHOOK_SIGNATURE_KEY=  # From Square webhook setup
+```
+
+### File
+- `app/api/square/webhook/route.ts`
+
+### Testing
+- GET `/api/square/webhook` returns setup instructions and status
+- Check Vercel Functions logs for webhook activity
+
+---
+
 ## Client Portal Integration
 
 When clients are created in Factory Orders, they sync to the Client Portal database.
@@ -510,11 +557,18 @@ sample_fee_paid_by_name TEXT
 sample_fee_invoice_id UUID REFERENCES invoices(id)
 ```
 
-### Square Webhook Setup Required
-1. Go to Square Developer Dashboard → Webhooks
-2. Add endpoint: `https://your-domain.com/api/square/webhook`
-3. Subscribe to: `payment.completed`
-4. Copy signing key to env var: `SQUARE_WEBHOOK_SIGNATURE_KEY`
+### Square Webhook Setup ✅ COMPLETED
+1. Square Developer Dashboard → Webhooks → "Factory Orders Payments"
+2. Endpoint: `https://factory-orders.vercel.app/api/square/webhook`
+3. Subscribed to: `payment.completed`
+4. Signature key added to Vercel: `SQUARE_WEBHOOK_SIGNATURE_KEY`
+
+### How Square Webhook Works
+```
+Customer Pays Invoice via Square → Square sends payment.completed event →
+Webhook receives & verifies signature → Finds invoice by checkout ID or invoice number →
+Marks invoice as paid → If linked to sample fee, marks sample fee as paid
+```
 
 ---
 

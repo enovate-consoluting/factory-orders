@@ -362,8 +362,8 @@ export default function CreateInvoicePage() {
         .map((p: any) => p.id);
       setIncludedSampleFees(productsWithSampleFees);
 
-      // Set ORDER-level sample fee (use client_sample_fee for client invoices)
-      const clientSampleFee = parseFloat(orderData.client_sample_fee || 0);
+      // Set ORDER-level sample fee (use client_sample_fee, fallback to sample_fee)
+      const clientSampleFee = parseFloat(orderData.client_sample_fee || orderData.sample_fee || 0);
       setOrderSampleFee(clientSampleFee);
       setOrderSampleNotes(orderData.sample_notes || '');
 
