@@ -301,31 +301,43 @@ export function useBulkRouting({
     }
 
     // =========================================================================
-    // NEW: Calculate client_sample_fee with margin
+    // Role-based sample fee logic:
+    // - Manufacturer enters → sample_fee (cost), auto-calculate client_sample_fee with margin
+    // - Admin enters → client_sample_fee only (negotiated price, no markup)
     // =========================================================================
-    let clientSampleFee: number | null = null;
-    
-    if (newFee && newFee > 0) {
-      const sampleMargin = await loadSampleMargin();
-      clientSampleFee = newFee * (1 + sampleMargin / 100);
-      
-      console.log('🟡 Sample fee calculation:');
-      console.log(`🟡   Manufacturer fee: $${newFee}`);
-      console.log(`🟡   Sample margin: ${sampleMargin}%`);
-      console.log(`🟡   Client fee: $${clientSampleFee.toFixed(2)} = $${newFee} × (1 + ${sampleMargin}/100)`);
-      
-      changes.push(`Client fee: $${clientSampleFee.toFixed(2)} (${sampleMargin}% margin)`);
-    }
-    
-    // Build update data - NOW INCLUDES client_sample_fee
     const updateData: any = {
       sample_required: hasSampleData(),
-      sample_fee: newFee,
-      client_sample_fee: clientSampleFee,  // ← NEW: Client price with margin!
       sample_eta: newEta || null,
       sample_status: finalStatus,
       sample_workflow_status: finalStatus
     };
+
+    if (newFee && newFee > 0) {
+      if (isManufacturer) {
+        // Manufacturer sets the cost, system calculates client price with margin
+        const sampleMargin = await loadSampleMargin();
+        const clientSampleFee = newFee * (1 + sampleMargin / 100);
+
+        updateData.sample_fee = newFee;
+        updateData.client_sample_fee = clientSampleFee;
+
+        console.log('🟡 Manufacturer sample fee calculation:');
+        console.log(`🟡   Manufacturer fee: $${newFee}`);
+        console.log(`🟡   Sample margin: ${sampleMargin}%`);
+        console.log(`🟡   Client fee: $${clientSampleFee.toFixed(2)}`);
+
+        changes.push(`Client fee: $${clientSampleFee.toFixed(2)} (${sampleMargin}% margin)`);
+      } else {
+        // Admin/Super Admin sets the client price directly (already negotiated)
+        // Don't touch sample_fee - that's manufacturer's cost
+        updateData.client_sample_fee = newFee;
+
+        console.log('🟡 Admin sample fee (direct client price):');
+        console.log(`🟡   Client fee: $${newFee}`);
+
+        changes.push(`Client fee set to: $${newFee.toFixed(2)}`);
+      }
+    }
     
     // APPEND notes to sample_notes column
     if (hasNotes) {

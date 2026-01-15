@@ -587,18 +587,27 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
         }
       }
 
-      // Calculate fees
-      const mfgSampleFee = data.fee ? parseFloat(data.fee) : null;
-      const clientSampleFee = mfgSampleFee ? Math.round(mfgSampleFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
+      // Calculate fees based on role
+      // Manufacturer enters → sample_fee (manufacturer cost), auto-calculate client_sample_fee with margin
+      // Admin enters → client_sample_fee only (negotiated price, no markup)
+      const enteredFee = data.fee ? parseFloat(data.fee) : null;
 
       const updateData: any = {
         sample_required: true,
-        sample_fee: mfgSampleFee,
-        client_sample_fee: clientSampleFee,
         sample_eta: data.eta || null,
         sample_status: data.status || 'pending',
         sample_workflow_status: data.status || 'pending'
       };
+
+      if (userRole === 'manufacturer') {
+        // Manufacturer sets the cost, system calculates client price with margin
+        updateData.sample_fee = enteredFee;
+        updateData.client_sample_fee = enteredFee ? Math.round(enteredFee * (1 + sampleMarginPercent / 100) * 100) / 100 : null;
+      } else {
+        // Admin/Super Admin sets the client price directly (already negotiated)
+        // Don't touch sample_fee - that's manufacturer's cost
+        updateData.client_sample_fee = enteredFee;
+      }
 
       // Append notes
       if (data.notes && data.notes.trim()) {
