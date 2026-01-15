@@ -177,6 +177,7 @@ export default function InventoryPage() {
     rack_location: '', notes: '', variants: [{ variant_combo: '', expected_quantity: 0 }]
   });
   const [editingRecord, setEditingRecord] = useState<InventoryRecord | null>(null);
+  const [restoreOnSave, setRestoreOnSave] = useState(false); // For archive items - restore to inventory on save
   const [manualPhotos, setManualPhotos] = useState<{ file: File; preview: string }[]>([]);
   const [clientSearch, setClientSearch] = useState('');
   const [showClientDropdown, setShowClientDropdown] = useState(false);
@@ -333,6 +334,10 @@ export default function InventoryPage() {
       // For incoming tab, also fetch order_products that are in_production
       let allRecords = recordsWithMedia;
       if (activeTab === 'incoming' && !globalSearch) {
+        // Get ALL inventory records to check which order_products already have inventory (any status)
+        const { data: allInventoryRecords } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
+        const existingProductIds = new Set((allInventoryRecords || []).map(r => r.order_product_id));
+
         // Get order_products in production that don't have inventory records yet
         let prodQuery = supabase
           .from('order_products')
@@ -357,8 +362,7 @@ export default function InventoryPage() {
         const { data: productionItems } = await prodQuery;
 
         if (productionItems && productionItems.length > 0) {
-          // Filter out any that already have inventory records
-          const existingProductIds = new Set(recordsWithMedia.map(r => r.order_product_id).filter(Boolean));
+          // Filter out any that already have inventory records (checked above)
 
           const productionRecords: InventoryRecord[] = await Promise.all(
             productionItems
@@ -989,6 +993,7 @@ export default function InventoryPage() {
     });
     setClientSearch(record.client_name || '');
     setManualPhotos([]);
+    setRestoreOnSave(false); // Reset restore checkbox
     setManualEntryModal(true);
   };
 
@@ -1012,15 +1017,25 @@ export default function InventoryPage() {
       let photoUploadResult: { success: boolean; failedCount: number; totalSavedBytes: number } | null = null;
 
       if (editingInventoryId) {
-        // UPDATE existing
-        const { error: updateError } = await supabase.from('inventory').update({
+        // UPDATE existing - prepare update data
+        const updateData: Record<string, any> = {
           product_name: manualForm.product_name,
           order_number: manualForm.order_number || 'MANUAL',
           client_id: manualForm.client_id || null,
           client_name: clients.find(c => c.id === manualForm.client_id)?.name || 'Manual Entry',
           rack_location: manualForm.rack_location,
           notes: manualForm.notes
-        }).eq('id', editingInventoryId);
+        };
+
+        // If restoring from archive, update status back to in_stock
+        if (restoreOnSave && editingRecord?.status === 'archived') {
+          updateData.status = 'in_stock';
+          updateData.archived_at = null;
+          updateData.archived_by = null;
+          updateData.picked_up_by = null;
+        }
+
+        const { error: updateError } = await supabase.from('inventory').update(updateData).eq('id', editingInventoryId);
 
         if (updateError) {
           throw new Error(`Failed to update inventory: ${updateError.message}`);
@@ -1100,8 +1115,9 @@ export default function InventoryPage() {
 
       // Log the create/update action
       const validVariants = manualForm.variants.filter(v => v.variant_combo.trim() || v.expected_quantity > 0);
+      const wasRestored = restoreOnSave && editingRecord?.status === 'archived';
       await logInventoryAction({
-        action: isEditing ? 'inventory_update' : 'inventory_create',
+        action: wasRestored ? 'inventory_unarchived' : (isEditing ? 'inventory_update' : 'inventory_create'),
         userId: user?.id,
         userName: user?.name,
         inventoryId: inventoryId || undefined,
@@ -1115,6 +1131,7 @@ export default function InventoryPage() {
           totalQuantity: validVariants.reduce((sum, v) => sum + (v.expected_quantity || 0), 0),
           photosUploaded: manualPhotos.length,
           photosSaved: photoUploadResult ? formatBytes(photoUploadResult.totalSavedBytes) : undefined,
+          restored: wasRestored,
         },
       });
 
@@ -1123,6 +1140,8 @@ export default function InventoryPage() {
       setManualPhotos([]);
       setClientSearch('');
       setEditingInventoryId(null);
+      setEditingRecord(null);
+      setRestoreOnSave(false);
       setManualEntryModal(false);
       fetchInventory(); fetchStats();
 
@@ -1294,8 +1313,8 @@ export default function InventoryPage() {
                         )}
                       </button>
 
-                      {/* Product Name & Order Info */}
-                      <div className="min-w-0 w-48 flex-shrink-0">
+                      {/* Product Name & Order Info - flex-1 to fill available space */}
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1">
                           <span className="text-sm font-medium text-gray-900 truncate">{record.product_name}</span>
                           {!record.order_product_id && (
@@ -1447,8 +1466,8 @@ export default function InventoryPage() {
                           <MessageSquare className="w-3.5 h-3.5" />
                         </button>
                         {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
-                          <button onClick={() => openEditModal(record)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit">
-                            <Edit2 className="w-3.5 h-3.5" />
+                          <button onClick={() => openEditModal(record)} className="px-2 py-1 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 text-[10px] font-medium" title="Edit">
+                            <Edit2 className="w-3 h-3" />Edit
                           </button>
                         )}
                         {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && !record.order_product_id && (
@@ -1464,11 +1483,6 @@ export default function InventoryPage() {
                         {activeTab === 'inventory' && (
                           <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
                             Picked Up
-                          </button>
-                        )}
-                        {activeTab === 'archive' && (
-                          <button onClick={() => setUnarchiveModal({ isOpen: true, record })} className="px-2 py-1 bg-green-500 text-white text-[10px] font-medium rounded hover:bg-green-600 transition-colors whitespace-nowrap flex items-center gap-1">
-                            <ArrowUp className="w-3 h-3" />Restore
                           </button>
                         )}
                       </div>
@@ -1762,7 +1776,7 @@ export default function InventoryPage() {
           <div className="bg-white rounded-xl max-w-md w-full shadow-xl my-4">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-gray-900">{editingInventoryId ? 'Edit Inventory' : 'Add Manual Entry'}</h3>
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); setRestoreOnSave(false); }} className="p-1 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
             <div className="p-3 space-y-3 max-h-[60vh] overflow-y-auto">
               <div>
@@ -1894,11 +1908,30 @@ export default function InventoryPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Restore to Inventory checkbox - only show when editing archived items */}
+              {editingRecord?.status === 'archived' && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={restoreOnSave}
+                      onChange={(e) => setRestoreOnSave(e.target.checked)}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <div className="flex items-center gap-2">
+                      <ArrowUp className="w-4 h-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-800">Restore to Inventory</span>
+                    </div>
+                  </label>
+                  <p className="text-xs text-green-600 mt-1 ml-6">Check this box to move item back to active inventory</p>
+                </div>
+              )}
             </div>
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={() => { setManualEntryModal(false); setManualPhotos([]); setClientSearch(''); setEditingInventoryId(null); setEditingRecord(null); setRestoreOnSave(false); }} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
               <button onClick={handleManualEntry} disabled={saving || !manualForm.product_name.trim()} className="flex-1 px-3 py-1.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : editingInventoryId ? <><Save className="w-4 h-4" />Update</> : <><Plus className="w-4 h-4" />Add</>}
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : editingInventoryId ? <><Save className="w-4 h-4" />{restoreOnSave && editingRecord?.status === 'archived' ? 'Update & Restore' : 'Update'}</> : <><Plus className="w-4 h-4" />Add</>}
               </button>
             </div>
           </div>
