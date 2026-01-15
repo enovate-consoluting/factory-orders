@@ -60,8 +60,24 @@ function LoginContent() {
       // Store session
       setSession(result.user);
 
+      // Route based on role - most users want to go straight to orders
+      const role = result.user.role;
+      let destination = '/dashboard';
+
+      if (role === 'system_admin' || role === 'super_admin' || role === 'admin' || role === 'order_creator' || role === 'order_approver') {
+        destination = '/dashboard/orders';
+      } else if (role === 'manufacturer' || role === 'manufacturer_team_member' || role === 'sub_manufacturer') {
+        destination = '/dashboard/orders';
+      } else if (role === 'client') {
+        destination = '/dashboard/orders/client';
+      } else if (role === 'warehouse') {
+        destination = '/dashboard/inventory';
+      } else if (role === 'manufacturer_inventory_manager') {
+        destination = '/dashboard/manufacturer/inventory';
+      }
+
       // Full page reload to ensure fresh state when switching users
-      window.location.href = '/dashboard';
+      window.location.href = destination;
     } catch (err) {
       console.error('Login error:', err);
       setError('An error occurred during authentication');
