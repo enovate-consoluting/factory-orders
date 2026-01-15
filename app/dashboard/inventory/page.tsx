@@ -156,7 +156,9 @@ export default function InventoryPage() {
     isOpen: boolean;
     record: InventoryRecord | null;
     pickedUpBy: string;
-  }>({ isOpen: false, record: null, pickedUpBy: '' });
+    pickupQuantity: number;
+    showQuantityInput: boolean;
+  }>({ isOpen: false, record: null, pickedUpBy: '', pickupQuantity: 0, showQuantityInput: false });
 
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; record: InventoryRecord | null }>({ isOpen: false, record: null });
   const [deleting, setDeleting] = useState(false);
@@ -261,9 +263,10 @@ export default function InventoryPage() {
     const existingProductIds = new Set((allInventory || []).map(r => r.order_product_id));
 
     // Count in_production items that don't have inventory records yet
+    // Use !inner join to match fetchInventory query (only items with valid orders)
     const { data: productionItems } = await supabase
       .from('order_products')
-      .select('id')
+      .select('id, orders!inner(id)')
       .eq('product_status', 'in_production');
 
     const newProductionCount = productionItems?.filter(p => !existingProductIds.has(p.id)).length || 0;
@@ -770,27 +773,106 @@ export default function InventoryPage() {
     setSaving(true);
     const timer = createTimer();
 
-    await supabase.from('inventory').update({
-      status: 'archived', archived_at: new Date().toISOString(), archived_by: user?.id,
-      picked_up_by: archiveModal.pickedUpBy.trim()
-    }).eq('id', archiveModal.record.id);
+    const totalQty = archiveModal.record.total_quantity || 0;
+    const pickupQty = archiveModal.pickupQuantity || totalQty;
+    const isPartialPickup = pickupQty < totalQty && pickupQty > 0;
 
-    // Log the archive action
-    await logInventoryAction({
-      action: 'inventory_archived',
-      userId: user?.id,
-      userName: user?.name,
-      inventoryId: archiveModal.record.id,
-      durationMs: timer.elapsed(),
-      details: {
-        productName: archiveModal.record.product_name,
-        orderNumber: archiveModal.record.order_number,
-        pickedUpBy: archiveModal.pickedUpBy.trim(),
-        rackLocation: archiveModal.record.rack_location,
-      },
-    });
+    if (isPartialPickup) {
+      // PARTIAL PICKUP: Create archive entry for picked amount, keep remainder in inventory
+      const ratio = pickupQty / totalQty;
 
-    setArchiveModal({ isOpen: false, record: null, pickedUpBy: '' });
+      // Create new archive record for the picked up portion
+      const { data: newArchive, error: archiveError } = await supabase.from('inventory').insert({
+        product_order_number: archiveModal.record.product_order_number,
+        product_name: archiveModal.record.product_name,
+        order_id: archiveModal.record.order_id,
+        order_number: archiveModal.record.order_number,
+        order_product_id: archiveModal.record.order_product_id,
+        client_id: archiveModal.record.client_id,
+        client_name: archiveModal.record.client_name,
+        rack_location: archiveModal.record.rack_location,
+        notes: archiveModal.record.notes,
+        status: 'archived',
+        archived_at: new Date().toISOString(),
+        archived_by: user?.id,
+        picked_up_by: archiveModal.pickedUpBy.trim(),
+        received_at: archiveModal.record.received_at,
+        received_by: archiveModal.record.received_by,
+      }).select().single();
+
+      if (archiveError || !newArchive) {
+        alert('Failed to create archive record: ' + (archiveError?.message || 'Unknown error'));
+        setSaving(false);
+        return;
+      }
+
+      // Create inventory items for the archived portion (proportional quantities)
+      if (archiveModal.record.items && archiveModal.record.items.length > 0) {
+        const archivedItems = archiveModal.record.items.map(item => ({
+          inventory_id: newArchive.id,
+          order_item_id: item.order_item_id,
+          variant_combo: item.variant_combo,
+          expected_quantity: Math.round(item.expected_quantity * ratio),
+          verified: item.verified,
+          verified_at: item.verified_at,
+          notes: item.notes,
+        }));
+        await supabase.from('inventory_items').insert(archivedItems);
+      }
+
+      // Update original record's items with remaining quantities
+      if (archiveModal.record.items && archiveModal.record.items.length > 0) {
+        for (const item of archiveModal.record.items) {
+          const remainingQty = Math.round(item.expected_quantity * (1 - ratio));
+          await supabase.from('inventory_items').update({
+            expected_quantity: remainingQty
+          }).eq('id', item.id);
+        }
+      }
+
+      // Log the partial pickup action
+      await logInventoryAction({
+        action: 'inventory_pickup',
+        userId: user?.id,
+        userName: user?.name,
+        inventoryId: archiveModal.record.id,
+        durationMs: timer.elapsed(),
+        details: {
+          productName: archiveModal.record.product_name,
+          orderNumber: archiveModal.record.order_number,
+          pickedUpBy: archiveModal.pickedUpBy.trim(),
+          pickedQuantity: pickupQty,
+          remainingQuantity: totalQty - pickupQty,
+          totalQuantity: totalQty,
+          partialPickup: true,
+          archivedRecordId: newArchive.id,
+        },
+      });
+    } else {
+      // FULL PICKUP: Archive the entire record (original behavior)
+      await supabase.from('inventory').update({
+        status: 'archived', archived_at: new Date().toISOString(), archived_by: user?.id,
+        picked_up_by: archiveModal.pickedUpBy.trim()
+      }).eq('id', archiveModal.record.id);
+
+      // Log the archive action
+      await logInventoryAction({
+        action: 'inventory_archived',
+        userId: user?.id,
+        userName: user?.name,
+        inventoryId: archiveModal.record.id,
+        durationMs: timer.elapsed(),
+        details: {
+          productName: archiveModal.record.product_name,
+          orderNumber: archiveModal.record.order_number,
+          pickedUpBy: archiveModal.pickedUpBy.trim(),
+          rackLocation: archiveModal.record.rack_location,
+          totalQuantity: totalQty,
+        },
+      });
+    }
+
+    setArchiveModal({ isOpen: false, record: null, pickedUpBy: '', pickupQuantity: 0, showQuantityInput: false });
     fetchInventory(); fetchStats(); setSaving(false);
   };
 
@@ -1397,31 +1479,34 @@ export default function InventoryPage() {
                         </div>
                       )}
 
-                      {/* Tracking Number (for shipped items in Incoming) - wider column */}
-                      {activeTab === 'incoming' && record.tracking_number && !record.is_production_item && (
-                        <div className="w-36 flex-shrink-0 hidden md:block">
+                      {/* Tracking Number (for Incoming tab) - always show with fixed width */}
+                      {activeTab === 'incoming' && (
+                        <div className="w-32 flex-shrink-0 hidden md:block">
                           <span className="text-[9px] text-gray-400 uppercase">Tracking</span>
                           <div>
-                            {record.shipping_carrier ? (
-                              <a
-                                href={
-                                  record.shipping_carrier === 'ups' ? `https://www.ups.com/track?tracknum=${record.tracking_number}` :
-                                  record.shipping_carrier === 'fedex' ? `https://www.fedex.com/fedextrack/?trknbr=${record.tracking_number}` :
-                                  record.shipping_carrier === 'usps' ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${record.tracking_number}` :
-                                  record.shipping_carrier === 'dhl' ? `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${record.tracking_number}` :
-                                  '#'
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                title={`${record.shipping_carrier?.toUpperCase()}: ${record.tracking_number}`}
-                              >
-                                {record.tracking_number}
-                              </a>
+                            {record.tracking_number ? (
+                              record.shipping_carrier ? (
+                                <a
+                                  href={
+                                    record.shipping_carrier === 'ups' ? `https://www.ups.com/track?tracknum=${record.tracking_number}` :
+                                    record.shipping_carrier === 'fedex' ? `https://www.fedex.com/fedextrack/?trknbr=${record.tracking_number}` :
+                                    record.shipping_carrier === 'usps' ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${record.tracking_number}` :
+                                    record.shipping_carrier === 'dhl' ? `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${record.tracking_number}` :
+                                    '#'
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                  title={`Track via ${record.shipping_carrier?.toUpperCase()}`}
+                                >
+                                  <Truck className="w-3 h-3" />
+                                  <span className="truncate">{record.tracking_number}</span>
+                                </a>
+                              ) : (
+                                <span className="text-xs text-gray-600 truncate block">{record.tracking_number}</span>
+                              )
                             ) : (
-                              <span className="text-xs text-gray-600" title={record.tracking_number}>
-                                {record.tracking_number}
-                              </span>
+                              <span className="text-xs text-gray-400">—</span>
                             )}
                           </div>
                         </div>
@@ -1466,7 +1551,7 @@ export default function InventoryPage() {
                           <MessageSquare className="w-3.5 h-3.5" />
                         </button>
                         {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
-                          <button onClick={() => openEditModal(record)} className="px-2 py-1 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors flex items-center gap-1 text-[10px] font-medium" title="Edit">
+                          <button onClick={() => openEditModal(record)} className="px-2 py-1 bg-blue-500 text-white text-[10px] font-medium rounded hover:bg-blue-600 transition-colors flex items-center gap-1" title="Edit">
                             <Edit2 className="w-3 h-3" />Edit
                           </button>
                         )}
@@ -1481,7 +1566,7 @@ export default function InventoryPage() {
                           </button>
                         )}
                         {activeTab === 'inventory' && (
-                          <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
+                          <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '', pickupQuantity: record.total_quantity || 0, showQuantityInput: false })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
                             Picked Up
                           </button>
                         )}
@@ -1712,29 +1797,68 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Archive Modal */}
+      {/* Archive Modal - Pickup with quantity adjustment */}
       {archiveModal.isOpen && archiveModal.record && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
             <div className="p-3 border-b border-gray-200 flex items-center justify-between">
               <h3 className="font-semibold text-gray-900">Mark Picked Up</h3>
-              <button onClick={() => setArchiveModal({ isOpen: false, record: null, pickedUpBy: '' })} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => setArchiveModal({ isOpen: false, record: null, pickedUpBy: '', pickupQuantity: 0, showQuantityInput: false })} className="p-1 hover:bg-gray-100 rounded-lg">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
-            <div className="p-3">
-              <div className="mb-3 p-2 bg-gray-50 rounded-lg">
+            <div className="p-3 space-y-3">
+              {/* Product Info */}
+              <div className="p-2 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-700"><span className="font-medium">{archiveModal.record.product_order_number}</span> - {archiveModal.record.product_name}</p>
                 <p className="text-xs text-gray-500 mt-0.5">{archiveModal.record.order_number} • {archiveModal.record.client_name}</p>
               </div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Who picked up? <span className="text-red-500">*</span></label>
-              <input type="text" value={archiveModal.pickedUpBy} onChange={(e) => setArchiveModal(prev => ({ ...prev, pickedUpBy: e.target.value }))}
-                placeholder="Name or company" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" autoFocus />
+
+              {/* Quantity Section */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-900">Total Available</span>
+                  <span className="text-lg font-bold text-blue-700">{archiveModal.record.total_quantity?.toLocaleString()}</span>
+                </div>
+
+                {archiveModal.showQuantityInput ? (
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">How many picking up?</label>
+                    <input
+                      type="number"
+                      value={archiveModal.pickupQuantity}
+                      onChange={(e) => setArchiveModal(prev => ({ ...prev, pickupQuantity: Math.min(parseInt(e.target.value) || 0, archiveModal.record?.total_quantity || 0) }))}
+                      min={1}
+                      max={archiveModal.record.total_quantity || 0}
+                      className="w-full px-2.5 py-1.5 border border-blue-300 rounded-lg text-sm text-gray-900 font-semibold"
+                    />
+                    {archiveModal.pickupQuantity < (archiveModal.record.total_quantity || 0) && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        Remaining: {((archiveModal.record.total_quantity || 0) - archiveModal.pickupQuantity).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setArchiveModal(prev => ({ ...prev, showQuantityInput: true }))}
+                    className="w-full px-3 py-1.5 bg-blue-100 text-blue-700 font-medium rounded-lg hover:bg-blue-200 text-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />Adjust Quantity
+                  </button>
+                )}
+              </div>
+
+              {/* Who Picked Up */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Who picked up? <span className="text-red-500">*</span></label>
+                <input type="text" value={archiveModal.pickedUpBy} onChange={(e) => setArchiveModal(prev => ({ ...prev, pickedUpBy: e.target.value }))}
+                  placeholder="Name or company" className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400" autoFocus />
+              </div>
             </div>
             <div className="p-3 border-t border-gray-200 flex gap-2">
-              <button onClick={() => setArchiveModal({ isOpen: false, record: null, pickedUpBy: '' })} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
-              <button onClick={handleArchive} disabled={saving || !archiveModal.pickedUpBy.trim()} className="flex-1 px-3 py-1.5 bg-gray-800 text-white font-medium rounded-lg hover:bg-gray-900 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
-                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Archive className="w-4 h-4" />Archive</>}
+              <button onClick={() => setArchiveModal({ isOpen: false, record: null, pickedUpBy: '', pickupQuantity: 0, showQuantityInput: false })} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={handleArchive} disabled={saving || !archiveModal.pickedUpBy.trim() || archiveModal.pickupQuantity <= 0} className="flex-1 px-3 py-1.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : <><Save className="w-4 h-4" />Save</>}
               </button>
             </div>
           </div>
