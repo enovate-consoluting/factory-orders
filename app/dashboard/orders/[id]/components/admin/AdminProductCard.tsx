@@ -59,8 +59,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
   }, ref) {
     const permissions = usePermissions() as any;
     const userRole = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')!).role : null;
-    const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'admin';
-    const canEditPricing = userRole === 'super_admin';
+    const canLockProducts = permissions?.canLockProducts || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin' || userRole === 'admin';
+    const canEditPricing = userRole === 'super_admin' || userRole === 'system_admin';
     
     // Collapsible state
     const [isCollapsed, setIsCollapsed] = useState(() => {
@@ -743,7 +743,7 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                   )}
                 </button>
               )}
-              {(userRole === 'admin' || userRole === 'super_admin') && onRoute && !isGrayedOut && (
+              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && onRoute && !isGrayedOut && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onRoute(product); }}
                   className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium flex items-center gap-1"
@@ -753,7 +753,7 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                   <span>Route</span>
                 </button>
               )}
-              {(userRole === 'admin' || userRole === 'super_admin') && onDelete && !isGrayedOut && (
+              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && onDelete && !isGrayedOut && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onDelete((product as any).id); }}
                   className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
@@ -785,7 +785,7 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
             </div>
             
             {/* Right: Waiting for Sample - smaller */}
-            {(userRole === 'admin' || userRole === 'super_admin') && (
+            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && (
               <label className="inline-flex items-center gap-1 cursor-pointer px-2 py-0.5 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
@@ -812,7 +812,7 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
         <div className={`${isGrayedOut && userRole !== 'super_admin' ? 'pointer-events-none' : ''}`}>
           {/* Keep ALL existing Bulk Order Information section and everything below EXACTLY as is */}
           
-          {(!isGrayedOut || userRole === 'super_admin') && (
+          {(!isGrayedOut || userRole === 'super_admin' || userRole === 'system_admin') && (
             <div className="p-3 sm:p-4">
               {/* Bulk Order Information */}
               <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">

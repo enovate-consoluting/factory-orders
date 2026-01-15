@@ -156,7 +156,7 @@ export default function ManufacturerInventoryPage() {
     }
 
     const user = JSON.parse(userData);
-    const allowedRoles = ['manufacturer', 'super_admin', 'manufacturer_inventory_manager'];
+    const allowedRoles = ['manufacturer', 'super_admin', 'system_admin', 'manufacturer_inventory_manager'];
     if (!allowedRoles.includes(user.role)) {
       router.push('/dashboard');
       return;
@@ -170,7 +170,7 @@ export default function ManufacturerInventoryPage() {
     try {
       let mfrId: string | null = null;
 
-      if (role === 'super_admin') {
+      if (role === 'super_admin' || role === 'system_admin') {
         const { data: manufacturers } = await supabase
           .from('manufacturers')
           .select('id')
@@ -255,7 +255,7 @@ export default function ManufacturerInventoryPage() {
         .order('created_at', { ascending: false });
 
       // Super admin sees all, manufacturer sees only theirs
-      if (role !== 'super_admin') {
+      if (role !== 'super_admin' && role !== 'system_admin') {
         query = query.eq('manufacturer_id', mfrId);
       }
 
@@ -557,7 +557,7 @@ export default function ManufacturerInventoryPage() {
     const clientItems = inventory.filter(inv => inv.client_id === clientId);
     
     // Check if super admin or if allowed
-    if (userRole !== 'super_admin') {
+    if (userRole !== 'super_admin' && userRole !== 'system_admin') {
       // TODO: Check if any orders reference these accessories
       // For now, allow manufacturer to delete
     }
@@ -959,7 +959,7 @@ export default function ManufacturerInventoryPage() {
                     </button>
                     
                     {/* Delete Client Button - Super Admin or Manufacturer */}
-                    {(userRole === 'super_admin' || userRole === 'manufacturer') && (
+                    {(userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'manufacturer') && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1208,7 +1208,7 @@ export default function ManufacturerInventoryPage() {
                                     >
                                       <Edit2 className="w-4 h-4" />
                                     </button>
-                                    {(userRole === 'super_admin' || userRole === 'manufacturer_inventory_manager' || userRole === 'manufacturer') && (
+                                    {(userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'manufacturer_inventory_manager' || userRole === 'manufacturer') && (
                                       <button
                                         onClick={() => handleDeleteItem(item.id, item.accessory_type?.name || 'item')}
                                         disabled={deletingId === item.id}

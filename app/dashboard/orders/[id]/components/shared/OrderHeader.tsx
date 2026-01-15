@@ -88,7 +88,7 @@ export function OrderHeaderV2({
   const { t } = useTranslation();
   const { translate } = useDynamicTranslation();
   
-  const isSuperAdmin = userRole === 'super_admin';
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'system_admin';
   const isAdmin = userRole === 'admin';
   const isManufacturer = userRole === 'manufacturer';
   const isClientRequest = order?.status === 'client_request';

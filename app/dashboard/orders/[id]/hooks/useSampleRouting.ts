@@ -72,7 +72,7 @@ export function useSampleRouting(
   // - Client can route to: Admin ONLY (approve/reject)
   // - NEVER: Manufacturer ↔ Client direct
 
-  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin';
+  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
   const isManufacturer = userRole === 'manufacturer';
 
   const canRouteToManufacturer = 

@@ -792,10 +792,13 @@ export default function DashboardLayout({
     },
   ];
 
+  // Normalize role - treat system_admin as super_admin
+  const normalizedRole = user?.role === 'system_admin' ? 'super_admin' : user?.role;
+
   // Use client menu if user is client, otherwise use regular menu
-  const visibleMenuItems = user?.role === 'client' 
-    ? clientMenuItems 
-    : menuItems.filter(item => item.roles?.includes(user?.role || ''));
+  const visibleMenuItems = normalizedRole === 'client'
+    ? clientMenuItems
+    : menuItems.filter(item => item.roles?.includes(normalizedRole || ''));
 
   const getInitial = (name: string) => {
     return name ? name.charAt(0).toUpperCase() : 'U';
@@ -804,6 +807,7 @@ export default function DashboardLayout({
   const formatRole = (role: string) => {
     const roleDisplay: Record<string, string> = {
       'super_admin': 'Super Admin',
+      'system_admin': 'System Admin',
       'admin': 'Admin',
       'order_creator': 'Order Creator',
       'order_approver': 'Order Approver',
@@ -1121,8 +1125,8 @@ export default function DashboardLayout({
         </main>
       </div>
 
-      {/* AI Assistant - Super Admin or users with access */}
-      {(user?.role === 'super_admin' || user?.can_access_ai_assistant) && (
+      {/* AI Assistant - Super Admin, System Admin, or users with access */}
+      {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.can_access_ai_assistant) && (
         <AiAssistant userRole={user.role} userName={user.name} />
       )}
     </div>
@@ -1234,41 +1238,10 @@ function SidebarContent({
         </div>
       </div>
 
-      {/* Mode Switcher - Super Admin or users with special access */}
-      {(user?.role === 'super_admin' || user?.can_access_factory_admin_toggle) && (
-        <div className="px-4 py-3 border-b border-gray-100">
-          <div className="flex gap-2">
-            <button
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg"
-            >
-              <Factory className="w-4 h-4" />
-              Factory
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  const response = await fetch('/api/auth/sso-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user }),
-                  });
-                  const result = await response.json();
-                  if (result.success && result.token) {
-                    window.location.href = `https://admin.birdhausapp.com/auth/callback?token=${result.token}`;
-                  } else {
-                    window.location.href = 'https://admin.birdhausapp.com/login';
-                  }
-                } catch {
-                  window.location.href = 'https://admin.birdhausapp.com/login';
-                }
-              }}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <Shield className="w-4 h-4" />
-              Admin
-            </button>
-          </div>
-        </div>
+      {/* Mode Switcher - Super Admin, System Admin, or users with special access */}
+      {/* Hidden on localhost since Admin Portal only exists in production */}
+      {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.can_access_factory_admin_toggle) && (
+        <FactoryAdminToggle user={user} />
       )}
 
       {/* CLIENT Notification Summary */}
@@ -1459,6 +1432,66 @@ function SidebarContent({
             <span className="text-white font-semibold">{getInitial(user?.name || '')}</span>
           </div>
           <span className="flex-1 text-left font-medium truncate">Logout</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Factory/Admin Toggle Component - Hidden on localhost
+function FactoryAdminToggle({ user }: { user: User | null }) {
+  const [isLocalhost, setIsLocalhost] = useState(false);
+
+  useEffect(() => {
+    // Check if running on localhost
+    const hostname = window.location.hostname;
+    setIsLocalhost(hostname === 'localhost' || hostname === '127.0.0.1');
+  }, []);
+
+  // Don't render on localhost - Admin Portal only exists in production
+  if (isLocalhost) {
+    return (
+      <div className="px-4 py-3 border-b border-gray-100">
+        <div className="flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg">
+          <Factory className="w-4 h-4" />
+          Factory (Local Dev)
+        </div>
+        <p className="text-xs text-gray-400 text-center mt-1">Admin toggle hidden on localhost</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3 border-b border-gray-100">
+      <div className="flex gap-2">
+        <button
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg"
+        >
+          <Factory className="w-4 h-4" />
+          Factory
+        </button>
+        <button
+          onClick={async () => {
+            try {
+              const response = await fetch('/api/auth/sso-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user }),
+              });
+              const result = await response.json();
+              if (result.success && result.token) {
+                window.location.href = `https://admin.birdhausapp.com/auth/callback?token=${result.token}`;
+              } else {
+                window.location.href = 'https://admin.birdhausapp.com/login';
+              }
+            } catch {
+              window.location.href = 'https://admin.birdhausapp.com/login';
+            }
+          }}
+          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+        >
+          <Shield className="w-4 h-4" />
+          Admin
         </button>
       </div>
     </div>

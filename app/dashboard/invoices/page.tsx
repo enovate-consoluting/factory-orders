@@ -805,7 +805,7 @@ export default function InvoicesPage() {
 
   const canDelete = (invoice: Invoice): boolean => {
     // Super Admin can delete any invoice
-    if (user?.role === 'super_admin') return true;
+    if (user?.role === 'super_admin' || user?.role === 'system_admin') return true;
     // Admin can only delete drafts
     if (user?.role === 'admin' && invoice.status === 'draft') return true;
     return false;
@@ -817,7 +817,7 @@ export default function InvoicesPage() {
     // Can't void paid invoices (use refund instead)
     if (invoice.status === 'paid') return false;
     // Super Admin and Admin can void sent invoices
-    if (user?.role === 'super_admin' || user?.role === 'admin') {
+    if (user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') {
       return invoice.status === 'sent' || invoice.status === 'draft';
     }
     return false;
@@ -828,7 +828,7 @@ export default function InvoicesPage() {
     if (invoice.voided) return false;
     if (invoice.status === 'paid') return false;
     if (invoice.status !== 'sent') return false;
-    return user?.role === 'super_admin' || user?.role === 'admin';
+    return user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin';
   };
 
   // Regenerate Square payment link
@@ -1293,7 +1293,7 @@ export default function InvoicesPage() {
                           <button
                             onClick={() => setShowDeleteConfirm(invoice.id)}
                             className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                            title={user?.role === 'super_admin' ? 'Delete (Super Admin)' : 'Delete Draft'}
+                            title={(user?.role === 'super_admin' || user?.role === 'system_admin') ? 'Delete (Super Admin)' : 'Delete Draft'}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1457,7 +1457,7 @@ export default function InvoicesPage() {
                       <button
                         onClick={() => setShowDeleteConfirm(invoice.id)}
                         className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                        title={user?.role === 'super_admin' ? 'Delete (Super Admin)' : 'Delete Draft'}
+                        title={(user?.role === 'super_admin' || user?.role === 'system_admin') ? 'Delete (Super Admin)' : 'Delete Draft'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1481,7 +1481,7 @@ export default function InvoicesPage() {
           <div className="bg-white rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-sm w-full shadow-xl">
             <div className="mb-4">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">Confirm Delete</h3>
-              {user?.role === 'super_admin' && (
+              {(user?.role === 'super_admin' || user?.role === 'system_admin') && (
                 <div className="flex items-center gap-2 mb-3 text-amber-600">
                   <Shield className="w-4 h-4" />
                   <span className="text-xs sm:text-sm">Super Admin Override</span>

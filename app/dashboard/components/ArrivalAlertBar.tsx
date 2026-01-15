@@ -40,8 +40,8 @@ export default function ArrivalAlertBar() {
   const [dismissing, setDismissing] = useState(false);
   const [showDismissConfirm, setShowDismissConfirm] = useState(false);
 
-  // Check if user should see this bar (admin or super_admin only)
-  const shouldShowBar = user?.role === 'admin' || user?.role === 'super_admin';
+  // Check if user should see this bar (admin, super_admin, or system_admin only)
+  const shouldShowBar = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'system_admin';
 
   // Fetch user from localStorage
   useEffect(() => {

@@ -207,7 +207,7 @@ export default function InventoryPage() {
     const userData = localStorage.getItem('user');
     if (!userData) { router.push('/'); return; }
     const parsedUser = JSON.parse(userData);
-    if (!['super_admin', 'admin', 'warehouse'].includes(parsedUser.role)) { router.push('/dashboard'); return; }
+    if (!['super_admin', 'system_admin', 'admin', 'warehouse'].includes(parsedUser.role)) { router.push('/dashboard'); return; }
     setUser(parsedUser);
     fetchClients(); fetchStats(); fetchInventory();
   }, [router]);
@@ -593,7 +593,7 @@ export default function InventoryPage() {
         const { data: adminUsers, error: usersError } = await supabase
           .from('users')
           .select('id, name')
-          .in('role', ['admin', 'super_admin']);
+          .in('role', ['admin', 'super_admin', 'system_admin']);
 
         if (!usersError && adminUsers && adminUsers.length > 0) {
           // Get total quantity from the inventory record
@@ -1020,7 +1020,7 @@ export default function InventoryPage() {
             <p className="text-gray-500 text-xs mt-0.5">Track incoming shipments and warehouse stock</p>
           </div>
           <div className="flex items-center gap-2">
-            {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
+            {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
               <button onClick={() => setManualEntryModal(true)} className="px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 text-sm font-medium">
                 <Plus className="w-4 h-4" /><span className="hidden sm:inline">Add Manual</span>
               </button>
@@ -1243,12 +1243,12 @@ export default function InventoryPage() {
                           title={record.notes || 'Add notes'}>
                           <MessageSquare className="w-3.5 h-3.5" />
                         </button>
-                        {(user?.role === 'super_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
+                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin' || user?.role === 'warehouse') && (
                           <button onClick={() => openEditModal(record)} className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" title="Edit">
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {(user?.role === 'super_admin' || user?.role === 'admin') && !record.order_product_id && (
+                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && !record.order_product_id && (
                           <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

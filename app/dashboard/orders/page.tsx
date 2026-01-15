@@ -398,7 +398,7 @@ export default function OrdersPage() {
   };
 
   const getTabFilteredOrders = (ordersToFilter: Order[]): Order[] => {
-    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
     const isManufacturerUser = userRole === 'manufacturer';
     const isClientUser = userRole === 'client';
     
@@ -630,7 +630,7 @@ export default function OrdersPage() {
    * - Products are counted regardless of sample status (sample status only affects sample count)
    */
   const getTabCounts = (): TabCounts => {
-    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
     const isManufacturerUser = userRole === 'manufacturer';
     const isClientUser = userRole === 'client';
     
@@ -809,7 +809,7 @@ export default function OrdersPage() {
   };
 
   const canDeleteOrder = (order: Order): boolean => {
-    if (userRole === 'super_admin') return true;
+    if (userRole === 'super_admin' || userRole === 'system_admin') return true;
     if (userRole === 'admin' && order.status === 'draft') return true;
     // Admin can also delete client requests
     if (userRole === 'admin' && order.status === 'client_request') return true;
@@ -1013,7 +1013,7 @@ export default function OrdersPage() {
     }
 
     const products = order.order_products;
-    const isAdminUser = userRole === 'admin' || userRole === 'super_admin';
+    const isAdminUser = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
     
     // Count products by routing status (excluding production statuses)
     const withAdmin = products.filter(p => 
@@ -1328,7 +1328,7 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="mb-3 sm:mb-4 md:mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-3 sm:mb-4">
-          {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
+          {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'order_creator') && (
             <Link
               href="/dashboard/orders/create"
               className="bg-blue-600 text-white px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm md:text-base font-medium w-full sm:w-auto transition-colors"
@@ -1341,7 +1341,7 @@ export default function OrdersPage() {
           {/* Layout toggle removed - V2 is now permanent */}
         </div>
 
-        {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') && (
+        {(userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'client') && (
           <div className="-mx-4 sm:mx-0">
             <div className="px-2 sm:px-0">
               <OrderListTabs
@@ -1385,7 +1385,7 @@ export default function OrdersPage() {
             />
           </div>
 
-          {(userRole === 'admin' || userRole === 'super_admin') && activeTab !== 'invoice_approval' && (
+          {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && activeTab !== 'invoice_approval' && (
             <button
               onClick={() => setShowPrices(!showPrices)}
               className="flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 transition-colors text-xs sm:text-sm w-full sm:w-auto sm:self-start"
@@ -1431,9 +1431,9 @@ export default function OrdersPage() {
                     {userRole === 'manufacturer' ? t('client') : t('clientMfr')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t('products')}
+                    {activeTab === 'my_orders' ? t('actionNeeded') : t('products')}
                   </th>
-                  {(userRole === 'admin' || userRole === 'super_admin') && (
+                  {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && (
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {t('clientTotal')}
                     </th>
@@ -1541,7 +1541,7 @@ export default function OrdersPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {renderRoutingBadges(order)}
                         </td>
-                        {(userRole === 'admin' || userRole === 'super_admin') && (
+                        {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && (
                           <td className="px-6 py-4 whitespace-nowrap">
                             {orderTotal > 0 && (
                               <span
@@ -1562,7 +1562,7 @@ export default function OrdersPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end gap-2">
-                            {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
+                            {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'order_creator') && (
                               <Link
                                 href={`/dashboard/orders/edit/${order.id}`}
                                 className="text-blue-600 hover:text-blue-800"
@@ -1603,7 +1603,7 @@ export default function OrdersPage() {
 
                       {isExpanded && visibleProducts && visibleProducts.length > 0 && (
                         <tr>
-                          <td colSpan={(userRole === 'admin' || userRole === 'super_admin') ? 6 : 5} className="px-6 py-2 bg-gray-50">
+                          <td colSpan={(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') ? 6 : 5} className="px-6 py-2 bg-gray-50">
                             <div className="pl-8 space-y-1">
                               {visibleProducts.map((product) => {
                                 const productTotal = calculateProductTotal(product, userRole);
@@ -1645,7 +1645,7 @@ export default function OrdersPage() {
                                           );
                                         })()
                                       )}
-                                      {(userRole === 'admin' || userRole === 'super_admin') && productTotal > 0 && (
+                                      {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && productTotal > 0 && (
                                         <span
                                           className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-semibold rounded-full"
                                           onClick={(e) => e.stopPropagation()}
@@ -1756,7 +1756,7 @@ export default function OrdersPage() {
                     </div>
 
                     <div className="flex items-center gap-1.5 sm:gap-2">
-                      {(userRole === 'admin' || userRole === 'super_admin') && orderTotal > 0 && (
+                      {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && orderTotal > 0 && (
                         <span
                           className="px-1.5 sm:px-2 py-0.5 sm:py-1 bg-green-100 text-green-700 text-[10px] sm:text-xs font-semibold rounded-full inline-flex items-center gap-0.5 sm:gap-1 whitespace-nowrap"
                           onClick={(e) => e.stopPropagation()}
@@ -1767,7 +1767,7 @@ export default function OrdersPage() {
                       )}
 
                       <div className="flex items-center gap-1 sm:gap-1">
-                        {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'order_creator') && (
+                        {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'order_creator') && (
                           <Link
                             href={`/dashboard/orders/edit/${order.id}`}
                             className="p-2 sm:p-2 text-blue-600 hover:bg-blue-50 active:bg-blue-100 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
@@ -1821,7 +1821,7 @@ export default function OrdersPage() {
                   ? `No products ${getReadyToShipDisplayLabel().toLowerCase()} yet.`
                   : activeTab === 'shipped'
                   ? t('noProductionOrders')
-                  : (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin')
+                  : (userRole === 'manufacturer' || userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin')
                     ? activeTab === 'my_orders'
                       ? t('noOrdersMessage')
                       : `${t('noOrders')} in ${activeTab.replace('_', ' ')}`

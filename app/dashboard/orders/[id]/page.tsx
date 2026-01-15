@@ -73,7 +73,7 @@ const calculateOrderTotal = (order: any, userRole: string, accessoriesTotal: num
     let productPrice = 0;
     let shippingPrice = 0;
     
-    if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
+    if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'client') {
       productPrice = parseFloat(product.client_product_price || 0);
       
       if (product.selected_shipping_method === 'air') {
@@ -96,7 +96,7 @@ const calculateOrderTotal = (order: any, userRole: string, accessoriesTotal: num
   });
   
   // Add sample fee based on role
-  if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'client') {
+  if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'client') {
     total += parseFloat(order.client_sample_fee || order.sample_fee || 0);
   } else if (userRole === 'manufacturer') {
     total += parseFloat(order.sample_fee || 0);
@@ -257,7 +257,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
       fetchManufacturerId(user);
     }
 
-    if (userRole === 'admin' || userRole === 'super_admin') {
+    if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') {
       fetchAvailableClients();
       fetchAvailableManufacturers();
     }

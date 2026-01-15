@@ -88,7 +88,7 @@ export function useBulkRouting({
   };
 
   const isManufacturer = userRole === 'manufacturer';
-  const isAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isAdmin = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
   const isClient = userRole === 'client';
 
   // Get route options based on user role

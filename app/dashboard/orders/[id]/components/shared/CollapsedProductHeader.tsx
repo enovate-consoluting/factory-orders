@@ -84,8 +84,8 @@ export function CollapsedProductHeader({
   const needsShippingSelection = hasShippingPrices && !hasSelectedShipping;
 
   // Delete permission logic
-  const canSeeDelete = (userRole === 'admin' || userRole === 'super_admin') && !isManufacturerView;
-  const canDelete = userRole === 'super_admin' || (userRole === 'admin' && !isInvoiced);
+  const canSeeDelete = (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && !isManufacturerView;
+  const canDelete = userRole === 'super_admin' || userRole === 'system_admin' || (userRole === 'admin' && !isInvoiced);
 
   const handleDeleteClick = () => {
     if (!canDelete && userRole === 'admin') {

@@ -136,7 +136,7 @@ export const CollapsibleSampleSection: React.FC<CollapsibleSampleSectionProps> =
   }, [showRouteModal]);
 
   // Determine if user can route at all
-  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin';
+  const isAdminOrSuper = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
   
   // Manufacturer can route when sample is with them
   const manufacturerCanRoute = isManufacturer && sampleRoutedTo === 'manufacturer' && !isSampleShipped;

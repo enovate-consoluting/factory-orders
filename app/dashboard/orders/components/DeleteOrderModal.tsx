@@ -53,7 +53,7 @@ export const DeleteOrderModal: React.FC<DeleteOrderModalProps> = ({
             {t('confirmDelete')}
           </h3>
           
-          {userRole === 'super_admin' && (
+          {(userRole === 'super_admin' || userRole === 'system_admin') && (
             <div className="flex items-center gap-2 mb-3 text-amber-600">
               <Shield className="w-4 h-4" />
               <span className="text-sm">{t('superAdminOverride')}</span>

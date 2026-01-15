@@ -114,7 +114,7 @@ export const calculateProductTotal = (product: OrderProduct, userRole: string | 
   let shippingPrice = 0;
   
   // Admin and Super Admin ALWAYS see CLIENT prices
-  if (userRole === 'admin' || userRole === 'super_admin') {
+  if (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') {
     productPrice = parseFloat(product.client_product_price?.toString() || '0');
     
     if (product.selected_shipping_method === 'air') {

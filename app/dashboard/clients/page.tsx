@@ -501,7 +501,7 @@ export default function ClientsPage() {
               Manage client accounts with login access
             </p>
           </div>
-          {(user?.role === 'super_admin' || user?.role === 'admin') && (
+          {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -564,7 +564,7 @@ export default function ClientsPage() {
               </div>
               
               {/* NEW: Settings Gear Icon */}
-              {(user?.role === 'super_admin' || user?.role === 'admin') && (
+              {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && (
                 <button
                   onClick={() => router.push(`/dashboard/clients/${client.id}/settings`)}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -582,14 +582,14 @@ export default function ClientsPage() {
                   Can Create Orders
                 </span>
               )}
-              {client.custom_margin_percentage !== null && client.custom_margin_percentage !== undefined && user?.role === 'super_admin' && (
+              {client.custom_margin_percentage !== null && client.custom_margin_percentage !== undefined && (user?.role === 'super_admin' || user?.role === 'system_admin') && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
                   {client.custom_margin_percentage}% Margin
                 </span>
               )}
             </div>
 
-            {(user?.role === 'super_admin' || user?.role === 'admin') && (
+            {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && (
               <div className="flex gap-2 pt-3 border-t border-gray-200">
                 <button
                   onClick={() => openEditModal(client)}
@@ -617,7 +617,7 @@ export default function ClientsPage() {
           <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No clients yet</h3>
           <p className="text-gray-500 mb-4">Get started by adding your first client</p>
-          {(user?.role === 'super_admin' || user?.role === 'admin') && (
+          {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

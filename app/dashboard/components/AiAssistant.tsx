@@ -490,8 +490,8 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     "What's our revenue this month?"
   ];
 
-  // Only render for admin/super_admin
-  if (userRole !== 'admin' && userRole !== 'super_admin') {
+  // Only render for admin/super_admin/system_admin
+  if (userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'system_admin') {
     return null;
   }
 

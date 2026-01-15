@@ -278,7 +278,7 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
     
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const role = user.role === 'super_admin' ? 'super_admin' : 
+      const role = (user.role === 'super_admin' || user.role === 'system_admin') ? 'super_admin' : 
                    user.role === 'manufacturer' ? 'admin' :
                    'admin';
       
@@ -408,14 +408,14 @@ export const OrderSampleRequest: React.FC<OrderSampleRequestProps> = ({
   // - Admin can edit when sample is with admin
   // - Client can edit when sample is with client
   const canEdit = !readOnly && (
-    userRole === 'super_admin' ||
+    userRole === 'super_admin' || userRole === 'system_admin' ||
     (sampleRoutedTo === 'admin' && userRole === 'admin') ||
     (sampleRoutedTo === 'manufacturer' && isManufacturer) ||
     (isManufacturer && ['sample_approved', 'in_production', 'ready', 'shipped', 'delivered'].includes(localStatus)) ||
     (sampleRoutedTo === 'client' && isClient)
   );
   
-  const canEditFeeETA = !readOnly && (userRole === 'super_admin' || isManufacturer);
+  const canEditFeeETA = !readOnly && (userRole === 'super_admin' || userRole === 'system_admin' || isManufacturer);
   
   const showRoutingButtons = isSampleActive;
   

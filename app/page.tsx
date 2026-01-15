@@ -60,7 +60,8 @@ function LoginContent() {
       // Store session
       setSession(result.user);
 
-      router.push('/dashboard');
+      // Full page reload to ensure fresh state when switching users
+      window.location.href = '/dashboard';
     } catch (err) {
       console.error('Login error:', err);
       setError('An error occurred during authentication');

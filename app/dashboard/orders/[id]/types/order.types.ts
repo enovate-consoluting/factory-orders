@@ -87,7 +87,7 @@ export interface User {
   reset_token_expires?: string;
 }
 
-export type UserRole = 'super_admin' | 'admin' | 'order_creator' | 'order_approver' | 'manufacturer' | 'manufacturer_team_member' | 'sub_manufacturer' | 'client';
+export type UserRole = 'super_admin' | 'system_admin' | 'admin' | 'order_creator' | 'order_approver' | 'manufacturer' | 'manufacturer_team_member' | 'sub_manufacturer' | 'client';
 
 export type OrderStatus = 'draft' | 'submitted' | 'pending' | 'in_progress' | 'completed' | 'rejected';
 

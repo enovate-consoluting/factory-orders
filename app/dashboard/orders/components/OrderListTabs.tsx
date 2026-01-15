@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { Inbox, FileText, SendHorizontal, Layers, Truck, Clock, UserPlus } from 'lucide-react';
+import { Inbox, SendHorizontal, Layers, Truck, Clock, UserPlus } from 'lucide-react';
 import { TabType, TabCounts } from '../types/orderList.types';
 import { TFunction } from 'i18next';
 
@@ -31,7 +31,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
   onProductionTabClick,
   readyToShipLabel
 }) => {
-  const isAdminOrSuperAdmin = userRole === 'admin' || userRole === 'super_admin';
+  const isAdminOrSuperAdmin = userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin';
   const isClient = userRole === 'client';
   const isManufacturer = userRole === 'manufacturer';
 
@@ -89,25 +89,7 @@ export const OrderListTabs: React.FC<OrderListTabsProps> = ({
           </button>
         )}
 
-        {/* Invoice Approval Tab - Admin, Super Admin, Client only */}
-        {(isAdminOrSuperAdmin || isClient) && (
-          <button
-            onClick={() => onTabChange('invoice_approval')}
-            className={`py-1.5 sm:py-2 md:py-2.5 px-2 sm:px-3 md:px-4 rounded-lg sm:rounded-none sm:border-b-2 font-medium text-[11px] sm:text-xs md:text-sm flex items-center gap-1 sm:gap-1.5 transition-colors ${
-              activeTab === 'invoice_approval'
-                ? 'bg-amber-100 sm:bg-amber-50/30 text-amber-600 sm:border-amber-500'
-                : 'bg-gray-100 sm:bg-transparent text-gray-500 hover:text-gray-700 sm:border-transparent sm:hover:border-gray-300'
-            }`}
-          >
-            <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5 md:w-4 md:h-4 flex-shrink-0" />
-            <span>{t('invoiceApproval')}</span>
-            {tabCounts.invoice_approval > 0 && (
-              <span className="bg-amber-200 sm:bg-amber-100 text-amber-700 sm:text-amber-600 px-1 sm:px-1.5 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold min-w-[18px] text-center">
-                {tabCounts.invoice_approval}
-              </span>
-            )}
-          </button>
-        )}
+        {/* Invoice Approval Tab - REMOVED: Now on Invoices page in left nav */}
 
         {/* Sent To Other Tab */}
         <button

@@ -59,7 +59,7 @@ export default function ClientSettingsPage() {
       return;
     }
     const user = JSON.parse(userData);
-    if (user.role !== 'super_admin') {
+    if (user.role !== 'super_admin' && user.role !== 'system_admin') {
       router.push('/dashboard');
     }
   }, [router]);

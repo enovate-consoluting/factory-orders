@@ -1252,7 +1252,7 @@ export default function CreateOrderPage() {
         sample_required: hasSampleRequest,
         sample_fee: orderSampleFee ? parseFloat(orderSampleFee) : null,
         sample_eta: orderSampleETA || null,
-        sample_status: orderSampleStatus,
+        sample_status: hasSampleRequest ? orderSampleStatus : null,  // Only set status if sample requested
         sample_notes: orderSampleNotes || null
       }
       

@@ -35,6 +35,7 @@ export interface Translations {
   client: string;
   clientMfr: string;
   products: string;
+  actionNeeded: string;  // For My Orders tab - shows items requiring attention
   clientTotal: string;
   created: string;
   actions: string;
@@ -136,6 +137,7 @@ export const translations: Record<Language, Translations> = {
     client: 'Client',
     clientMfr: 'Client / Manufacturer',
     products: 'Products',
+    actionNeeded: 'Action Needed',
     clientTotal: 'Client Total',
     created: 'Created',
     actions: 'Actions',
@@ -235,6 +237,7 @@ export const translations: Record<Language, Translations> = {
     client: '客户',
     clientMfr: '客户 / 制造商',
     products: '产品',
+    actionNeeded: '待处理',
     clientTotal: '客户总计',
     created: '创建日期',
     actions: '操作',
