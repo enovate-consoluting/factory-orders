@@ -9,6 +9,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Truck, X, ChevronDown, ChevronUp, ExternalLink, Package } from 'lucide-react';
 import Link from 'next/link';
@@ -33,6 +34,7 @@ interface User {
 
 export default function ArrivalAlertBar() {
   const supabase = createClientComponentClient();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<ArrivalNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,8 +42,11 @@ export default function ArrivalAlertBar() {
   const [dismissing, setDismissing] = useState(false);
   const [showDismissConfirm, setShowDismissConfirm] = useState(false);
 
+  // Hide on inventory pages - warehouse workers don't need to see their own checkins
+  const isInventoryPage = pathname === '/dashboard/inventory' || pathname === '/dashboard/manufacturer/inventory';
+
   // Check if user should see this bar (admin, super_admin, or system_admin only)
-  const shouldShowBar = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'system_admin';
+  const shouldShowBar = !isInventoryPage && (user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'system_admin');
 
   // Fetch user from localStorage
   useEffect(() => {

@@ -14,6 +14,7 @@ export type InventoryActionType =
   | 'inventory_delete'
   | 'inventory_received'
   | 'inventory_archived'
+  | 'inventory_unarchived'
   | 'inventory_pickup'
   | 'inventory_restock'
   | 'inventory_adjustment'
@@ -74,6 +75,7 @@ function getConsoleStyle(action: InventoryActionType): { prefix: string; style: 
     inventory_delete: { prefix: '[INV DELETE]', style: 'color: #ef4444; font-weight: bold' },
     inventory_received: { prefix: '[INV RECEIVED]', style: 'color: #f59e0b; font-weight: bold' },
     inventory_archived: { prefix: '[INV ARCHIVED]', style: 'color: #6b7280; font-weight: bold' },
+    inventory_unarchived: { prefix: '[INV RESTORED]', style: 'color: #22c55e; font-weight: bold' },
     inventory_pickup: { prefix: '[INV PICKUP]', style: 'color: #f59e0b; font-weight: bold' },
     inventory_restock: { prefix: '[INV RESTOCK]', style: 'color: #22c55e; font-weight: bold' },
     inventory_adjustment: { prefix: '[INV ADJUST]', style: 'color: #3b82f6; font-weight: bold' },

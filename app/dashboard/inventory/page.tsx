@@ -83,6 +83,12 @@ interface InventoryRecord {
   total_quantity?: number;
   order_media?: OrderMedia[];
   inventory_media?: InventoryMedia[];
+  // Shipping info
+  tracking_number?: string | null;
+  shipping_carrier?: string | null;
+  // Flag for in-production items (not yet shipped)
+  is_production_item?: boolean;
+  product_status?: string;
 }
 
 interface InventoryTransaction {
@@ -247,7 +253,22 @@ export default function InventoryPage() {
     const { data: incoming } = await supabase.from('inventory').select('id').eq('status', 'incoming');
     const { data: inStock } = await supabase.from('inventory').select('id').eq('status', 'in_stock');
     const { data: archived } = await supabase.from('inventory').select('id').eq('status', 'archived');
-    setStats({ incoming: incoming?.length || 0, inStock: inStock?.length || 0, archived: archived?.length || 0 });
+
+    // Also count in_production items that don't have inventory records yet
+    const { data: productionItems } = await supabase
+      .from('order_products')
+      .select('id')
+      .eq('product_status', 'in_production');
+
+    // Filter out production items that already have inventory records
+    const existingProductIds = new Set(incoming?.map(r => (r as any).order_product_id).filter(Boolean) || []);
+    const newProductionCount = productionItems?.filter(p => !existingProductIds.has(p.id)).length || 0;
+
+    setStats({
+      incoming: (incoming?.length || 0) + newProductionCount,
+      inStock: inStock?.length || 0,
+      archived: archived?.length || 0
+    });
   };
 
   const fetchInventory = async (globalSearch = false) => {
@@ -267,13 +288,26 @@ export default function InventoryPage() {
       const recordsWithMedia = await Promise.all((data || []).map(async (record) => {
         let orderMedia: OrderMedia[] = [];
         let inventoryMedia: InventoryMedia[] = [];
+        let trackingInfo = { tracking_number: null as string | null, shipping_carrier: null as string | null };
 
         if (record.order_product_id) {
+          // Fetch order media
           const { data: mediaData } = await supabase
             .from('order_media')
             .select('*')
             .eq('order_product_id', record.order_product_id);
           orderMedia = mediaData || [];
+
+          // Fetch tracking info from order_products
+          const { data: productData } = await supabase
+            .from('order_products')
+            .select('tracking_number, shipping_carrier, product_status')
+            .eq('id', record.order_product_id)
+            .single();
+          if (productData) {
+            trackingInfo.tracking_number = productData.tracking_number;
+            trackingInfo.shipping_carrier = productData.shipping_carrier;
+          }
         }
 
         const { data: invMediaData } = await supabase
@@ -286,14 +320,103 @@ export default function InventoryPage() {
           ...record,
           total_quantity: record.items?.reduce((sum: number, item: InventoryItem) => sum + (item.expected_quantity || 0), 0) || 0,
           order_media: orderMedia,
-          inventory_media: inventoryMedia
+          inventory_media: inventoryMedia,
+          tracking_number: trackingInfo.tracking_number,
+          shipping_carrier: trackingInfo.shipping_carrier,
+          is_production_item: false
         };
       }));
 
-      setInventoryRecords(recordsWithMedia);
+      // For incoming tab, also fetch order_products that are in_production
+      let allRecords = recordsWithMedia;
+      if (activeTab === 'incoming' && !globalSearch) {
+        // Get order_products in production that don't have inventory records yet
+        let prodQuery = supabase
+          .from('order_products')
+          .select(`
+            id,
+            order_id,
+            product_order_number,
+            product_name,
+            product_status,
+            tracking_number,
+            shipping_carrier,
+            created_at,
+            orders!inner(order_number, client_id, clients(id, name)),
+            order_items(id, size, color, quantity)
+          `)
+          .eq('product_status', 'in_production');
+
+        if (clientFilter !== 'all') {
+          prodQuery = prodQuery.eq('orders.client_id', clientFilter);
+        }
+
+        const { data: productionItems } = await prodQuery;
+
+        if (productionItems && productionItems.length > 0) {
+          // Filter out any that already have inventory records
+          const existingProductIds = new Set(recordsWithMedia.map(r => r.order_product_id).filter(Boolean));
+
+          const productionRecords: InventoryRecord[] = await Promise.all(
+            productionItems
+              .filter(p => !existingProductIds.has(p.id))
+              .map(async (product: any) => {
+                // Fetch order media for production items
+                const { data: mediaData } = await supabase
+                  .from('order_media')
+                  .select('*')
+                  .eq('order_product_id', product.id);
+
+                const totalQty = product.order_items?.reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 0;
+
+                return {
+                  id: `prod-${product.id}`, // Prefix to distinguish from inventory records
+                  order_product_id: product.id,
+                  order_id: product.order_id,
+                  client_id: product.orders?.client_id || '',
+                  product_order_number: product.product_order_number || '',
+                  product_name: product.product_name || '',
+                  order_number: product.orders?.order_number || '',
+                  client_name: product.orders?.clients?.name || '',
+                  status: 'incoming' as const,
+                  received_at: null,
+                  received_by: null,
+                  rack_location: null,
+                  archived_at: null,
+                  archived_by: null,
+                  picked_up_by: null,
+                  notes: null,
+                  created_at: product.created_at,
+                  items: product.order_items?.map((item: any) => ({
+                    id: item.id,
+                    inventory_id: `prod-${product.id}`,
+                    order_item_id: item.id,
+                    variant_combo: `${item.size || ''}${item.size && item.color ? ' / ' : ''}${item.color || ''}`.trim() || 'Default',
+                    expected_quantity: item.quantity || 0,
+                    verified: false,
+                    verified_at: null,
+                    notes: null
+                  })) || [],
+                  total_quantity: totalQty,
+                  order_media: mediaData || [],
+                  inventory_media: [],
+                  tracking_number: product.tracking_number,
+                  shipping_carrier: product.shipping_carrier,
+                  is_production_item: true,
+                  product_status: product.product_status
+                };
+              })
+          );
+
+          // Combine: shipped inventory first, then production items
+          allRecords = [...recordsWithMedia, ...productionRecords];
+        }
+      }
+
+      setInventoryRecords(allRecords);
 
       // Log fetch with timing
-      await logInventoryFetch(recordsWithMedia.length, timer.elapsed(), {
+      await logInventoryFetch(allRecords.length, timer.elapsed(), {
         status: activeTab === 'incoming' ? 'incoming' : activeTab === 'inventory' ? 'in_stock' : 'archived',
         clientId: clientFilter !== 'all' ? clientFilter : undefined,
       });
@@ -661,6 +784,39 @@ export default function InventoryPage() {
     });
 
     setArchiveModal({ isOpen: false, record: null, pickedUpBy: '' });
+    fetchInventory(); fetchStats(); setSaving(false);
+  };
+
+  // Un-archive functionality - move item back to inventory
+  const [unarchiveModal, setUnarchiveModal] = useState<{ isOpen: boolean; record: InventoryRecord | null }>({ isOpen: false, record: null });
+
+  const handleUnarchive = async () => {
+    if (!unarchiveModal.record) return;
+    setSaving(true);
+    const timer = createTimer();
+
+    await supabase.from('inventory').update({
+      status: 'in_stock',
+      archived_at: null,
+      archived_by: null,
+      picked_up_by: null
+    }).eq('id', unarchiveModal.record.id);
+
+    // Log the unarchive action
+    await logInventoryAction({
+      action: 'inventory_unarchived',
+      userId: user?.id,
+      userName: user?.name,
+      inventoryId: unarchiveModal.record.id,
+      durationMs: timer.elapsed(),
+      details: {
+        productName: unarchiveModal.record.product_name,
+        orderNumber: unarchiveModal.record.order_number,
+        rackLocation: unarchiveModal.record.rack_location,
+      },
+    });
+
+    setUnarchiveModal({ isOpen: false, record: null });
     fetchInventory(); fetchStats(); setSaving(false);
   };
 
@@ -1103,7 +1259,11 @@ export default function InventoryPage() {
                 const thumbnail = getThumbnailInfo(record);
 
                 return (
-                  <div key={record.id} className="px-3 py-2 hover:bg-gray-50 transition-colors">
+                  <div key={record.id} className={`px-3 py-2 transition-colors ${
+                    record.is_production_item
+                      ? 'bg-amber-50/60 hover:bg-amber-100/60 border-l-2 border-amber-300'
+                      : 'hover:bg-gray-50'
+                  }`}>
                     <div className="flex items-center gap-2">
                       {/* Thumbnail */}
                       <button
@@ -1229,11 +1389,47 @@ export default function InventoryPage() {
                         </div>
                       </div>
 
+                      {/* Tracking Number (for shipped items) */}
+                      {activeTab === 'incoming' && record.tracking_number && !record.is_production_item && (
+                        <div className="w-28 flex-shrink-0 hidden md:block">
+                          <span className="text-[9px] text-gray-400 uppercase">Tracking</span>
+                          <div>
+                            {record.shipping_carrier ? (
+                              <a
+                                href={
+                                  record.shipping_carrier === 'ups' ? `https://www.ups.com/track?tracknum=${record.tracking_number}` :
+                                  record.shipping_carrier === 'fedex' ? `https://www.fedex.com/fedextrack/?trknbr=${record.tracking_number}` :
+                                  record.shipping_carrier === 'usps' ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${record.tracking_number}` :
+                                  record.shipping_carrier === 'dhl' ? `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${record.tracking_number}` :
+                                  '#'
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline truncate block"
+                                title={`${record.shipping_carrier?.toUpperCase()}: ${record.tracking_number}`}
+                              >
+                                {record.tracking_number.length > 12 ? record.tracking_number.slice(0, 12) + '...' : record.tracking_number}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-600 truncate block" title={record.tracking_number}>
+                                {record.tracking_number.length > 12 ? record.tracking_number.slice(0, 12) + '...' : record.tracking_number}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Status Badge (for incoming) */}
                       {activeTab === 'incoming' && (
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium flex-shrink-0">
-                          <Clock className="w-2.5 h-2.5" />Wait
-                        </span>
+                        record.is_production_item ? (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded text-[10px] font-medium flex-shrink-0">
+                            <Clock className="w-2.5 h-2.5" />In Production
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
+                            <Truck className="w-2.5 h-2.5" />Shipped
+                          </span>
+                        )
                       )}
 
                       {/* Actions */}
@@ -1261,6 +1457,11 @@ export default function InventoryPage() {
                         {activeTab === 'inventory' && (
                           <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '' })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
                             Picked Up
+                          </button>
+                        )}
+                        {activeTab === 'archive' && (
+                          <button onClick={() => setUnarchiveModal({ isOpen: true, record })} className="px-2 py-1 bg-green-500 text-white text-[10px] font-medium rounded hover:bg-green-600 transition-colors whitespace-nowrap flex items-center gap-1">
+                            <ArrowUp className="w-3 h-3" />Restore
                           </button>
                         )}
                       </div>
@@ -1893,6 +2094,41 @@ export default function InventoryPage() {
                 className="w-full px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unarchive Confirmation Modal */}
+      {unarchiveModal.isOpen && unarchiveModal.record && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-sm w-full shadow-xl">
+            <div className="p-3 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900">Restore to Inventory</h3>
+            </div>
+            <div className="p-3 space-y-3">
+              <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <ArrowUp className="w-5 h-5 text-green-600 mt-0.5" />
+                <div>
+                  <p className="text-sm text-green-800 font-medium">Move this item back to inventory?</p>
+                  <p className="text-xs text-green-600 mt-0.5">This will make it available for pickup again.</p>
+                </div>
+              </div>
+              <div className="p-2 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-700"><span className="font-medium">{unarchiveModal.record.product_order_number}</span> - {unarchiveModal.record.product_name}</p>
+                {unarchiveModal.record.total_quantity && (
+                  <p className="text-xs text-gray-500 mt-1">Quantity: {unarchiveModal.record.total_quantity}</p>
+                )}
+                {unarchiveModal.record.rack_location && (
+                  <p className="text-xs text-gray-500">Rack: {unarchiveModal.record.rack_location}</p>
+                )}
+              </div>
+            </div>
+            <div className="p-3 border-t border-gray-200 flex gap-2">
+              <button onClick={() => setUnarchiveModal({ isOpen: false, record: null })} className="flex-1 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">Cancel</button>
+              <button onClick={handleUnarchive} disabled={saving} className="flex-1 px-3 py-1.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm flex items-center justify-center gap-1.5">
+                {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Restoring...</> : <><ArrowUp className="w-4 h-4" />Restore</>}
               </button>
             </div>
           </div>
