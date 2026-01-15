@@ -262,12 +262,12 @@ export default function InventoryPage() {
     const { data: allInventory } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
     const existingProductIds = new Set((allInventory || []).map(r => r.order_product_id));
 
-    // Count items in production (in_production OR sample_in_production) that don't have inventory records yet
+    // Count items in production OR shipped that don't have inventory records yet
     // Use !inner join to match fetchInventory query (only items with valid orders)
     const { data: productionItems } = await supabase
       .from('order_products')
       .select('id, orders!inner(id)')
-      .in('product_status', ['in_production', 'sample_in_production']);
+      .in('product_status', ['in_production', 'sample_in_production', 'shipped']);
 
     const newProductionCount = productionItems?.filter(p => !existingProductIds.has(p.id)).length || 0;
 
@@ -341,7 +341,7 @@ export default function InventoryPage() {
         const { data: allInventoryRecords } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
         const existingProductIds = new Set((allInventoryRecords || []).map(r => r.order_product_id));
 
-        // Get order_products in production (in_production OR sample_in_production) that don't have inventory records yet
+        // Get order_products in production OR shipped that don't have inventory records yet
         let prodQuery = supabase
           .from('order_products')
           .select(`
@@ -356,7 +356,7 @@ export default function InventoryPage() {
             orders!inner(order_number, client_id, clients(id, name)),
             order_items(id, size, color, quantity)
           `)
-          .in('product_status', ['in_production', 'sample_in_production']);
+          .in('product_status', ['in_production', 'sample_in_production', 'shipped']);
 
         if (clientFilter !== 'all') {
           prodQuery = prodQuery.eq('orders.client_id', clientFilter);
@@ -1408,8 +1408,8 @@ export default function InventoryPage() {
                         </div>
                       </div>
 
-                      {/* Client */}
-                      <div className="min-w-0 w-28 flex-shrink-0 hidden sm:block">
+                      {/* Client - fixed width */}
+                      <div className="w-32 flex-shrink-0 hidden sm:block">
                         <span className="text-[9px] text-gray-400 uppercase">Client</span>
                         <span className="text-xs text-gray-700 truncate block font-medium">{record.client_name || '—'}</span>
                       </div>
@@ -1441,7 +1441,7 @@ export default function InventoryPage() {
                       )}
 
                       {/* Qty with Variants hover popup */}
-                      <div className="w-16 flex-shrink-0 hidden sm:block group/qty relative">
+                      <div className="w-20 flex-shrink-0 hidden sm:block group/qty relative">
                         <span className="text-[9px] text-gray-400 uppercase">Qty</span>
                         <div className={record.items && record.items.length > 1 ? "cursor-help" : ""}>
                           <span className="text-xs font-bold text-gray-900">{record.total_quantity?.toLocaleString()}</span>
@@ -1468,7 +1468,7 @@ export default function InventoryPage() {
 
                       {/* Rack - hide for incoming tab since it's always empty */}
                       {activeTab !== 'incoming' && (
-                        <div className="w-16 flex-shrink-0 hidden md:block">
+                        <div className="w-20 flex-shrink-0 hidden md:block">
                           <span className="text-[9px] text-gray-400 uppercase">Rack</span>
                           <div>
                             {record.rack_location ? (
@@ -1523,6 +1523,10 @@ export default function InventoryPage() {
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-[10px] font-medium flex-shrink-0">
                               <Clock className="w-2.5 h-2.5" />Sample Production
                             </span>
+                          ) : record.product_status === 'shipped' ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
+                              <Truck className="w-2.5 h-2.5" />Shipped
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded text-[10px] font-medium flex-shrink-0">
                               <Clock className="w-2.5 h-2.5" />In Production
@@ -1557,8 +1561,8 @@ export default function InventoryPage() {
                             Picked Up
                           </button>
                         )}
-                        {/* Delete button - always at the end */}
-                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && !record.order_product_id && (
+                        {/* Delete button - always at the end, for all items */}
+                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && (
                           <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1.5 bg-red-500 text-white hover:bg-red-600 rounded transition-colors" title="Delete">
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
