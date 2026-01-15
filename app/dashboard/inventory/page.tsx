@@ -262,12 +262,12 @@ export default function InventoryPage() {
     const { data: allInventory } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
     const existingProductIds = new Set((allInventory || []).map(r => r.order_product_id));
 
-    // Count in_production items that don't have inventory records yet
+    // Count items in production (in_production OR sample_in_production) that don't have inventory records yet
     // Use !inner join to match fetchInventory query (only items with valid orders)
     const { data: productionItems } = await supabase
       .from('order_products')
       .select('id, orders!inner(id)')
-      .eq('product_status', 'in_production');
+      .in('product_status', ['in_production', 'sample_in_production']);
 
     const newProductionCount = productionItems?.filter(p => !existingProductIds.has(p.id)).length || 0;
 
@@ -341,7 +341,7 @@ export default function InventoryPage() {
         const { data: allInventoryRecords } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
         const existingProductIds = new Set((allInventoryRecords || []).map(r => r.order_product_id));
 
-        // Get order_products in production that don't have inventory records yet
+        // Get order_products in production (in_production OR sample_in_production) that don't have inventory records yet
         let prodQuery = supabase
           .from('order_products')
           .select(`
@@ -356,7 +356,7 @@ export default function InventoryPage() {
             orders!inner(order_number, client_id, clients(id, name)),
             order_items(id, size, color, quantity)
           `)
-          .eq('product_status', 'in_production');
+          .in('product_status', ['in_production', 'sample_in_production']);
 
         if (clientFilter !== 'all') {
           prodQuery = prodQuery.eq('orders.client_id', clientFilter);
@@ -1519,9 +1519,15 @@ export default function InventoryPage() {
                       {/* Status Badge (for incoming) */}
                       {activeTab === 'incoming' && (
                         record.is_production_item ? (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded text-[10px] font-medium flex-shrink-0">
-                            <Clock className="w-2.5 h-2.5" />In Production
-                          </span>
+                          record.product_status === 'sample_in_production' ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-200 text-purple-800 rounded text-[10px] font-medium flex-shrink-0">
+                              <Clock className="w-2.5 h-2.5" />Sample Production
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded text-[10px] font-medium flex-shrink-0">
+                              <Clock className="w-2.5 h-2.5" />In Production
+                            </span>
+                          )
                         ) : (
                           <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium flex-shrink-0">
                             <Truck className="w-2.5 h-2.5" />Shipped
