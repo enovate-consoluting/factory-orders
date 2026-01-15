@@ -1443,14 +1443,15 @@ export default function InventoryPage() {
                       {/* Qty with Variants hover popup */}
                       <div className="w-16 flex-shrink-0 hidden sm:block group/qty relative">
                         <span className="text-[9px] text-gray-400 uppercase">Qty</span>
-                        <div className="cursor-help">
+                        <div className={record.items && record.items.length > 1 ? "cursor-help" : ""}>
                           <span className="text-xs font-bold text-gray-900">{record.total_quantity?.toLocaleString()}</span>
-                          {record.items && record.items.length > 0 && (
+                          {/* Only show variant count if more than 1 variant */}
+                          {record.items && record.items.length > 1 && (
                             <span className="text-[9px] text-gray-400 ml-1">({record.items.length})</span>
                           )}
                         </div>
-                        {/* Variants hover popup */}
-                        {record.items && record.items.length > 0 && (
+                        {/* Variants hover popup - only show if multiple variants */}
+                        {record.items && record.items.length > 1 && (
                           <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-20 min-w-[180px] hidden group-hover/qty:block">
                             <p className="text-[9px] text-gray-500 uppercase mb-1 font-medium">Variants</p>
                             <div className="space-y-0.5 max-h-32 overflow-y-auto">
@@ -1485,26 +1486,28 @@ export default function InventoryPage() {
                           <span className="text-[9px] text-gray-400 uppercase">Tracking</span>
                           <div>
                             {record.tracking_number ? (
-                              record.shipping_carrier ? (
-                                <a
-                                  href={
-                                    record.shipping_carrier === 'ups' ? `https://www.ups.com/track?tracknum=${record.tracking_number}` :
-                                    record.shipping_carrier === 'fedex' ? `https://www.fedex.com/fedextrack/?trknbr=${record.tracking_number}` :
-                                    record.shipping_carrier === 'usps' ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${record.tracking_number}` :
-                                    record.shipping_carrier === 'dhl' ? `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${record.tracking_number}` :
-                                    '#'
-                                  }
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                  title={`Track via ${record.shipping_carrier?.toUpperCase()}`}
-                                >
-                                  <Truck className="w-3 h-3" />
-                                  <span className="truncate">{record.tracking_number}</span>
-                                </a>
-                              ) : (
-                                <span className="text-xs text-gray-600 truncate block">{record.tracking_number}</span>
-                              )
+                              (() => {
+                                const carrier = (record.shipping_carrier || '').toLowerCase();
+                                const trackingUrl = carrier.includes('dhl') ? `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${record.tracking_number}` :
+                                  carrier.includes('ups') ? `https://www.ups.com/track?tracknum=${record.tracking_number}` :
+                                  carrier.includes('fedex') ? `https://www.fedex.com/fedextrack/?trknbr=${record.tracking_number}` :
+                                  carrier.includes('usps') ? `https://tools.usps.com/go/TrackConfirmAction?tLabels=${record.tracking_number}` :
+                                  null;
+                                return trackingUrl ? (
+                                  <a
+                                    href={trackingUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                    title={`Track via ${record.shipping_carrier?.toUpperCase()}`}
+                                  >
+                                    <Truck className="w-3 h-3" />
+                                    <span className="truncate">{record.tracking_number}</span>
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-gray-600 truncate block">{record.tracking_number}</span>
+                                );
+                              })()
                             ) : (
                               <span className="text-xs text-gray-400">—</span>
                             )}
@@ -1512,23 +1515,6 @@ export default function InventoryPage() {
                         </div>
                       )}
 
-                      {/* Notes - icon with hover popup */}
-                      <div className="w-8 flex-shrink-0 hidden sm:flex items-center justify-center group/notes relative">
-                        {record.notes ? (
-                          <>
-                            <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center cursor-help">
-                              <MessageSquare className="w-3 h-3" />
-                            </div>
-                            {/* Notes hover popup */}
-                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-20 w-48 hidden group-hover/notes:block">
-                              <p className="text-[9px] text-gray-500 uppercase mb-1 font-medium">Notes</p>
-                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{record.notes}</p>
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </div>
 
                       {/* Status Badge (for incoming) */}
                       {activeTab === 'incoming' && (
@@ -1555,11 +1541,6 @@ export default function InventoryPage() {
                             <Edit2 className="w-3 h-3" />Edit
                           </button>
                         )}
-                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && !record.order_product_id && (
-                          <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors" title="Delete">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                         {activeTab === 'incoming' && (
                           <button onClick={() => openReceiveModal(record)} className="px-2 py-1 bg-amber-500 text-white text-[10px] font-medium rounded hover:bg-amber-600 transition-colors whitespace-nowrap">
                             Received
@@ -1568,6 +1549,12 @@ export default function InventoryPage() {
                         {activeTab === 'inventory' && (
                           <button onClick={() => setArchiveModal({ isOpen: true, record, pickedUpBy: '', pickupQuantity: record.total_quantity || 0, showQuantityInput: false })} className="px-2 py-1 bg-gray-500 text-white text-[10px] font-medium rounded hover:bg-gray-600 transition-colors whitespace-nowrap">
                             Picked Up
+                          </button>
+                        )}
+                        {/* Delete button - always at the end */}
+                        {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.role === 'admin') && !record.order_product_id && (
+                          <button onClick={() => setDeleteModal({ isOpen: true, record })} className="p-1.5 bg-red-500 text-white hover:bg-red-600 rounded transition-colors" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
                       </div>
@@ -1580,15 +1567,25 @@ export default function InventoryPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-3 text-xs">
-              <span className="text-gray-500">Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredRecords.length)} of {filteredRecords.length}</span>
-              <div className="flex items-center gap-1">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  <ChevronLeft className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-between mt-4 text-sm">
+              <span className="text-gray-600">Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredRecords.length)} of {filteredRecords.length}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-gray-700 font-medium"
+                >
+                  <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="px-2 text-gray-700">Page {currentPage}/{totalPages}</span>
-                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                  <ChevronRight className="w-3.5 h-3.5" />
+                <span className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium">
+                  Page {currentPage}/{totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 text-gray-700 font-medium"
+                >
+                  <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
