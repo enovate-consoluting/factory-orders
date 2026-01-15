@@ -8,6 +8,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MessageCircle,
   X,
@@ -490,31 +491,59 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     "What's our revenue this month?"
   ];
 
+  // State for sidebar portal target
+  const [sidebarTarget, setSidebarTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    // Try to find the sidebar trigger element
+    const trigger = document.getElementById('eddie-sidebar-trigger');
+    if (trigger) {
+      setSidebarTarget(trigger);
+    }
+  }, []);
+
   // Only render for admin/super_admin/system_admin
   if (userRole !== 'admin' && userRole !== 'super_admin' && userRole !== 'system_admin') {
     return null;
   }
 
+  // Eddie button for sidebar
+  const EddieButton = (
+    <button
+      onClick={handleOpen}
+      className="w-9 h-9 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-md hover:shadow-lg hover:scale-110 transition-all duration-200 flex items-center justify-center group relative"
+      title="Ask Eddie"
+    >
+      <EddieIcon className="w-5 h-5" animated={!isOpen} />
+      {hasUnread && (
+        <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+      )}
+    </button>
+  );
+
   return (
     <>
-      {/* Floating Button - Eddie */}
+      {/* Eddie Button - rendered in sidebar via portal, or floating as fallback */}
       {!isOpen && (
-        <button
-          onClick={handleOpen}
-          className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
-          title="Ask Eddie"
-        >
-          <div className="relative">
-            <EddieIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
-          </div>
-          {hasUnread && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
-          )}
-          {/* Floating label - hidden on mobile */}
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
-            Ask Eddie
-          </span>
-        </button>
+        sidebarTarget
+          ? createPortal(EddieButton, sidebarTarget)
+          : (
+            <button
+              onClick={handleOpen}
+              className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+              title="Ask Eddie"
+            >
+              <div className="relative">
+                <EddieIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
+              </div>
+              {hasUnread && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+              )}
+              <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
+                Ask Eddie
+              </span>
+            </button>
+          )
       )}
 
       {/* Chat Panel - Full screen on mobile, floating on desktop */}

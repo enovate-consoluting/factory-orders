@@ -1235,6 +1235,10 @@ function SidebarContent({
             <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
             <p className="text-xs text-gray-500">{formatRole(user?.role || '')}</p>
           </div>
+          {/* Eddie AI Button - inline in sidebar */}
+          {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.can_access_ai_assistant) && (
+            <div id="eddie-sidebar-trigger" className="flex-shrink-0" />
+          )}
         </div>
       </div>
 

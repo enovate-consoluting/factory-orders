@@ -250,18 +250,21 @@ export default function InventoryPage() {
   };
 
   const fetchStats = async () => {
-    const { data: incoming } = await supabase.from('inventory').select('id').eq('status', 'incoming');
+    // Get inventory counts by status
+    const { data: incoming } = await supabase.from('inventory').select('id, order_product_id').eq('status', 'incoming');
     const { data: inStock } = await supabase.from('inventory').select('id').eq('status', 'in_stock');
     const { data: archived } = await supabase.from('inventory').select('id').eq('status', 'archived');
 
-    // Also count in_production items that don't have inventory records yet
+    // Get ALL inventory records to check which order_products already have inventory
+    const { data: allInventory } = await supabase.from('inventory').select('order_product_id').not('order_product_id', 'is', null);
+    const existingProductIds = new Set((allInventory || []).map(r => r.order_product_id));
+
+    // Count in_production items that don't have inventory records yet
     const { data: productionItems } = await supabase
       .from('order_products')
       .select('id')
       .eq('product_status', 'in_production');
 
-    // Filter out production items that already have inventory records
-    const existingProductIds = new Set(incoming?.map(r => (r as any).order_product_id).filter(Boolean) || []);
     const newProductionCount = productionItems?.filter(p => !existingProductIds.has(p.id)).length || 0;
 
     setStats({
@@ -1336,62 +1339,48 @@ export default function InventoryPage() {
                         </div>
                       )}
 
-                      {/* Qty */}
-                      <div className="w-14 flex-shrink-0 hidden sm:block">
+                      {/* Qty with Variants hover popup */}
+                      <div className="w-16 flex-shrink-0 hidden sm:block group/qty relative">
                         <span className="text-[9px] text-gray-400 uppercase">Qty</span>
-                        <div>
-                          <span className="text-xs font-bold text-gray-900">{record.total_quantity}</span>
-                        </div>
-                      </div>
-
-                      {/* Rack */}
-                      <div className="w-16 flex-shrink-0 hidden md:block">
-                        <span className="text-[9px] text-gray-400 uppercase">Rack</span>
-                        <div>
-                          {record.rack_location ? (
-                            <span className="text-xs font-semibold text-green-700">{record.rack_location}</span>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
+                        <div className="cursor-help">
+                          <span className="text-xs font-bold text-gray-900">{record.total_quantity?.toLocaleString()}</span>
+                          {record.items && record.items.length > 0 && (
+                            <span className="text-[9px] text-gray-400 ml-1">({record.items.length})</span>
                           )}
                         </div>
-                      </div>
-
-                      {/* Variants */}
-                      <div className="flex-1 min-w-0 hidden lg:block">
-                        <span className="text-[9px] text-gray-400 uppercase">Variants</span>
-                        <div className="flex items-center gap-1 overflow-hidden">
-                          {record.items && record.items.length > 0 ? (
-                            <>
-                              {record.items.slice(0, 3).map((item: InventoryItem) => (
-                                <span key={item.id} className="inline-flex items-center px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] whitespace-nowrap">
-                                  {item.variant_combo}:<span className="font-semibold ml-0.5">{item.expected_quantity.toLocaleString()}</span>
-                                </span>
+                        {/* Variants hover popup */}
+                        {record.items && record.items.length > 0 && (
+                          <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-20 min-w-[180px] hidden group-hover/qty:block">
+                            <p className="text-[9px] text-gray-500 uppercase mb-1 font-medium">Variants</p>
+                            <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                              {record.items.map((item: InventoryItem) => (
+                                <div key={item.id} className="flex justify-between text-xs">
+                                  <span className="text-gray-700">{item.variant_combo}</span>
+                                  <span className="font-semibold text-gray-900">{item.expected_quantity.toLocaleString()}</span>
+                                </div>
                               ))}
-                              {record.items.length > 3 && (
-                                <span className="text-[10px] text-gray-400">+{record.items.length - 3}</span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                        </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      {/* Notes */}
-                      <div className="w-36 flex-shrink-0 hidden xl:block">
-                        <span className="text-[9px] text-gray-400 uppercase">Notes</span>
-                        <div>
-                          {record.notes ? (
-                            <span className="text-[11px] text-gray-600 truncate block" title={record.notes}>{record.notes}</span>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
+                      {/* Rack - hide for incoming tab since it's always empty */}
+                      {activeTab !== 'incoming' && (
+                        <div className="w-16 flex-shrink-0 hidden md:block">
+                          <span className="text-[9px] text-gray-400 uppercase">Rack</span>
+                          <div>
+                            {record.rack_location ? (
+                              <span className="text-xs font-semibold text-green-700">{record.rack_location}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Tracking Number (for shipped items) */}
+                      {/* Tracking Number (for shipped items in Incoming) - wider column */}
                       {activeTab === 'incoming' && record.tracking_number && !record.is_production_item && (
-                        <div className="w-28 flex-shrink-0 hidden md:block">
+                        <div className="w-36 flex-shrink-0 hidden md:block">
                           <span className="text-[9px] text-gray-400 uppercase">Tracking</span>
                           <div>
                             {record.shipping_carrier ? (
@@ -1405,19 +1394,37 @@ export default function InventoryPage() {
                                 }
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline truncate block"
+                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
                                 title={`${record.shipping_carrier?.toUpperCase()}: ${record.tracking_number}`}
                               >
-                                {record.tracking_number.length > 12 ? record.tracking_number.slice(0, 12) + '...' : record.tracking_number}
+                                {record.tracking_number}
                               </a>
                             ) : (
-                              <span className="text-xs text-gray-600 truncate block" title={record.tracking_number}>
-                                {record.tracking_number.length > 12 ? record.tracking_number.slice(0, 12) + '...' : record.tracking_number}
+                              <span className="text-xs text-gray-600" title={record.tracking_number}>
+                                {record.tracking_number}
                               </span>
                             )}
                           </div>
                         </div>
                       )}
+
+                      {/* Notes - icon with hover popup */}
+                      <div className="w-8 flex-shrink-0 hidden sm:flex items-center justify-center group/notes relative">
+                        {record.notes ? (
+                          <>
+                            <div className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center cursor-help">
+                              <MessageSquare className="w-3 h-3" />
+                            </div>
+                            {/* Notes hover popup */}
+                            <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-20 w-48 hidden group-hover/notes:block">
+                              <p className="text-[9px] text-gray-500 uppercase mb-1 font-medium">Notes</p>
+                              <p className="text-xs text-gray-700 whitespace-pre-wrap">{record.notes}</p>
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </div>
 
                       {/* Status Badge (for incoming) */}
                       {activeTab === 'incoming' && (
