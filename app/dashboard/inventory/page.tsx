@@ -348,13 +348,13 @@ export default function InventoryPage() {
             id,
             order_id,
             product_order_number,
-            product_name,
             product_status,
             tracking_number,
             shipping_carrier,
             created_at,
             orders!inner(order_number, client_id, clients(id, name)),
-            order_items(id, size, color, quantity)
+            order_items(id, variant_combo, quantity),
+            products(title)
           `)
           .in('product_status', ['in_production', 'sample_in_production', 'shipped']);
 
@@ -385,7 +385,7 @@ export default function InventoryPage() {
                   order_id: product.order_id,
                   client_id: product.orders?.client_id || '',
                   product_order_number: product.product_order_number || '',
-                  product_name: product.product_name || '',
+                  product_name: product.products?.title || product.product_order_number || '',
                   order_number: product.orders?.order_number || '',
                   client_name: product.orders?.clients?.name || '',
                   status: 'incoming' as const,
@@ -401,7 +401,7 @@ export default function InventoryPage() {
                     id: item.id,
                     inventory_id: `prod-${product.id}`,
                     order_item_id: item.id,
-                    variant_combo: `${item.size || ''}${item.size && item.color ? ' / ' : ''}${item.color || ''}`.trim() || 'Default',
+                    variant_combo: item.variant_combo || 'Default',
                     expected_quantity: item.quantity || 0,
                     verified: false,
                     verified_at: null,
