@@ -47,11 +47,12 @@ export function useInvoiceCheck() {
         throw invoicesError;
       }
 
-      // 2. Get all products for this order and their invoice status
+      // 2. Get all products for this order and their invoice status (excluding soft-deleted)
       const { data: products, error: productsError } = await supabase
         .from('order_products')
         .select('id, invoiced, invoice_id')
-        .eq('order_id', orderId);
+        .eq('order_id', orderId)
+        .is('deleted_at', null);
 
       if (productsError) {
         console.error('Error fetching products:', productsError);

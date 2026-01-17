@@ -43,7 +43,10 @@ export function AdminControlPanel({
   totalAmount = 0
 }: AdminControlPanelProps) {
   const { t } = useTranslation();
-  
+
+  // Order is locked when status is completed or delivered - hide Add Product, Save & Route
+  const isOrderLocked = order?.status === 'completed' || order?.status === 'delivered';
+
   // Notes Modal State
   const [notesModal, setNotesModal] = useState(false);
   const [notes, setNotes] = useState<ClientNote[]>([]);
@@ -346,21 +349,23 @@ export function AdminControlPanel({
               <span className="hidden sm:inline">Print</span>
             </button>
 
-            {/* Add Product Button */}
-            <button
-              onClick={() => setAddProductModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
-              title="Add Product"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Product</span>
-            </button>
+            {/* Add Product Button - hidden when order is completed/delivered */}
+            {!isOrderLocked && (
+              <button
+                onClick={() => setAddProductModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors text-sm font-medium"
+                title="Add Product"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Product</span>
+              </button>
+            )}
 
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Save All & Route - Primary Action */}
-            {productCounts.withAdmin > 0 && (
+            {/* Save All & Route - Primary Action - hidden when order is completed/delivered */}
+            {productCounts.withAdmin > 0 && !isOrderLocked && (
               <button
                 onClick={onSaveAndRoute}
                 className="flex items-center gap-1.5 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium shadow-sm"

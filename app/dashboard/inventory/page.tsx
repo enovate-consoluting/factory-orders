@@ -115,6 +115,98 @@ const getFileType = (url: string, fileType?: string): 'image' | 'pdf' | 'other' 
   return 'other';
 };
 
+// STATUS HIERARCHY for order status calculation
+// Lower index = earlier in workflow = "lower" status
+const STATUS_HIERARCHY: Record<string, number> = {
+  'draft': 0,
+  'pending': 1,
+  'pending_admin': 2,
+  'sent_to_manufacturer': 3,
+  'submitted_to_manufacturer': 3,
+  'sample_requested': 4,
+  'in_production': 5,
+  'sample_in_production': 5,
+  'approved_for_production': 6,
+  'pending_client_approval': 7,
+  'client_approved': 8,
+  'shipped': 9,
+  'delivered': 10,
+  'completed': 11,
+};
+
+// Maps product status to order status
+const PRODUCT_TO_ORDER_STATUS: Record<string, string> = {
+  'pending': 'in_progress',
+  'pending_admin': 'in_progress',
+  'sent_to_manufacturer': 'sent_to_manufacturer',
+  'submitted_to_manufacturer': 'submitted_to_manufacturer',
+  'sample_requested': 'in_progress',
+  'in_production': 'in_production',
+  'sample_in_production': 'in_production',
+  'approved_for_production': 'in_production',
+  'pending_client_approval': 'in_progress',
+  'client_approved': 'in_progress',
+  'shipped': 'in_progress',
+  'delivered': 'completed',
+  'completed': 'completed',
+};
+
+/**
+ * Recalculates and updates the order status based on all its products
+ * Order status = the "lowest" (earliest in workflow) status among all non-deleted products
+ */
+const recalculateOrderStatus = async (orderId: string) => {
+  try {
+    // Get all non-deleted products for this order
+    const { data: products, error: productsError } = await supabase
+      .from('order_products')
+      .select('id, product_status')
+      .eq('order_id', orderId)
+      .is('deleted_at', null);
+
+    if (productsError || !products || products.length === 0) {
+      console.error('Error fetching products for order status calculation:', productsError);
+      return;
+    }
+
+    // Find the "lowest" status (earliest in workflow)
+    let lowestStatusRank = Infinity;
+    let lowestStatus = 'in_progress';
+
+    for (const product of products) {
+      const statusRank = STATUS_HIERARCHY[product.product_status] ?? 5; // default to in_production level
+      if (statusRank < lowestStatusRank) {
+        lowestStatusRank = statusRank;
+        lowestStatus = product.product_status;
+      }
+    }
+
+    // Map product status to order status
+    const newOrderStatus = PRODUCT_TO_ORDER_STATUS[lowestStatus] || 'in_progress';
+
+    // Check if ALL products are delivered - if so, order is completed
+    const allDelivered = products.every(p =>
+      p.product_status === 'delivered' || p.product_status === 'completed'
+    );
+
+    const finalOrderStatus = allDelivered ? 'completed' : newOrderStatus;
+
+    // Update the order status
+    const { error: updateError } = await supabase
+      .from('orders')
+      .update({ status: finalOrderStatus })
+      .eq('id', orderId);
+
+    if (updateError) {
+      console.error('Error updating order status:', updateError);
+    } else {
+      console.log(`Order ${orderId} status updated to: ${finalOrderStatus}`);
+    }
+  } catch (error) {
+    console.error('Error in recalculateOrderStatus:', error);
+  }
+};
+
 export default function InventoryPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -701,6 +793,29 @@ export default function InventoryPage() {
 
       if (receiveModal.capturedPhotos.length > 0) {
         await uploadPhotos(receiveModal.record.id, receiveModal.capturedPhotos, user?.id);
+      }
+
+      // UPDATE ORDER PRODUCT STATUS TO DELIVERED
+      // This connects inventory receipt to order workflow
+      if (receiveModal.record.order_product_id) {
+        const { error: productUpdateError } = await supabase
+          .from('order_products')
+          .update({
+            product_status: 'delivered',
+            inventory_status: 'received'
+          })
+          .eq('id', receiveModal.record.order_product_id);
+
+        if (productUpdateError) {
+          console.error('Error updating product status to delivered:', productUpdateError);
+        } else {
+          console.log('Product status updated to delivered:', receiveModal.record.order_product_id);
+
+          // Now recalculate the parent order's status based on all products
+          if (receiveModal.record.order_id) {
+            await recalculateOrderStatus(receiveModal.record.order_id);
+          }
+        }
       }
 
       // Log the received action

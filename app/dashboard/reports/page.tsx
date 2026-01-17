@@ -18,7 +18,8 @@ import {
   FileText,
   Calendar,
   ArrowRight,
-  Clock
+  Clock,
+  Trash2
 } from 'lucide-react';
 
 interface ReportCard {
@@ -29,6 +30,7 @@ interface ReportCard {
   href: string;
   color: string;
   available: boolean;
+  systemAdminOnly?: boolean;
 }
 
 export default function ReportsPage() {
@@ -42,7 +44,8 @@ export default function ReportsPage() {
       return;
     }
     const parsedUser = JSON.parse(userData);
-    if (parsedUser.role !== 'super_admin') {
+    // Allow super_admin and system_admin (which is equivalent)
+    if (parsedUser.role !== 'super_admin' && parsedUser.role !== 'system_admin') {
       router.push('/dashboard');
       return;
     }
@@ -104,6 +107,16 @@ export default function ReportsPage() {
       color: 'gray',
       available: true,
     },
+    {
+      id: 'deleted-items',
+      title: 'Deleted Items',
+      description: 'View all soft-deleted products and orders',
+      icon: Trash2,
+      href: '/dashboard/reports/deleted',
+      color: 'red',
+      available: true,
+      systemAdminOnly: true,
+    },
   ];
 
   const getColorClasses = (color: string) => {
@@ -138,7 +151,9 @@ export default function ReportsPage() {
 
         {/* Reports Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reports.map((report) => {
+          {reports
+            .filter(report => !report.systemAdminOnly || user?.role === 'system_admin')
+            .map((report) => {
             const colors = getColorClasses(report.color);
             const Icon = report.icon;
 

@@ -84,7 +84,7 @@ export default function DashboardPage() {
     
     if (parsedUser.role === 'client') {
       fetchClientDashboard(parsedUser);
-    } else if (parsedUser.role === 'super_admin' || parsedUser.role === 'admin') {
+    } else if (parsedUser.role === 'system_admin' || parsedUser.role === 'super_admin' || parsedUser.role === 'admin') {
       fetchAdminDashboard(parsedUser);
     } else {
       setLoading(false);
@@ -117,24 +117,26 @@ export default function DashboardPage() {
           order_products(
             id,
             product_status,
-            routed_to
+            routed_to,
+            deleted_at
           )
         `)
         .eq('client_id', clientData.id)
         .order('created_at', { ascending: false });
-      
+
       if (!orders) {
         setLoading(false);
         return;
       }
-      
+
       let pendingProducts = 0;
       let approvedProducts = 0;
       const ordersWithPending: any[] = [];
-      
+
       orders.forEach(order => {
-        const clientProducts = order.order_products?.filter((p: any) => 
-          p.routed_to === 'client'
+        // Exclude soft-deleted products
+        const clientProducts = order.order_products?.filter((p: any) =>
+          !p.deleted_at && p.routed_to === 'client'
         ) || [];
         
         const pending = clientProducts.filter((p: any) => 
@@ -478,7 +480,7 @@ export default function DashboardPage() {
   }
 
   // ============ ADMIN/SUPER ADMIN DASHBOARD RENDER ============
-  if (userRole === 'super_admin' || userRole === 'admin') {
+  if (userRole === 'system_admin' || userRole === 'super_admin' || userRole === 'admin') {
     // Calculate Y-axis scale for weekly chart
     const maxWeeklyCount = Math.max(...weeklyOrders.map(w => w.count), 1);
     const yAxisMax = Math.ceil(maxWeeklyCount / 5) * 5 + 5; // Round up to nearest 5, add buffer

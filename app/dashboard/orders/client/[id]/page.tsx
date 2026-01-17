@@ -44,6 +44,8 @@ export default function ClientOrderDetailPage() {
           id,
           order_number,
           order_name,
+          status,
+          is_paid,
           created_at,
           sample_required,
           sample_routed_to,
@@ -196,6 +198,9 @@ export default function ClientOrderDetailPage() {
   const sampleNeedsApproval = hasSampleForClient && order.sample_status !== 'sample_approved';
   const orderTotal = calculateOrderTotal();
 
+  // Order is locked when status is completed or delivered - hide action buttons
+  const isOrderLocked = order?.status === 'completed' || order?.status === 'delivered';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -210,9 +215,31 @@ export default function ClientOrderDetailPage() {
                 <ArrowLeft className="w-5 h-5 text-gray-600" />
               </Link>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  {order.order_name || 'Order'}
-                </h1>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl font-bold text-gray-900">
+                    {order.order_name || 'Order'}
+                  </h1>
+                  {/* Status Badge */}
+                  {(order.status === 'delivered' || order.status === 'completed') && (
+                    <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                      order.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {order.status === 'completed' ? 'Completed' : 'Delivered'}
+                    </span>
+                  )}
+                  {/* Payment Badge */}
+                  {(order.status === 'delivered' || order.status === 'completed') && (
+                    <span className={`px-2 py-1 text-xs rounded-full font-medium flex items-center gap-1 ${
+                      order.is_paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+                    }`}>
+                      {order.is_paid ? (
+                        <><CheckCircle className="w-3 h-3" /> Paid</>
+                      ) : (
+                        <><DollarSign className="w-3 h-3" /> Unpaid</>
+                      )}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">#{order.order_number}</p>
               </div>
             </div>
@@ -274,7 +301,8 @@ export default function ClientOrderDetailPage() {
                 </div>
               </div>
 
-              {sampleNeedsApproval && (
+              {/* Approve Sample button - hidden when order is completed/delivered */}
+              {sampleNeedsApproval && !isOrderLocked && (
                 <button
                   onClick={handleApproveSample}
                   disabled={approvingSample}

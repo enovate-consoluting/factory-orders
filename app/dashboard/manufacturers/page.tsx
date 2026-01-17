@@ -355,7 +355,7 @@ export default function ManufacturersPage() {
               Manage manufacturer accounts with login access
             </p>
           </div>
-          {(user?.role === 'super_admin' || user?.role === 'admin') && (
+          {(user?.role === 'system_admin' || user?.role === 'super_admin' || user?.role === 'admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -380,7 +380,7 @@ export default function ManufacturersPage() {
                   <p className="text-sm text-gray-500">{manufacturer.email}</p>
                 </div>
               </div>
-              {(user?.role === 'super_admin') && (
+              {(user?.role === 'system_admin' || user?.role === 'super_admin') && (
                 <button
                   onClick={() => window.location.href = `/dashboard/manufacturers/${manufacturer.id}`}
                   className="ml-2 p-2 bg-blue-50 hover:bg-blue-100 rounded-full"
@@ -391,7 +391,7 @@ export default function ManufacturersPage() {
               )}
             </div>
 
-            {(user?.role === 'super_admin' || user?.role === 'admin') && (
+            {(user?.role === 'system_admin' || user?.role === 'super_admin' || user?.role === 'admin') && (
               <div className="flex gap-2 pt-3 border-t border-gray-200">
                 <button
                   onClick={() => openEditModal(manufacturer)}
@@ -418,7 +418,7 @@ export default function ManufacturersPage() {
           <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No manufacturers yet</h3>
           <p className="text-gray-500 mb-4">Get started by adding your first manufacturer</p>
-          {(user?.role === 'super_admin' || user?.role === 'admin') && (
+          {(user?.role === 'system_admin' || user?.role === 'super_admin' || user?.role === 'admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"

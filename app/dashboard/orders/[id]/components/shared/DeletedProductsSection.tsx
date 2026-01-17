@@ -1,7 +1,7 @@
 /**
- * DeletedProductsSection - Shows soft-deleted products for super_admin
- * Allows viewing deletion reason and optionally restoring products
- * Only visible to super_admin users
+ * DeletedProductsSection - Shows soft-deleted products for admin roles
+ * Allows viewing deletion reason and restoring products
+ * Visible to: super_admin, system_admin, admin
  * Last Modified: January 2026
  */
 
@@ -23,8 +23,8 @@ interface DeletedProduct {
   };
 }
 
-// Only these emails can see deleted products and restore them
-const AUTHORIZED_EMAILS = ['admin@test.com'];
+// Only system_admin can see deleted products and restore them
+const AUTHORIZED_ROLES = ['system_admin'];
 
 interface DeletedProductsSectionProps {
   orderId: string;
@@ -43,22 +43,22 @@ export function DeletedProductsSection({
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const { restoreProduct } = useProductDelete();
 
-  // Check if current user is authorized to see deleted products
-  const getUserEmail = (): string => {
+  // Check if current user role is authorized to see deleted products
+  const getUserRole = (): string => {
     try {
       const userData = localStorage.getItem('user');
       if (!userData) return '';
       const user = JSON.parse(userData);
-      return user.email?.toLowerCase() || '';
+      return user.role || '';
     } catch {
       return '';
     }
   };
 
-  const userEmail = getUserEmail();
-  const isAuthorized = AUTHORIZED_EMAILS.includes(userEmail);
+  const currentUserRole = getUserRole();
+  const isAuthorized = AUTHORIZED_ROLES.includes(currentUserRole);
 
-  // Only authorized emails can see this section
+  // Only authorized roles can see this section
   if (!isAuthorized) {
     return null;
   }
@@ -234,9 +234,9 @@ export function DeletedProductsSection({
           <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <div>
-              <strong>Admin Only:</strong> These products have been soft-deleted
-              and are hidden from all reports and calculations. You can restore them
-              if they were deleted by mistake.
+              <strong>Note:</strong> These products have been soft-deleted
+              and are hidden from all reports, invoices, and calculations. Click Restore
+              to bring them back to the active order.
             </div>
           </div>
         </div>

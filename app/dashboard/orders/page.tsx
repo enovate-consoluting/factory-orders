@@ -336,7 +336,8 @@ export default function OrdersPage() {
             selected_shipping_method,
             estimated_ship_date,
             tracking_number,
-            shipping_carrier
+            shipping_carrier,
+            deleted_at
           ),
           sample_routed_to,
           sample_required,
@@ -385,11 +386,17 @@ export default function OrdersPage() {
       }
 
       const { data, error } = await query;
-      
+
       if (error) throw error;
-      
-      setOrders(data || []);
-      setFilteredOrders(data || []);
+
+      // Filter out soft-deleted products from each order
+      const ordersWithFilteredProducts = (data || []).map(order => ({
+        ...order,
+        order_products: (order.order_products || []).filter((p: any) => !p.deleted_at)
+      }));
+
+      setOrders(ordersWithFilteredProducts);
+      setFilteredOrders(ordersWithFilteredProducts);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
@@ -1250,14 +1257,69 @@ export default function OrdersPage() {
   };
 
   /**
+   * Render status and payment badges for delivered/completed orders
+   * Shows: [Delivered] or [Completed] + [Paid ✓] or [Unpaid]
+   */
+  const renderStatusPaymentBadges = (order: Order) => {
+    const status = order.status;
+    const isPaid = order.is_paid === true;
+
+    // Only show these badges for terminal statuses (delivered, completed)
+    if (status !== 'delivered' && status !== 'completed') {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {/* Status Badge */}
+        <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+          status === 'completed'
+            ? 'bg-green-100 text-green-700'
+            : 'bg-blue-100 text-blue-700'
+        }`}>
+          {status === 'completed' ? (language === 'zh' ? '已完成' : 'Completed') : (language === 'zh' ? '已交付' : 'Delivered')}
+        </span>
+
+        {/* Payment Badge */}
+        <span className={`px-2 py-1 text-xs rounded-full font-medium flex items-center gap-1 ${
+          isPaid
+            ? 'bg-green-100 text-green-700'
+            : 'bg-red-100 text-red-600'
+        }`}>
+          {isPaid ? (
+            <>
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+              {language === 'zh' ? '已付款' : 'Paid'}
+            </>
+          ) : (
+            <>
+              <DollarSign className="w-3 h-3" />
+              {language === 'zh' ? '未付款' : 'Unpaid'}
+            </>
+          )}
+        </span>
+      </div>
+    );
+  };
+
+  /**
    * Render the routing status badges for an order
    * Shows TWO badges when both products and sample are present
+   * SKIP for delivered/completed orders - those show status+payment badges instead
    */
   const renderRoutingBadges = (order: Order) => {
+    // Don't show routing badges for delivered/completed orders
+    // Those orders show status + payment badges instead
+    if (order.status === 'delivered' || order.status === 'completed') {
+      return null;
+    }
+
     const routingStatus = getOrderRoutingStatus(order);
-    
+
     // For production tabs (sample_approved, sample_in_production), just show one badge
-    if (activeTab === 'production_status' && 
+    if (activeTab === 'production_status' &&
         (productionSubTab === 'sample_approved' || productionSubTab === 'sample_in_production')) {
       return (
         <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
@@ -1265,7 +1327,7 @@ export default function OrdersPage() {
         </span>
       );
     }
-    
+
     return (
       <div className="flex items-center gap-1 flex-wrap">
         {/* Products badge - only show if there are products */}
@@ -1274,7 +1336,7 @@ export default function OrdersPage() {
             {routingStatus.productCount} {routingStatus.productLabel}
           </span>
         )}
-        
+
         {/* Sample badge - show separately if sample is with this party */}
         {routingStatus.hasSample && (
           <span className="px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
@@ -1282,7 +1344,7 @@ export default function OrdersPage() {
             {getTranslation('sample', 'Sample')}
           </span>
         )}
-        
+
         {/* If no products and no sample, show generic */}
         {routingStatus.productCount === 0 && !routingStatus.hasSample && (
           <span className={`px-2 py-1 text-xs rounded-full bg-${routingStatus.color}-100 text-${routingStatus.color}-700`}>
@@ -1431,14 +1493,14 @@ export default function OrdersPage() {
                     {userRole === 'manufacturer' ? t('client') : t('clientMfr')}
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {activeTab === 'my_orders' ? t('actionNeeded') : t('products')}
+                    {activeTab === 'my_orders' ? getTranslation('actionNeeded', 'Action Needed') : getTranslation('products', 'Products')}
                   </th>
                   {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                       {t('clientTotal')}
                     </th>
                   )}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     {t('created')}
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1463,7 +1525,7 @@ export default function OrdersPage() {
                         } ${isClientRequest ? 'bg-teal-50/30' : ''}`}
                         onDoubleClick={() => navigateToOrder(order.id)}
                       >
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-4 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
                             {visibleProducts && visibleProducts.length > 0 && (
                               <button
@@ -1471,12 +1533,12 @@ export default function OrdersPage() {
                                   e.stopPropagation();
                                   toggleOrderExpansion(order.id);
                                 }}
-                                className="p-2 hover:bg-gray-200 rounded min-w-[36px] min-h-[36px] flex items-center justify-center"
+                                className="p-1 hover:bg-gray-200 rounded flex items-center justify-center"
                               >
                                 {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                                  <ChevronDown className="w-4 h-4 text-gray-400" />
                                 ) : (
-                                  <ChevronRight className="w-4 h-4 text-gray-500" />
+                                  <ChevronRight className="w-4 h-4 text-gray-400" />
                                 )}
                               </button>
                             )}
@@ -1530,7 +1592,7 @@ export default function OrdersPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <div>
                             <div className="text-sm text-gray-900">{order.client?.name ? translate(order.client.name) : '-'}</div>
                             {userRole !== 'manufacturer' && (
@@ -1538,29 +1600,32 @@ export default function OrdersPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {renderRoutingBadges(order)}
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1 items-start">
+                            {renderRoutingBadges(order)}
+                            {renderStatusPaymentBadges(order)}
+                          </div>
                         </td>
                         {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && (
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
                             {orderTotal > 0 && (
                               <span
-                                className="px-2.5 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1"
+                                className="px-2 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-full inline-flex items-center gap-1"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <DollarSign className="w-3.5 h-3.5" />
-                                {showPrices ? formatCurrencyWithLanguage(orderTotal, language).replace(/[$¥]/, '') : 'XXXXX'}
+                                <DollarSign className="w-3 h-3" />
+                                {showPrices ? formatCurrencyWithLanguage(orderTotal, language).replace(/[$¥]/, '') : 'XXX'}
                               </span>
                             )}
                           </td>
                         )}
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-4 h-4" />
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
                             {new Date(order.created_at).toLocaleDateString()}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex justify-end gap-2">
                             {order.status === 'draft' && (userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'order_creator') && (
                               <Link
@@ -1731,8 +1796,9 @@ export default function OrdersPage() {
                         );
                       })()}
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex flex-col gap-1 items-end">
                       {renderRoutingBadges(order)}
+                      {renderStatusPaymentBadges(order)}
                     </div>
                   </div>
 

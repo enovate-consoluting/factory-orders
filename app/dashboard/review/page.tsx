@@ -82,7 +82,7 @@ export default function ReviewPage() {
         // Manufacturers see orders submitted to them
         query = query.eq('manufacturer_id', user.id)
                     .in('status', ['submitted_to_manufacturer', 'submitted_for_sample']);
-      } else if (user.role === 'super_admin' || user.role === 'admin' || user.role === 'order_approver') {
+      } else if (user.role === 'system_admin' || user.role === 'super_admin' || user.role === 'admin' || user.role === 'order_approver') {
         // Admins see all orders needing review
         query = query.in('status', ['submitted', 'manufacturer_processed', 'client_reviewed']);
       } else {
@@ -221,8 +221,9 @@ export default function ReviewPage() {
     }
   };
 
-  const canApproveItems = currentUser?.role === 'super_admin' || 
-                         currentUser?.role === 'admin' || 
+  const canApproveItems = currentUser?.role === 'system_admin' ||
+                         currentUser?.role === 'super_admin' ||
+                         currentUser?.role === 'admin' ||
                          currentUser?.role === 'order_approver' ||
                          currentUser?.role === 'manufacturer' ||
                          currentUser?.role === 'client';
@@ -271,7 +272,7 @@ export default function ReviewPage() {
         <p className="text-gray-600 mt-2">
           {currentUser?.role === 'client' && 'Review and approve orders from manufacturers'}
           {currentUser?.role === 'manufacturer' && 'Review order details and set pricing'}
-          {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && 'Review and approve pending orders'}
+          {(currentUser?.role === 'system_admin' || currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && 'Review and approve pending orders'}
         </p>
       </div>
 

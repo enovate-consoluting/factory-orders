@@ -405,7 +405,7 @@ export default function UsersPage() {
               Manage admin and staff user accounts
             </p>
           </div>
-          {currentUser?.role === 'super_admin' && (
+          {(currentUser?.role === 'system_admin' || currentUser?.role === 'super_admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
@@ -473,7 +473,7 @@ export default function UsersPage() {
               </span>
             </div>
 
-            {currentUser?.role === 'super_admin' && (
+            {(currentUser?.role === 'system_admin' || currentUser?.role === 'super_admin') && (
               <div className="flex gap-2 pt-3 border-t border-gray-200">
                 <button
                   onClick={() => openEditModal(user)}
@@ -502,7 +502,7 @@ export default function UsersPage() {
           <UserIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No users yet</h3>
           <p className="text-gray-500 mb-4">Get started by adding your first user</p>
-          {currentUser?.role === 'super_admin' && (
+          {(currentUser?.role === 'system_admin' || currentUser?.role === 'super_admin') && (
             <button
               onClick={openCreateModal}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -684,8 +684,8 @@ export default function UsersPage() {
                     </select>
                   )}
                 </div>
-                {/* Special Access Settings - Super Admin only */}
-                {currentUser?.role === 'super_admin' && formData.role !== 'super_admin' && (
+                {/* Special Access Settings - System Admin and Super Admin only */}
+                {(currentUser?.role === 'system_admin' || currentUser?.role === 'super_admin') && formData.role !== 'super_admin' && formData.role !== 'system_admin' && (
                   <div className="space-y-3">
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Special Access</p>
 

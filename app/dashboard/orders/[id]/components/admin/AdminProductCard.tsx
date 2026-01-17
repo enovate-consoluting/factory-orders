@@ -107,6 +107,22 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
     // Waiting for sample state
     const isWaitingForSample = (product as any).waiting_for_sample === true;
     const isGrayedOut = isWaitingForSample && userRole !== 'super_admin';
+
+    // Check if product is in a "locked" state (delivered or completed)
+    // When locked: gray out route, delete, and edit buttons (not hidden to maintain alignment)
+    const rawStatus = (product as any).product_status || '';
+    const productStatus = rawStatus.toLowerCase().replace(/\s+/g, '_');
+    const isProductLocked = productStatus === 'delivered' || productStatus === 'completed';
+
+    // Check if product is in production or beyond (for delete button)
+    const isInProductionOrBeyond = productStatus === 'in_production' || productStatus === 'delivered' || productStatus === 'completed';
+
+    // DEBUG - remove after testing
+    console.log('Product Status Debug:', { rawStatus, productStatus, isProductLocked, isInProductionOrBeyond });
+
+    // For delete confirmation in expanded view
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     
     // Calculate total quantity
     const totalQuantity = items.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -690,9 +706,10 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
 
     // MAIN EXPANDED VIEW
     return (
+      <>
       <div className={`bg-white rounded-lg shadow-lg border overflow-hidden transition-shadow ${
-        isGrayedOut 
-          ? 'border-amber-300 opacity-60' 
+        isGrayedOut
+          ? 'border-amber-300 opacity-60'
           : 'border-gray-300 hover:shadow-xl'
       }`}>
         {/* HEADER - Tightened layout */}
@@ -743,21 +760,37 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                   )}
                 </button>
               )}
-              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && onRoute && !isGrayedOut && (
+              {/* Route Button - always show, gray out when locked */}
+              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && onRoute && !isGrayedOut && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onRoute(product); }}
-                  className="px-2 py-1 bg-blue-600 text-white rounded text-xs font-medium flex items-center gap-1"
-                  title="Route"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isProductLocked) onRoute(product);
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
+                    isProductLocked
+                      ? 'bg-gray-200 text-gray-400 cursor-not-allowed opacity-60'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                  title={isProductLocked ? "Cannot route - product is delivered/completed" : "Route"}
                 >
                   <Send className="w-3 h-3" />
                   <span>Route</span>
                 </button>
               )}
-              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && onDelete && !isGrayedOut && (
+              {/* Delete Button - always show, gray out when in production or beyond */}
+              {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin') && onDelete && !isGrayedOut && (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onDelete((product as any).id); }}
-                  className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
-                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isInProductionOrBeyond) setShowDeleteConfirm(true);
+                  }}
+                  className={`p-1.5 rounded transition-colors ${
+                    isInProductionOrBeyond
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
+                      : 'bg-red-100 text-red-600 hover:bg-red-200'
+                  }`}
+                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : "Delete"}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -784,8 +817,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
               </div>
             </div>
             
-            {/* Right: Waiting for Sample - smaller */}
-            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && (
+            {/* Right: Waiting for Sample - smaller - hidden when in production or beyond */}
+            {(userRole === 'admin' || userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'system_admin') && !isInProductionOrBeyond && (
               <label className="inline-flex items-center gap-1 cursor-pointer px-2 py-0.5 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100 transition-colors" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
@@ -849,7 +882,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                   }}
                   placeholder={t('addBulkOrderInstructions')}
                   rows={3}
-                  className="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-xs sm:text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  disabled={isProductLocked}
+                  className="w-full px-2 sm:px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-medium text-xs sm:text-sm placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none disabled:bg-gray-100 disabled:cursor-not-allowed"
                 />
               </div>
 
@@ -1031,7 +1065,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                 )}
               </div>
               
-              {bulkSectionDirty && (
+              {/* Save bulk section - hidden when product is locked */}
+              {bulkSectionDirty && !isProductLocked && (
                 <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
                   <button
                     onClick={() => {
@@ -1076,7 +1111,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                     )}
                   </h5>
                   <div className="flex items-center gap-2">
-                    {!editingVariants && hasHiddenVariants && (
+                    {/* Show All button - hidden when in production or beyond */}
+                    {!editingVariants && hasHiddenVariants && !isInProductionOrBeyond && (
                       <button
                         onClick={() => setShowAllVariants(!showAllVariants)}
                         className="flex-1 sm:flex-initial px-3 py-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
@@ -1094,7 +1130,8 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                         )}
                       </button>
                     )}
-                    {!editingVariants ? (
+                    {/* Edit variants button - hidden when in production or beyond */}
+                    {!editingVariants && !isInProductionOrBeyond ? (
                       <button
                         onClick={() => {
                           setEditingVariants(true);
@@ -1270,6 +1307,75 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Delete Product?</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Are you sure you want to delete "{(product as any).description || (product as any).product?.title || 'this product'}"?
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-6">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <p className="text-sm text-amber-800">
+                  <strong>This will permanently delete:</strong>
+                </p>
+                <ul className="text-sm text-amber-700 mt-1 list-disc list-inside">
+                  <li>All {totalQuantity} variant items</li>
+                  <li>All uploaded media files</li>
+                  <li>All notes and history</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!onDelete) return;
+                  setDeleting(true);
+                  try {
+                    await onDelete((product as any).id);
+                  } finally {
+                    setDeleting(false);
+                    setShowDeleteConfirm(false);
+                  }
+                }}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Delete Product
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      </>
     );
   }
 );

@@ -191,7 +191,8 @@ export default function DashboardLayout({
           order_products(
             id,
             product_status,
-            routed_to
+            routed_to,
+            deleted_at
           )
         `)
         .eq('client_id', clientId);
@@ -201,11 +202,11 @@ export default function DashboardLayout({
         return;
       }
 
-      // Count pending products
+      // Count pending products (excluding soft-deleted)
       let pendingCount = 0;
       orders?.forEach(order => {
-        const clientProducts = order.order_products?.filter((p: any) => 
-          p.routed_to === 'client' && p.product_status === 'pending_client_approval'
+        const clientProducts = order.order_products?.filter((p: any) =>
+          !p.deleted_at && p.routed_to === 'client' && p.product_status === 'pending_client_approval'
         ) || [];
         pendingCount += clientProducts.length;
       });

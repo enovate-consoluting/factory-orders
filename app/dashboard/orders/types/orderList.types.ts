@@ -43,6 +43,7 @@ export interface Order {
   status: string;
   workflow_status: string;
   created_at: string;
+  is_paid?: boolean;  // Payment status for the order
   // Sample request fields (order-level routing)
   sample_routed_to?: string;
   sample_required?: boolean;

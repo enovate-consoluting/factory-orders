@@ -43,6 +43,33 @@ export interface RolePermissions {
 }
 
 export const ROLE_PERMISSIONS: Record<string, RolePermissions> = {
+  system_admin: {
+    // Full access to everything - highest level admin
+    canCreateOrders: true,
+    canEditOrders: true,
+    canDeleteOrders: true,
+    canViewAllOrders: true,
+    canRouteProducts: true,
+    canLockProducts: true,
+    canEditPricing: true, // System admin can do everything
+    canViewPricing: true,
+    canUploadMedia: true,
+    canAddNotes: true,
+    canDeleteMedia: true,
+    canApproveItems: true,
+    canRejectItems: true,
+    canUpdateOrderStatus: true,
+    canUpdateProductStatus: true,
+    canSendToManufacturer: true,
+    canSendToClient: true,
+    canCommunicateWithClient: true,
+    canCommunicateWithManufacturer: true,
+    canManageProducts: true,
+    canManageVariants: true,
+    canManageUsers: true,
+    canViewAuditLog: true,
+  },
+
   super_admin: {
     // Full access to everything
     canCreateOrders: true,

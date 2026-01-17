@@ -107,7 +107,7 @@ export default function AuditLogPage() {
       return;
     }
     const parsed = JSON.parse(userData);
-    if (parsed.role !== 'super_admin') {
+    if (parsed.role !== 'super_admin' && parsed.role !== 'system_admin') {
       router.push('/dashboard');
       return;
     }

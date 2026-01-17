@@ -19,7 +19,29 @@
       "Bash(node:*)",
       "Bash(npx supabase:*)",
       "Bash(npm run:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(del \"C:\\\\Users\\\\enova\\\\projects\\\\factory-orders\\\\lib\\\\scanacart\\\\api.ts\")",
+      "Bash(npx vercel env add:*)",
+      "Bash(npx vercel link)",
+      "Bash(npx vercel:*)",
+      "Bash(timeout 60 npx vercel:*)",
+      "Bash(timeout 30 npx vercel logs:*)",
+      "Bash(find:*)",
+      "Bash(claude doctor)",
+      "Bash(timeout:*)",
+      "Bash(cd:*)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__execute_sql",
+      "Bash(ping:*)",
+      "mcp__supabase__apply_migration",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(wmic process:*)",
+      "Bash(taskkill:*)",
+      "Bash(pkill:*)",
+      "Bash(git reset:*)",
+      "Bash(del debug-incoming.js)",
+      "Bash(cmd /c \"del debug-incoming.js\")"
     ]
   }
 }

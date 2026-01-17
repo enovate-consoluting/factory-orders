@@ -85,7 +85,7 @@ export default function SalesSummaryReport() {
       return;
     }
     const parsedUser = JSON.parse(userData);
-    if (parsedUser.role !== 'super_admin') {
+    if (parsedUser.role !== 'super_admin' && parsedUser.role !== 'system_admin') {
       router.push('/dashboard');
       return;
     }

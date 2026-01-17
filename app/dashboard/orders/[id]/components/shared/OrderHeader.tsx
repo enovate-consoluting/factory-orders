@@ -30,7 +30,8 @@ import {
   Plus,
   Save,
   AlertCircle,
-  Send
+  Send,
+  DollarSign
 } from 'lucide-react';
 import { StatusBadge } from '../../../shared-components/StatusBadge';
 import { formatOrderNumber } from '@/lib/utils/orderUtils';
@@ -92,6 +93,9 @@ export function OrderHeaderV2({
   const isAdmin = userRole === 'admin';
   const isManufacturer = userRole === 'manufacturer';
   const isClientRequest = order?.status === 'client_request';
+
+  // Order is locked when status is completed or delivered - hide Add Product, Save & Route
+  const isOrderLocked = order?.status === 'completed' || order?.status === 'delivered';
 
   // Layout toggle removed - V2 is now permanent
 
@@ -293,6 +297,26 @@ export function OrderHeaderV2({
                   {order.order_name ? translate(order.order_name) : `Order ${formatOrderNumber(order.order_number)}`}
                 </h1>
                 <StatusBadge status={order.status} />
+                {/* Payment Badge - show for delivered/completed orders */}
+                {(order.status === 'delivered' || order.status === 'completed') && (
+                  <span className={`px-2.5 py-1 text-xs rounded-full font-medium flex items-center gap-1 ${
+                    order.is_paid
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-600'
+                  }`}>
+                    {order.is_paid ? (
+                      <>
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Paid
+                      </>
+                    ) : (
+                      <>
+                        <DollarSign className="w-3.5 h-3.5" />
+                        Unpaid
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1.5 text-sm text-gray-500 flex-wrap">
                 <span className="font-medium">#{formatOrderNumber(order.order_number)}</span>
@@ -400,7 +424,7 @@ export function OrderHeaderV2({
                         </p>
                       )}
                     </div>
-                    {(isAdmin || isSuperAdmin) && (
+                    {(isAdmin || isSuperAdmin) && !isOrderLocked && (
                       <button
                         onClick={() => {
                           setIsEditingClient(true);
@@ -476,7 +500,7 @@ export function OrderHeaderV2({
                         </p>
                       )}
                     </div>
-                    {(isAdmin || isSuperAdmin) && (
+                    {(isAdmin || isSuperAdmin) && !isOrderLocked && (
                       <button
                         onClick={() => {
                           setIsEditingManufacturer(true);
@@ -525,14 +549,16 @@ export function OrderHeaderV2({
                   </button>
                 )}
 
-                {/* Add Product Button */}
-                <button
-                  onClick={() => setAddProductModal(true)}
-                  className="px-3 py-2 text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium flex items-center gap-1.5"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Product</span>
-                </button>
+                {/* Add Product Button - hidden when order is completed/delivered */}
+                {!isOrderLocked && (
+                  <button
+                    onClick={() => setAddProductModal(true)}
+                    className="px-3 py-2 text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors text-sm font-medium flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Product</span>
+                  </button>
+                )}
               </div>
 
               {/* VERTICAL DIVIDER LINE */}
@@ -574,8 +600,8 @@ export function OrderHeaderV2({
                   </button>
                 )}
 
-                {/* Save & Route All Button */}
-                {onSaveAndRoute && totalRoutableItems > 0 && (
+                {/* Save & Route All Button - hidden when order is completed/delivered */}
+                {onSaveAndRoute && totalRoutableItems > 0 && !isOrderLocked && (
                   <button
                     onClick={onSaveAndRoute}
                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"

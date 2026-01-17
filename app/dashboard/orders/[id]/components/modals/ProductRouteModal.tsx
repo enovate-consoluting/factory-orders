@@ -50,6 +50,7 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
   const isManufacturer = userRole === 'manufacturer';
   const isInProduction = product?.is_locked || product?.product_status === 'in_production';
   const isShipped = product?.product_status === 'shipped' || product?.product_status === 'in_transit' || product?.product_status === 'delivered';
+  const isProductLocked = product?.product_status === 'delivered' || product?.product_status === 'completed';
 
   // Helper function to create admin notification
   const createAdminNotification = async (
@@ -353,15 +354,17 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
           </button>
         </div>
 
-        {/* Warning for shipped products */}
-        {isShipped && (
+        {/* Warning for shipped/completed products */}
+        {(isShipped || isProductLocked) && (
           <div className="mb-4 p-4 bg-amber-50 border border-amber-300 rounded-lg">
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-semibold text-amber-800">Product Already Shipped</h3>
+                <h3 className="font-semibold text-amber-800">
+                  {product?.product_status === 'completed' ? 'Product Completed' : 'Product Already Shipped'}
+                </h3>
                 <p className="text-sm text-amber-700 mt-1">
-                  This product has been shipped and cannot be re-routed. The shipping information is locked.
+                  This product is {product?.product_status === 'completed' ? 'completed' : 'shipped'} and cannot be re-routed.
                 </p>
                 {product?.tracking_number && (
                   <p className="text-sm text-amber-700 mt-2">
@@ -374,7 +377,7 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
         )}
 
         {/* Routing Options */}
-        {isShipped ? null : isManufacturer ? (
+        {(isShipped || isProductLocked) ? null : isManufacturer ? (
           // MANUFACTURER OPTIONS - 3 OPTIONS
           <div className="grid grid-cols-1 gap-3 sm:gap-4 mb-4 sm:mb-6">
             <button
@@ -586,8 +589,8 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
           </div>
         )}
 
-        {/* Routing Notes - Hide when shipping is selected (use shipping notes instead) */}
-        {selectedRoute !== 'shipped' && (
+        {/* Routing Notes - Hide when shipping is selected or when locked (use shipping notes instead) */}
+        {selectedRoute !== 'shipped' && !isProductLocked && !isShipped && (
           <div className="mb-4 sm:mb-6">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {isManufacturer ? t('notesForAdmin') : t('routingNotes')} ({t('optional')})
@@ -612,9 +615,11 @@ export function ProductRouteModal({ isOpen, onClose, product, onUpdate, userRole
           </button>
           <button
             onClick={handleRoute}
-            disabled={!selectedRoute || sending || isShipped}
+            disabled={!selectedRoute || sending || isShipped || isProductLocked}
             className={`w-full sm:w-auto px-4 py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-              selectedRoute === 'shipped'
+              (isShipped || isProductLocked)
+                ? 'bg-gray-400'
+                : selectedRoute === 'shipped'
                 ? 'bg-purple-600 hover:bg-purple-700'
                 : selectedRoute === 'send_for_approval'
                 ? 'bg-purple-600 hover:bg-purple-700'

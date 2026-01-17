@@ -352,7 +352,8 @@ export default function InvoicesPage() {
             client_shipping_boat_price,
             selected_shipping_method,
             product:products(title),
-            order_items(quantity)
+            order_items(quantity),
+            deleted_at
           )
         `)
         .order('created_at', { ascending: false });
@@ -364,7 +365,9 @@ export default function InvoicesPage() {
 
       data?.forEach(order => {
         // Sample fees require: fee > 0 AND sample_approved = true
+        // Also exclude soft-deleted products
         const invoiceableProducts = order.order_products?.filter((p: any) => {
+          if (p.deleted_at) return false; // Exclude soft-deleted products
           const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
           const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
 
@@ -471,7 +474,8 @@ export default function InvoicesPage() {
             client_shipping_boat_price,
             selected_shipping_method,
             product:products(title),
-            order_items(quantity)
+            order_items(quantity),
+            deleted_at
           )
         `)
         .order('created_at', { ascending: false });
@@ -483,7 +487,9 @@ export default function InvoicesPage() {
 
       data?.forEach(order => {
         // Sample fees require: fee > 0 AND sample_approved = true
+        // Also exclude soft-deleted products
         const productionProducts = order.order_products?.filter((p: any) => {
+          if (p.deleted_at) return false; // Exclude soft-deleted products
           const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
           const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
 

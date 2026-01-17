@@ -64,14 +64,21 @@ export function CollapsedProductHeader({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const displayStatus = product.product_status || "pending";
+  const displayStatus = (product.product_status || "pending").toLowerCase();
   const productionTime = product.production_time;
 
   // Check if product is invoiced
   const isInvoiced = product.invoiced === true;
-  
+
   // Check if waiting for sample
   const isWaitingForSample = product.waiting_for_sample === true;
+
+  // Check if product is in a "locked" state (delivered or completed)
+  // When locked: gray out route and delete buttons (not hidden to maintain alignment)
+  const isProductLocked = displayStatus === 'delivered' || displayStatus === 'completed';
+
+  // Check if product is in production or beyond (for delete button)
+  const isInProductionOrBeyond = displayStatus === 'in_production' || displayStatus === 'delivered' || displayStatus === 'completed';
 
   // Determine shipping status for admins
   const hasShippingPrices =
@@ -195,14 +202,19 @@ export function CollapsedProductHeader({
             <div className={`flex gap-2 flex-wrap ${isGrayedOut ? 'pointer-events-none' : ''}`}>
               {onRoute && !isGrayedOut && (
                 <button
-                  onClick={onRoute}
-                  className="flex-1 px-2 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center justify-center gap-1.5"
+                  onClick={() => { if (!isProductLocked) onRoute(); }}
+                  className={`flex-1 px-2 py-2 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1.5 ${
+                    isProductLocked
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                  title={isProductLocked ? "Cannot route - product is delivered/completed" : t("route")}
                 >
                   <Send className="w-4 h-4 flex-shrink-0" />
                   <span className="text-xs">{t("route")}</span>
                 </button>
               )}
-              
+
               {onViewHistory && (
                 <button
                   onClick={onViewHistory}
@@ -217,17 +229,17 @@ export function CollapsedProductHeader({
                 </button>
               )}
 
-              {/* Delete Button - Only for Admin/Super Admin, hidden when grayed */}
+              {/* Delete Button - Only for Admin/Super Admin, grayed when in_production or locked */}
               {canSeeDelete && onDelete && !isGrayedOut && (
                 <button
-                  onClick={handleDeleteClick}
+                  onClick={() => { if (!isInProductionOrBeyond && canDelete) handleDeleteClick(); }}
                   disabled={deleting}
                   className={`flex-1 px-2 py-2 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1.5 ${
-                    isInvoiced && userRole === 'admin'
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    isInProductionOrBeyond || (isInvoiced && userRole === 'admin')
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed opacity-60"
                       : "bg-red-600 text-white hover:bg-red-700"
                   } disabled:opacity-50`}
-                  title={isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product"}
+                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product")}
                 >
                   {deleting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -376,25 +388,30 @@ export function CollapsedProductHeader({
 
               {onRoute && !isGrayedOut && (
                 <button
-                  onClick={onRoute}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
+                  onClick={() => { if (!isProductLocked) onRoute(); }}
+                  className={`px-3 py-1.5 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 ${
+                    isProductLocked
+                      ? "bg-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                  title={isProductLocked ? "Cannot route - product is delivered/completed" : t("route")}
                 >
                   <Send className="w-4 h-4" />
                   {t("route")}
                 </button>
               )}
 
-              {/* Delete Button - Only for Admin/Super Admin */}
+              {/* Delete Button - Only for Admin/Super Admin, grayed when in_production or locked */}
               {canSeeDelete && onDelete && !isGrayedOut && (
                 <button
-                  onClick={handleDeleteClick}
+                  onClick={() => { if (!isInProductionOrBeyond && canDelete) handleDeleteClick(); }}
                   disabled={deleting}
                   className={`p-2 rounded-lg transition-colors ${
-                    isInvoiced && userRole === 'admin'
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    isInProductionOrBeyond || (isInvoiced && userRole === 'admin')
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
                       : "bg-red-50 text-red-600 hover:bg-red-100"
                   } disabled:opacity-50`}
-                  title={isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product"}
+                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product")}
                 >
                   {deleting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

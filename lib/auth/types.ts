@@ -2,6 +2,7 @@
 // Auth types - shared between factory-orders and client portal
 
 export type UserRole =
+  | 'system_admin'
   | 'super_admin'
   | 'admin'
   | 'user'
@@ -71,6 +72,7 @@ export type Permission = {
 // Helper function to get permissions based on role
 export function getUserPermissions(role: UserRole): Permission {
   switch (role) {
+    case 'system_admin':
     case 'super_admin':
       return {
         canCreate: true,
@@ -150,6 +152,7 @@ export function getUserPermissions(role: UserRole): Permission {
 
 // Allowed roles for each portal
 export const ADMIN_PORTAL_ROLES: UserRole[] = [
+  'system_admin',
   'super_admin',
   'admin',
   'order_creator',

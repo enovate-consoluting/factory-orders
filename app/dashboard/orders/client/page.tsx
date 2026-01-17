@@ -329,6 +329,7 @@ function ClientOrdersContent() {
             tracking_number,
             shipping_carrier,
             shipped_date,
+            deleted_at,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
           )
@@ -342,7 +343,13 @@ function ClientOrdersContent() {
         return;
       }
 
-      setOrders(ordersData || []);
+      // Filter out soft-deleted products from each order
+      const ordersWithFilteredProducts = (ordersData || []).map(order => ({
+        ...order,
+        order_products: (order.order_products || []).filter((p: any) => !p.deleted_at)
+      }));
+
+      setOrders(ordersWithFilteredProducts);
     } catch (error) {
       console.error('Error loading orders:', error);
     } finally {
@@ -412,6 +419,7 @@ function ClientOrdersContent() {
             tracking_number,
             shipping_carrier,
             shipped_date,
+            deleted_at,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
           )
@@ -426,7 +434,13 @@ function ClientOrdersContent() {
         return;
       }
 
-      setOrders(ordersData || []);
+      // Filter out soft-deleted products from each order
+      const ordersWithFilteredProducts = (ordersData || []).map(order => ({
+        ...order,
+        order_products: (order.order_products || []).filter((p: any) => !p.deleted_at)
+      }));
+
+      setOrders(ordersWithFilteredProducts);
     } catch (error) {
       console.error('Error loading orders:', error);
     } finally {

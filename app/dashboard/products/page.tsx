@@ -317,7 +317,7 @@ export default function ProductsPage() {
   )
 
   const canManageProducts = () => {
-  return user?.role === 'super_admin' || user?.role === 'admin'
+  return user?.role === 'system_admin' || user?.role === 'super_admin' || user?.role === 'admin'
   }
 
   if (loading) {
