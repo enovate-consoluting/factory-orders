@@ -42,10 +42,21 @@ export default function DashboardPage() {
     pendingProducts: 0,
     approvedProducts: 0,
     totalOrders: 0,
-    pendingInvoices: 0
+    pendingInvoices: 0,
+    // New stats
+    totalEstimate: 0,
+    deliveredItems: 0,
+    completeItems: 0,
+    inProductionItems: 0,
+    shippedItems: 0,
+    completedOrders: 0,
+    paidInvoices: 0,
+    unpaidInvoices: 0,
+    unpaidAmount: 0
   });
   const [clientName, setClientName] = useState('');
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [activeOrders, setActiveOrders] = useState<any[]>([]);
 
   // Admin dashboard states
   const [adminStats, setAdminStats] = useState({
@@ -94,85 +105,188 @@ export default function DashboardPage() {
   // ============ CLIENT DASHBOARD ============
   const fetchClientDashboard = async (user: any) => {
     try {
-      const { data: clientData } = await supabase
+      // Match how client orders page fetches - don't use .single()
+      const { data: clientResults, error: clientError } = await supabase
         .from('clients')
-        .select('id, name')
-        .eq('email', user.email)
-        .single();
-      
-      if (!clientData) {
+        .select('id, name, email')
+        .eq('email', user.email);
+
+      if (clientError) {
+        console.error('Error finding client:', clientError);
         setLoading(false);
         return;
       }
-      
+
+      if (!clientResults || clientResults.length === 0) {
+        console.log('No client found for email:', user.email);
+        setLoading(false);
+        return;
+      }
+
+      const clientData = clientResults[0];
       setClientName(clientData.name);
-      
-      const { data: orders } = await supabase
+      console.log('Found client:', clientData.name, 'ID:', clientData.id);
+
+      // Fetch orders with products and pricing
+      const { data: orders, error: ordersError } = await supabase
         .from('orders')
         .select(`
           id,
           order_number,
           order_name,
           created_at,
+          workflow_status,
           order_products(
             id,
             product_status,
             routed_to,
-            deleted_at
+            deleted_at,
+            client_product_price,
+            description,
+            order_items(quantity)
           )
         `)
         .eq('client_id', clientData.id)
         .order('created_at', { ascending: false });
 
-      if (!orders) {
+      if (ordersError) {
+        console.error('Orders query error:', ordersError);
         setLoading(false);
         return;
       }
 
+      if (!orders || orders.length === 0) {
+        console.log('No orders found for client');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Found orders:', orders.length);
+      // Debug: log first order's products
+      if (orders.length > 0 && orders[0].order_products) {
+        console.log('First order products:', orders[0].order_products.length);
+        console.log('Product statuses:', orders[0].order_products.map((p: any) => p.product_status));
+        console.log('Client prices:', orders[0].order_products.map((p: any) => p.client_product_price));
+      }
+
+      // Fetch all invoices for this client
+      const { data: invoices } = await supabase
+        .from('invoices')
+        .select('id, status, amount')
+        .eq('client_id', clientData.id)
+        .in('status', ['sent', 'paid']);
+
       let pendingProducts = 0;
       let approvedProducts = 0;
+      let totalEstimate = 0;
+      let deliveredItems = 0;
+      let completeItems = 0;
+      let inProductionItems = 0;
+      let shippedItems = 0;
+      let completedOrders = 0;
       const ordersWithPending: any[] = [];
+      const activeOrdersList: any[] = [];
 
       orders.forEach(order => {
         // Exclude soft-deleted products
-        const clientProducts = order.order_products?.filter((p: any) =>
-          !p.deleted_at && p.routed_to === 'client'
-        ) || [];
-        
-        const pending = clientProducts.filter((p: any) => 
+        const products = order.order_products?.filter((p: any) => !p.deleted_at) || [];
+
+        // Products routed to client
+        const clientProducts = products.filter((p: any) => p.routed_to === 'client');
+
+        const pending = clientProducts.filter((p: any) =>
           p.product_status === 'pending_client_approval'
         ).length;
-        
-        const approved = clientProducts.filter((p: any) => 
+
+        const approved = clientProducts.filter((p: any) =>
           p.product_status === 'client_approved'
         ).length;
-        
+
         pendingProducts += pending;
         approvedProducts += approved;
-        
+
+        // Calculate product status counts from ALL products (not just client-routed)
+        products.forEach((p: any) => {
+          // Add to total estimate if has client price
+          if (p.client_product_price) {
+            // Sum quantities from order_items
+            const qty = (p.order_items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0) || 1;
+            totalEstimate += parseFloat(p.client_product_price) * qty;
+          }
+
+          // Count by status
+          if (p.product_status === 'delivered' || p.product_status === 'completed') {
+            if (p.product_status === 'delivered') deliveredItems++;
+            if (p.product_status === 'completed') completeItems++;
+          } else if (p.product_status === 'in_production' || p.product_status === 'sample_in_production' || p.product_status === 'approved_for_production') {
+            inProductionItems++;
+          } else if (p.product_status === 'shipped') {
+            shippedItems++;
+          }
+        });
+
+        // Check if order is complete (all products delivered or completed)
+        const allComplete = products.length > 0 && products.every((p: any) =>
+          p.product_status === 'delivered' || p.product_status === 'completed'
+        );
+        if (allComplete) completedOrders++;
+
         if (pending > 0) {
           ordersWithPending.push({
             ...order,
             pending_count: pending
           });
         }
+
+        // Build active orders list (not complete)
+        if (!allComplete && products.length > 0) {
+          const inProd = products.filter((p: any) =>
+            p.product_status === 'in_production' ||
+            p.product_status === 'sample_in_production' ||
+            p.product_status === 'approved_for_production'
+          ).length;
+          const shipped = products.filter((p: any) => p.product_status === 'shipped').length;
+          const delivered = products.filter((p: any) =>
+            p.product_status === 'delivered' || p.product_status === 'completed'
+          ).length;
+
+          activeOrdersList.push({
+            ...order,
+            total_products: products.length,
+            in_production: inProd,
+            shipped: shipped,
+            delivered: delivered,
+            pending_approval: pending
+          });
+        }
       });
-      
-      const { data: invoices } = await supabase
-        .from('invoices')
-        .select('id')
-        .eq('client_id', clientData.id)
-        .eq('status', 'sent');
-      
+
+      // Invoice stats
+      const paidInvoices = invoices?.filter(i => i.status === 'paid').length || 0;
+      const unpaidInvoicesList = invoices?.filter(i => i.status === 'sent') || [];
+      const unpaidAmount = unpaidInvoicesList.reduce((sum, i) =>
+        sum + parseFloat(i.amount || '0'), 0
+      );
+
       setClientStats({
         pendingProducts,
         approvedProducts,
         totalOrders: orders.length,
-        pendingInvoices: invoices?.length || 0
+        pendingInvoices: unpaidInvoicesList.length,
+        totalEstimate,
+        deliveredItems,
+        completeItems,
+        inProductionItems,
+        shippedItems,
+        completedOrders,
+        paidInvoices,
+        unpaidInvoices: unpaidInvoicesList.length,
+        unpaidAmount
       });
-      
+
       setRecentOrders(ordersWithPending.slice(0, 5));
-      
+      setActiveOrders(activeOrdersList.slice(0, 5));
+
     } catch (error) {
       console.error('Error fetching client dashboard:', error);
     } finally {
@@ -386,6 +500,8 @@ export default function DashboardPage() {
 
   // ============ CLIENT DASHBOARD RENDER ============
   if (userRole === 'client') {
+    const totalItems = clientStats.deliveredItems + clientStats.completeItems + clientStats.inProductionItems + clientStats.shippedItems;
+
     return (
       <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
         <div className="max-w-6xl mx-auto">
@@ -394,86 +510,204 @@ export default function DashboardPage() {
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               Welcome back, {clientName}
             </h1>
-            <p className="text-sm text-gray-500 mt-1">Here's what needs your attention</p>
+            <p className="text-sm text-gray-500 mt-1">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            </p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <div className={`bg-white rounded-xl shadow-sm p-4 ${clientStats.pendingProducts > 0 ? 'ring-2 ring-amber-400' : 'border border-gray-200'}`}>
-              <div className="flex items-center justify-between mb-2">
-                <Clock className="w-5 h-5 text-amber-500" />
-                {clientStats.pendingProducts > 0 && (
-                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
-                    ACTION
-                  </span>
-                )}
+          {/* Main Estimate Card */}
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-6 mb-6 text-white">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-blue-100 text-sm font-medium mb-1">Total Estimated Value</p>
+                <p className="text-4xl font-bold">${formatCurrency(clientStats.totalEstimate)}</p>
+                <p className="text-blue-200 text-xs mt-2">
+                  <span className="font-medium">Note:</span> Product and shipping fees may not yet be finalized
+                </p>
               </div>
-              <p className="text-xs text-gray-500">Awaiting Approval</p>
-              <p className="text-2xl font-bold text-gray-900">{clientStats.pendingProducts}</p>
+              <div className="bg-white/20 rounded-xl p-3">
+                <DollarSign className="w-8 h-8 text-white" />
+              </div>
             </div>
+          </div>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <CheckCircle className="w-5 h-5 text-green-500 mb-2" />
-              <p className="text-xs text-gray-500">Approved</p>
-              <p className="text-2xl font-bold text-gray-900">{clientStats.approvedProducts}</p>
-            </div>
-
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <Package className="w-5 h-5 text-blue-500 mb-2" />
+          {/* Orders Summary */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
+            <Link href="/dashboard/orders/client" className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-2">
+                <Package className="w-5 h-5 text-blue-500" />
+                <ArrowUpRight className="w-4 h-4 text-gray-400" />
+              </div>
               <p className="text-xs text-gray-500">Total Orders</p>
               <p className="text-2xl font-bold text-gray-900">{clientStats.totalOrders}</p>
-            </div>
+              <p className="text-xs text-green-600 mt-1">{clientStats.completedOrders} complete</p>
+            </Link>
 
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-              <FileText className="w-5 h-5 text-purple-500 mb-2" />
-              <p className="text-xs text-gray-500">Pending Invoices</p>
-              <p className="text-2xl font-bold text-gray-900">{clientStats.pendingInvoices}</p>
+            <Link href="/dashboard/invoices/client" className={`bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow ${clientStats.unpaidInvoices > 0 ? 'ring-2 ring-amber-400 border-amber-200' : 'border border-gray-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <FileText className="w-5 h-5 text-amber-500" />
+                {clientStats.unpaidInvoices > 0 ? (
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
+                    DUE
+                  </span>
+                ) : (
+                  <ArrowUpRight className="w-4 h-4 text-gray-400" />
+                )}
+              </div>
+              <p className="text-xs text-gray-500">Unpaid Invoices</p>
+              <p className={`text-2xl font-bold ${clientStats.unpaidInvoices > 0 ? 'text-amber-600' : 'text-gray-900'}`}>{clientStats.unpaidInvoices}</p>
+              {clientStats.unpaidAmount > 0 && (
+                <p className="text-xs text-amber-600 mt-1">${formatCurrency(clientStats.unpaidAmount)} owed</p>
+              )}
+            </Link>
+          </div>
+
+          {/* Items Status Grid */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+            <h3 className="font-semibold text-gray-900 text-sm mb-4">Items Status</h3>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="text-center p-3 bg-indigo-50 rounded-lg">
+                <Play className="w-5 h-5 text-indigo-500 mx-auto mb-1" />
+                <p className="text-xl font-bold text-indigo-700">{clientStats.inProductionItems}</p>
+                <p className="text-[10px] text-indigo-600 font-medium">In Production</p>
+              </div>
+              <div className="text-center p-3 bg-cyan-50 rounded-lg">
+                <Truck className="w-5 h-5 text-cyan-500 mx-auto mb-1" />
+                <p className="text-xl font-bold text-cyan-700">{clientStats.shippedItems}</p>
+                <p className="text-[10px] text-cyan-600 font-medium">Shipped</p>
+              </div>
+              <div className="text-center p-3 bg-emerald-50 rounded-lg">
+                <Package className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+                <p className="text-xl font-bold text-emerald-700">{clientStats.deliveredItems}</p>
+                <p className="text-[10px] text-emerald-600 font-medium">Delivered</p>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <CheckCircle className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                <p className="text-xl font-bold text-green-700">{clientStats.completeItems}</p>
+                <p className="text-[10px] text-green-600 font-medium">Complete</p>
+              </div>
             </div>
           </div>
 
-          {/* Orders Needing Attention */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-amber-500" />
-              <h2 className="font-semibold text-gray-900">Orders Needing Attention</h2>
-            </div>
-            
-            <div className="p-4">
-              {recentOrders.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="w-10 h-10 text-green-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">No orders need your attention</p>
+          {/* Two Column Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Action Needed */}
+            {clientStats.pendingProducts > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border-2 border-amber-300 overflow-hidden">
+                <div className="p-4 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-500" />
+                  <h2 className="font-semibold text-amber-900">Action Needed</h2>
+                  <span className="ml-auto px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-bold rounded-full">
+                    {clientStats.pendingProducts} items
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {recentOrders.map((order) => (
-                    <Link
-                      key={order.id}
-                      href={`/dashboard/orders/client`}
-                      className="block p-3 bg-gray-50 rounded-lg hover:bg-amber-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="min-w-0 flex-1">
+                <div className="p-4">
+                  {recentOrders.length === 0 ? (
+                    <div className="text-center py-4">
+                      <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">All caught up!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentOrders.map((order) => (
+                        <Link
+                          key={order.id}
+                          href={`/dashboard/orders/client`}
+                          className="block p-3 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium text-sm text-gray-900 truncate">
+                                {order.order_name || 'Order'} - {order.order_number}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-gray-500">
+                                  {new Date(order.created_at).toLocaleDateString()}
+                                </span>
+                                <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded text-xs font-medium">
+                                  {order.pending_count} pending approval
+                                </span>
+                              </div>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-amber-600 flex-shrink-0 ml-2" />
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Active Orders */}
+            <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden ${clientStats.pendingProducts === 0 ? 'lg:col-span-2' : ''}`}>
+              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-blue-500" />
+                  <h2 className="font-semibold text-gray-900">Active Orders</h2>
+                </div>
+                <Link href="/dashboard/orders/client" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+                  View All
+                </Link>
+              </div>
+              <div className="p-4">
+                {activeOrders.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Package className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-500">No active orders</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activeOrders.map((order) => (
+                      <Link
+                        key={order.id}
+                        href={`/dashboard/orders/client`}
+                        className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center justify-between mb-2">
                           <p className="font-medium text-sm text-gray-900 truncate">
                             {order.order_name || 'Order'} - {order.order_number}
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500">
-                              {new Date(order.created_at).toLocaleDateString()}
-                            </span>
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">
-                              {order.pending_count} pending
-                            </span>
-                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" />
                         </div>
-                        <ExternalLink className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+                        <div className="flex items-center gap-2 text-[10px]">
+                          {order.in_production > 0 && (
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">
+                              {order.in_production} producing
+                            </span>
+                          )}
+                          {order.shipped > 0 && (
+                            <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded font-medium">
+                              {order.shipped} shipped
+                            </span>
+                          )}
+                          {order.delivered > 0 && (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded font-medium">
+                              {order.delivered} delivered
+                            </span>
+                          )}
+                          {order.pending_approval > 0 && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
+                              {order.pending_approval} pending
+                            </span>
+                          )}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+
+          {/* No Action Needed Message */}
+          {clientStats.pendingProducts === 0 && recentOrders.length === 0 && (
+            <div className="mt-6 bg-green-50 rounded-xl border border-green-200 p-6 text-center">
+              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
+              <h3 className="font-semibold text-green-900 mb-1">You're all caught up!</h3>
+              <p className="text-sm text-green-700">No items need your attention right now.</p>
+            </div>
+          )}
         </div>
       </div>
     );

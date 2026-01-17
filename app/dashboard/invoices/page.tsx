@@ -17,7 +17,7 @@ import {
   FileText, Calendar, Search, CheckCircle, Clock, Send,
   AlertCircle, Eye, Trash2, RefreshCw, ChevronRight,
   ChevronDown, ExternalLink, Plane, Ship, AlertTriangle,
-  Package, Shield, Inbox, Play, FileX, Ban, CreditCard, Loader2, Truck
+  Package, Shield, Inbox, Play, FileX, Ban, CreditCard, Loader2, Truck, Link2
 } from 'lucide-react';
 import { notify } from '@/app/hooks/useUINotification';
 
@@ -106,6 +106,10 @@ interface OrderForApproval {
   products: ProductForApproval[];
   total_value: number;
   earliest_ready_date: Date | null;
+  // Order-level sample fee
+  order_sample_fee: number;
+  order_sample_notes: string;
+  sample_fee_paid: boolean;
 }
 
 interface ProductForApproval {
@@ -154,6 +158,7 @@ export default function InvoicesPage() {
   const [ordersForApproval, setOrdersForApproval] = useState<OrderForApproval[]>([]);
   const [ordersInProduction, setOrdersInProduction] = useState<OrderForApproval[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [ordersWithInvoices, setOrdersWithInvoices] = useState<Set<string>>(new Set());
   
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -191,8 +196,12 @@ export default function InvoicesPage() {
     inProduction: 0,
     drafts: 0,
     sent: 0,
-    paid: 0
+    paid: 0,
+    needsPayLink: 0
   });
+
+  // Filter for showing only invoices that need pay links
+  const [showOnlyNeedsPayLink, setShowOnlyNeedsPayLink] = useState(false);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -264,7 +273,8 @@ export default function InvoicesPage() {
           fetchStats(),
           fetchOrdersForApproval(),
           fetchOrdersInProduction(),
-          fetchInvoices()
+          fetchInvoices(),
+          fetchOrdersWithExistingInvoices()
         ]);
       } else {
         // Clients only see their invoices
@@ -278,50 +288,73 @@ export default function InvoicesPage() {
     }
   };
 
+  // Fetch which orders already have invoices (for Create vs Edit button)
+  const fetchOrdersWithExistingInvoices = async () => {
+    try {
+      const { data } = await supabase
+        .from('invoices')
+        .select('order_id')
+        .not('order_id', 'is', null)
+        .or('voided.is.null,voided.eq.false');
+
+      const orderIds = new Set(data?.map(inv => inv.order_id).filter(Boolean) || []);
+      setOrdersWithInvoices(orderIds);
+    } catch (error) {
+      console.error('Error fetching orders with invoices:', error);
+    }
+  };
+
   const fetchStats = async () => {
     try {
-      // Count products for approval (excluding soft-deleted)
-      // Sample fees require: fee > 0 AND sample_approved = true
+      // Count ORDERS (not products) for approval
       const { data: approvalData } = await supabase
         .from('order_products')
-        .select('id, client_product_price, sample_fee, sample_approved')
+        .select('order_id, client_product_price, sample_fee, sample_approved')
         .eq('routed_to', 'admin')
         .is('deleted_at', null)
         .not('product_status', 'in', '("approved_for_production","in_production","shipped","completed")');
 
-      // Filter to only count products with client price OR approved sample fees
-      const approvalCount = approvalData?.filter((p: any) => {
-        const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
-        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
-        return hasClientPrice || hasApprovedSampleFee;
-      }).length || 0;
+      // Get unique order IDs that have invoiceable products
+      const approvalOrderIds = new Set(
+        approvalData?.filter((p: any) => {
+          const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+          const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+          return hasClientPrice || hasApprovedSampleFee;
+        }).map((p: any) => p.order_id) || []
+      );
 
-      // Count products in production (excluding soft-deleted)
+      // Count ORDERS in production
       const { data: productionData } = await supabase
         .from('order_products')
-        .select('id, client_product_price, sample_fee, sample_approved')
+        .select('order_id, client_product_price, sample_fee, sample_approved')
         .is('deleted_at', null)
         .in('product_status', ['approved_for_production', 'in_production']);
 
-      // Filter to only count products with client price OR approved sample fees
-      const productionCount = productionData?.filter((p: any) => {
-        const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
-        const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
-        return hasClientPrice || hasApprovedSampleFee;
-      }).length || 0;
-      
-      // Count invoices by status (exclude voided)
+      // Get unique order IDs in production
+      const productionOrderIds = new Set(
+        productionData?.filter((p: any) => {
+          const hasClientPrice = parseFloat(p.client_product_price || 0) > 0;
+          const hasApprovedSampleFee = p.sample_approved === true && parseFloat(p.sample_fee || 0) > 0;
+          return hasClientPrice || hasApprovedSampleFee;
+        }).map((p: any) => p.order_id) || []
+      );
+
+      // Count invoices by status (exclude voided) - include pay_link field
       const { data: invoiceData } = await supabase
         .from('invoices')
-        .select('id, status, voided')
+        .select('id, status, voided, pay_link')
         .or('voided.is.null,voided.eq.false');
 
+      const sentInvoices = invoiceData?.filter(i => i.status === 'sent') || [];
+      const needsPayLinkCount = sentInvoices.filter(i => !i.pay_link).length;
+
       setStats({
-        forApproval: approvalCount,
-        inProduction: productionCount,
+        forApproval: approvalOrderIds.size,
+        inProduction: productionOrderIds.size,
         drafts: invoiceData?.filter(i => i.status === 'draft').length || 0,
-        sent: invoiceData?.filter(i => i.status === 'sent').length || 0,
-        paid: invoiceData?.filter(i => i.status === 'paid').length || 0
+        sent: sentInvoices.length,
+        paid: invoiceData?.filter(i => i.status === 'paid').length || 0,
+        needsPayLink: needsPayLinkCount
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -337,6 +370,9 @@ export default function InvoicesPage() {
           order_number,
           order_name,
           created_at,
+          client_sample_fee,
+          sample_notes,
+          sample_fee_paid,
           client:clients(id, name),
           order_products(
             id,
@@ -425,6 +461,13 @@ export default function InvoicesPage() {
           };
         });
 
+        // Add order-level sample fee to total (if not already paid)
+        const orderSampleFee = parseFloat(order.client_sample_fee || 0);
+        const sampleFeePaid = order.sample_fee_paid === true;
+        if (orderSampleFee > 0 && !sampleFeePaid) {
+          totalValue += orderSampleFee;
+        }
+
         processed.push({
           id: order.id,
           order_number: order.order_number,
@@ -433,7 +476,10 @@ export default function InvoicesPage() {
           client: Array.isArray(order.client) ? order.client[0] : order.client,
           products,
           total_value: totalValue,
-          earliest_ready_date: earliestDate
+          earliest_ready_date: earliestDate,
+          order_sample_fee: orderSampleFee,
+          order_sample_notes: order.sample_notes || '',
+          sample_fee_paid: sampleFeePaid
         });
       });
 
@@ -459,6 +505,9 @@ export default function InvoicesPage() {
           order_number,
           order_name,
           created_at,
+          client_sample_fee,
+          sample_notes,
+          sample_fee_paid,
           client:clients(id, name),
           order_products(
             id,
@@ -543,6 +592,13 @@ export default function InvoicesPage() {
           };
         });
 
+        // Add order-level sample fee to total (if not already paid)
+        const orderSampleFee = parseFloat(order.client_sample_fee || 0);
+        const sampleFeePaid = order.sample_fee_paid === true;
+        if (orderSampleFee > 0 && !sampleFeePaid) {
+          totalValue += orderSampleFee;
+        }
+
         processed.push({
           id: order.id,
           order_number: order.order_number,
@@ -551,7 +607,10 @@ export default function InvoicesPage() {
           client: Array.isArray(order.client) ? order.client[0] : order.client,
           products,
           total_value: totalValue,
-          earliest_ready_date: earliestDate
+          earliest_ready_date: earliestDate,
+          order_sample_fee: orderSampleFee,
+          order_sample_notes: order.sample_notes || '',
+          sample_fee_paid: sampleFeePaid
         });
       });
 
@@ -570,11 +629,14 @@ export default function InvoicesPage() {
 
   const fetchInvoices = async () => {
     try {
+      // Note: Must specify relationship because invoices has TWO FK relationships with orders:
+      // 1. invoices.order_id -> orders.id (what we want)
+      // 2. orders.sample_fee_invoice_id -> invoices.id (not what we want here)
       let query = supabase
         .from('invoices')
         .select(`
           *,
-          order:orders(id, order_number, order_name, order_products(tracking_number, shipping_carrier)),
+          order:orders!invoices_order_id_fkey(id, order_number, order_name, order_products(tracking_number, shipping_carrier)),
           client:clients(id, name, email)
         `)
         .order('created_at', { ascending: false });
@@ -753,6 +815,10 @@ export default function InvoicesPage() {
       case 'drafts':
         return invoice.status === 'draft';
       case 'sent':
+        // If filter is on, only show invoices without pay link
+        if (showOnlyNeedsPayLink) {
+          return invoice.status === 'sent' && !invoice.pay_link;
+        }
         return invoice.status === 'sent';
       case 'paid':
         return invoice.status === 'paid';
@@ -989,7 +1055,9 @@ export default function InvoicesPage() {
                                   </span>
                                 )}
                                 <span className="font-semibold text-gray-900">
-                                  {order.products.length} products • Total: ${formatCurrencyUtil(order.total_value)}
+                                  {order.products.length} product{order.products.length !== 1 ? 's' : ''}
+                                  {order.order_sample_fee > 0 && !order.sample_fee_paid && ' + Sample Fee'}
+                                  {' '}• Total: ${formatCurrencyUtil(order.total_value)}
                                 </span>
                               </div>
                             </div>
@@ -1004,8 +1072,8 @@ export default function InvoicesPage() {
                                 className="px-2 sm:px-3 py-1.5 bg-blue-600 text-white text-xs sm:text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1"
                               >
                                 <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                <span className="hidden sm:inline">Create Invoice</span>
-                                <span className="sm:hidden">Invoice</span>
+                                <span className="hidden sm:inline">{ordersWithInvoices.has(order.id) ? 'Edit Invoice' : 'Create Invoice'}</span>
+                                <span className="sm:hidden">{ordersWithInvoices.has(order.id) ? 'Edit' : 'Invoice'}</span>
                               </button>
                               <Link
                                 href={`/dashboard/orders/${order.id}`}
@@ -1027,6 +1095,41 @@ export default function InvoicesPage() {
                   {isExpanded && (
                     <div className="px-3 sm:px-4 pb-3 sm:pb-4">
                       <div className="bg-gray-50 rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2">
+                        {/* Order-Level Sample Fee */}
+                        {order.order_sample_fee > 0 && (
+                          <div
+                            className={`rounded p-2 sm:p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 ${
+                              order.sample_fee_paid
+                                ? 'bg-green-50 border border-green-200 opacity-60'
+                                : 'bg-amber-50 border border-amber-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <FileText className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className={`font-medium text-sm ${order.sample_fee_paid ? 'text-green-700 line-through' : 'text-amber-800'}`}>
+                                    Tech Pack / Sample Fee
+                                  </p>
+                                  {order.sample_fee_paid && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                      <CheckCircle className="w-3 h-3" />
+                                      Paid
+                                    </span>
+                                  )}
+                                </div>
+                                {order.order_sample_notes && (
+                                  <p className="text-xs text-gray-500 mt-0.5 truncate">{order.order_sample_notes}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 sm:ml-2 flex-shrink-0">
+                              <p className={`text-sm sm:text-base font-semibold ${order.sample_fee_paid ? 'text-green-700 line-through' : 'text-amber-800'}`}>
+                                ${formatCurrencyUtil(order.order_sample_fee)}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                         {order.products.map((product) => {
                           const daysReady = daysSinceDate(product.routed_at);
                           const hasShipping = hasShippingSelected(product);
@@ -1126,16 +1229,26 @@ export default function InvoicesPage() {
           <div className="text-center py-8 sm:py-12 px-3">
             <FileText className="mx-auto h-10 w-10 sm:h-12 sm:w-12 text-gray-300" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">
-              {isClient ? 'No invoices yet' : 'No invoices found'}
+              {isClient ? 'No invoices yet' :
+               isSearching ? 'No matching invoices' :
+               activeTab === 'drafts' ? 'No draft invoices' :
+               activeTab === 'sent' ? 'No invoices awaiting payment' :
+               activeTab === 'paid' ? 'No paid invoices' :
+               'No invoices found'}
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {isClient 
+              {isClient
                 ? 'Your invoices will appear here once they are sent to you'
-                : activeTab === 'drafts' && 'No draft invoices'
+                : isSearching
+                  ? 'Try adjusting your search terms'
+                  : activeTab === 'drafts'
+                    ? 'Draft invoices will appear here before being sent'
+                    : activeTab === 'sent'
+                      ? 'Invoices awaiting client payment will appear here'
+                      : activeTab === 'paid'
+                        ? 'Paid invoices will appear here once payments are received'
+                        : 'Invoices from all statuses will appear here'
               }
-              {!isClient && activeTab === 'sent' && 'No sent invoices awaiting payment'}
-              {!isClient && activeTab === 'paid' && 'No paid invoices yet'}
-              {!isClient && activeTab === 'all' && 'Create your first invoice to get started'}
             </p>
           </div>
         ) : (
@@ -1227,7 +1340,15 @@ export default function InvoicesPage() {
                       </td>
                     )}
                     <td className="py-3 px-4">
-                      {getStatusBadge(invoice)}
+                      <div className="flex flex-col gap-1">
+                        {getStatusBadge(invoice)}
+                        {invoice.status === 'sent' && !invoice.voided && !invoice.pay_link && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full w-fit">
+                            <Link2 className="w-3 h-3" />
+                            No pay link
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right">
                       <span className={`font-semibold text-gray-900 ${invoice.voided ? 'line-through' : ''}`}>
@@ -1330,7 +1451,15 @@ export default function InvoicesPage() {
                         </p>
                       )}
                     </div>
-                    {getStatusBadge(invoice)}
+                    <div className="flex flex-col items-end gap-1">
+                      {getStatusBadge(invoice)}
+                      {invoice.status === 'sent' && !invoice.pay_link && !invoice.voided && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded">
+                          <Link2 className="w-2.5 h-2.5" />
+                          No pay link
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Order Info */}
@@ -1579,7 +1708,7 @@ export default function InvoicesPage() {
                 }`}
               >
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span className="whitespace-nowrap">For Approval</span>
+                <span className="whitespace-nowrap">Ready to Invoice</span>
                 {stats.forApproval > 0 && (
                   <span className="bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.forApproval}
@@ -1605,56 +1734,31 @@ export default function InvoicesPage() {
                 )}
               </button>
               
-              <button
-                onClick={() => setActiveTab('drafts')}
-                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
-                  activeTab === 'drafts'
-                    ? 'border-gray-500 text-gray-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <FileText className="w-4 h-4 flex-shrink-0" />
-                <span className="whitespace-nowrap">Drafts</span>
-                {stats.drafts > 0 && (
-                  <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
-                    {stats.drafts}
-                  </span>
-                )}
-              </button>
+              {/* Drafts tab - hidden, accessible via All Invoices */}
               
               <button
                 onClick={() => setActiveTab('sent')}
-                className={`py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${
+                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
                   activeTab === 'sent'
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span>Sent</span>
+                <Send className="w-4 h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Awaiting Payment</span>
                 {stats.sent > 0 && (
-                  <span className="bg-blue-100 text-blue-600 px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold">
+                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
                     {stats.sent}
+                  </span>
+                )}
+                {stats.needsPayLink > 0 && (
+                  <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
+                    {stats.needsPayLink} need link
                   </span>
                 )}
               </button>
               
-              <button
-                onClick={() => setActiveTab('paid')}
-                className={`py-3 px-3 md:px-4 border-b-2 font-medium text-sm flex items-center gap-1.5 md:gap-2 flex-shrink-0 ${
-                  activeTab === 'paid'
-                    ? 'border-green-500 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                <CheckCircle className="w-4 h-4 flex-shrink-0" />
-                <span className="whitespace-nowrap">Paid</span>
-                {stats.paid > 0 && (
-                  <span className="bg-green-100 text-green-600 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0">
-                    {stats.paid}
-                  </span>
-                )}
-              </button>
+              {/* Paid tab - hidden, accessible via All Invoices */}
               
               <button
                 onClick={() => setActiveTab('all')}
@@ -1671,18 +1775,35 @@ export default function InvoicesPage() {
           </div>
         )}
 
-        {/* Search Bar */}
-        <div className="flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-            <input
-              type="text"
-              placeholder={(activeTab === 'approval' || activeTab === 'inproduction') && !isClient ? "Search orders..." : "Search invoices..."}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base text-gray-900 placeholder-gray-500"
-            />
+        {/* Search Bar and Filters */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="flex-1 max-w-md">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+              <input
+                type="text"
+                placeholder={(activeTab === 'approval' || activeTab === 'inproduction') && !isClient ? "Search orders..." : "Search invoices..."}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base text-gray-900 placeholder-gray-500"
+              />
+            </div>
           </div>
+
+          {/* Needs Pay Link Filter - only show on sent tab */}
+          {!isClient && activeTab === 'sent' && stats.needsPayLink > 0 && (
+            <button
+              onClick={() => setShowOnlyNeedsPayLink(!showOnlyNeedsPayLink)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors flex-shrink-0 ${
+                showOnlyNeedsPayLink
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>{showOnlyNeedsPayLink ? `Showing ${stats.needsPayLink} without link` : `${stats.needsPayLink} need pay link`}</span>
+            </button>
+          )}
         </div>
       </div>
 

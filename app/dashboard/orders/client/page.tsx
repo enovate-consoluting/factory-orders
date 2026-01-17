@@ -51,6 +51,15 @@ interface OrderProduct {
   shipped_date?: string;
 }
 
+interface OrderInvoice {
+  id: string;
+  invoice_number: string;
+  status: 'draft' | 'sent' | 'paid' | 'cancelled' | 'voided';
+  amount: number;
+  sent_at?: string;
+  paid_at?: string;
+}
+
 interface Order {
   id: string;
   order_number: string;
@@ -70,6 +79,7 @@ interface Order {
   order_products: OrderProduct[];
   order_media?: any[];
   client_notes?: ClientNote[];
+  invoices?: OrderInvoice[];
 }
 
 interface ClientNote {
@@ -173,7 +183,7 @@ function ClientOrdersContent() {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [clientName, setClientName] = useState('');
   const [canCreateOrders, setCanCreateOrders] = useState(false);
-  const [activeTab, setActiveTab] = useState<'orders' | 'shipped' | 'samples' | 'products' | 'approved'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'shipped' | 'delivered' | 'samples' | 'products' | 'approved'>('orders');
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [approvingProductId, setApprovingProductId] = useState<string | null>(null);
   
@@ -332,7 +342,8 @@ function ClientOrdersContent() {
             deleted_at,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
-          )
+          ),
+          invoices!invoices_order_id_fkey(id, invoice_number, status, amount, sent_at, paid_at)
         `)
         .eq('client_id', clientId)
         .order('created_at', { ascending: false });
@@ -422,7 +433,8 @@ function ClientOrdersContent() {
             deleted_at,
             order_items(id, variant_combo, quantity, notes),
             order_media!order_media_order_product_id_fkey(id, file_url, file_type, original_filename)
-          )
+          ),
+          invoices!invoices_order_id_fkey(id, invoice_number, status, amount, sent_at, paid_at)
         `)
         .eq('client_id', client.id)
         .order('created_at', { ascending: false });
@@ -649,6 +661,7 @@ function ClientOrdersContent() {
       'approved_for_production': { label: 'Approved For Production', classes: 'bg-green-100 text-green-700' },
       'in_production': { label: 'In Production', classes: 'bg-purple-100 text-purple-700' },
       'shipped': { label: 'Shipped', classes: 'bg-indigo-100 text-indigo-700' },
+      'delivered': { label: 'Delivered', classes: 'bg-emerald-100 text-emerald-700' },
       'completed': { label: 'Completed', classes: 'bg-green-100 text-green-700' },
       'approved': { label: 'Approved', classes: 'bg-green-100 text-green-700' },
       'sent_to_manufacturer': { label: 'With Manufacturer', classes: 'bg-purple-100 text-purple-700' },
@@ -663,6 +676,47 @@ function ClientOrdersContent() {
         {config.label}
       </span>
     );
+  };
+
+  // Get payment status from invoices
+  const getPaymentStatus = (order: Order): { status: 'none' | 'unpaid' | 'paid'; invoices: OrderInvoice[] } => {
+    const invoices = order.invoices?.filter(i => i.status !== 'voided' && i.status !== 'cancelled') || [];
+    if (invoices.length === 0) return { status: 'none', invoices: [] };
+
+    const hasPaid = invoices.some(i => i.status === 'paid');
+    const hasSent = invoices.some(i => i.status === 'sent');
+
+    if (hasPaid) return { status: 'paid', invoices };
+    if (hasSent) return { status: 'unpaid', invoices };
+    return { status: 'none', invoices };
+  };
+
+  // Check if order is complete (all products delivered)
+  const isOrderComplete = (order: Order): boolean => {
+    const products = order.order_products || [];
+    if (products.length === 0) return false;
+    return products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+  };
+
+  // Get payment badge
+  const getPaymentBadge = (status: 'none' | 'unpaid' | 'paid') => {
+    if (status === 'paid') {
+      return (
+        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium flex items-center gap-1">
+          <Check className="w-3 h-3" />
+          Paid
+        </span>
+      );
+    }
+    if (status === 'unpaid') {
+      return (
+        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3" />
+          Unpaid
+        </span>
+      );
+    }
+    return null;
   };
 
   const calculateProductTotal = (product: OrderProduct) => {
@@ -719,43 +773,65 @@ function ClientOrdersContent() {
     return sum + count + approvedProducts;
   }, 0);
 
-  // Shipped count - orders with at least one shipped product or shipped sample
-  const shippedCount = orders.filter(o => 
-    o.sample_shipped_date ||
-    o.order_products?.some(p => p.product_status === 'shipped' || p.shipped_date)
-  ).length;
+  // Shipped count - orders with at least one shipped product or shipped sample (but not all delivered)
+  const shippedCount = orders.filter(o => {
+    const products = o.order_products || [];
+    const hasShipped = o.sample_shipped_date || products.some(p => p.product_status === 'shipped' || p.shipped_date);
+    const allDelivered = products.length > 0 && products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+    return hasShipped && !allDelivered;
+  }).length;
+
+  // Delivered count - orders where all products are delivered/completed
+  const deliveredCount = orders.filter(o => {
+    const products = o.order_products || [];
+    return products.length > 0 && products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+  }).length;
 
   // Filtered and sorted data based on active tab
   const getFilteredContent = () => {
     let filtered: Order[] = [];
-    
+
     switch (activeTab) {
       case 'orders':
-        filtered = [...orders];
+        // Exclude fully delivered orders from main orders tab
+        filtered = orders.filter(o => {
+          const products = o.order_products || [];
+          if (products.length === 0) return true;
+          const allDelivered = products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+          return !allDelivered;
+        });
         break;
       case 'shipped':
-        filtered = orders.filter(o => 
-          o.sample_shipped_date ||
-          o.order_products?.some(p => p.product_status === 'shipped' || p.shipped_date)
-        );
+        filtered = orders.filter(o => {
+          const products = o.order_products || [];
+          const hasShipped = o.sample_shipped_date || products.some(p => p.product_status === 'shipped' || p.shipped_date);
+          const allDelivered = products.length > 0 && products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+          return hasShipped && !allDelivered;
+        });
+        break;
+      case 'delivered':
+        filtered = orders.filter(o => {
+          const products = o.order_products || [];
+          return products.length > 0 && products.every(p => p.product_status === 'delivered' || p.product_status === 'completed');
+        });
         break;
       case 'samples':
-        filtered = orders.filter(o => 
-          o.sample_required && 
-          o.sample_routed_to === 'client' && 
+        filtered = orders.filter(o =>
+          o.sample_required &&
+          o.sample_routed_to === 'client' &&
           o.sample_status !== 'approved'
         );
         break;
       case 'products':
-        filtered = orders.filter(o => 
-          o.order_products?.some(p => 
-            p.routed_to === 'client' && 
+        filtered = orders.filter(o =>
+          o.order_products?.some(p =>
+            p.routed_to === 'client' &&
             p.product_status === 'pending_client_approval'
           )
         );
         break;
       case 'approved':
-        filtered = orders.filter(o => 
+        filtered = orders.filter(o =>
           o.sample_status === 'approved' ||
           o.order_products?.some(p => p.product_status === 'client_approved')
         );
@@ -869,8 +945,8 @@ function ClientOrdersContent() {
       </div>
 
       <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6">
-        {/* Stats Cards - 4 columns (removed All Orders) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
+        {/* Stats Cards - 5 columns */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6">
           {/* Shipped */}
           <button
             onClick={() => setActiveTab('shipped')}
@@ -886,6 +962,24 @@ function ClientOrdersContent() {
               </div>
               <p className="text-xl sm:text-2xl font-bold text-gray-900">{shippedCount}</p>
               <p className="text-xs font-semibold mt-1 text-gray-600">Shipped</p>
+            </div>
+          </button>
+
+          {/* Delivered */}
+          <button
+            onClick={() => setActiveTab('delivered')}
+            className={`group relative p-3 sm:p-4 rounded-xl border-2 transition-all text-center ${
+              activeTab === 'delivered'
+                ? 'bg-emerald-50 border-emerald-400 shadow-md'
+                : 'bg-white border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300'
+            }`}
+          >
+            <div className="flex flex-col items-center">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center bg-emerald-100 mb-2">
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
+              </div>
+              <p className="text-xl sm:text-2xl font-bold text-gray-900">{deliveredCount}</p>
+              <p className="text-xs font-semibold mt-1 text-gray-600">Delivered</p>
             </div>
           </button>
 
@@ -973,6 +1067,7 @@ function ClientOrdersContent() {
                     <span className="text-gray-300">/</span>
                     <h2 className="font-semibold text-gray-900 text-sm sm:text-base">
                       {activeTab === 'shipped' && 'Shipped Orders'}
+                      {activeTab === 'delivered' && 'Delivered Orders'}
                       {activeTab === 'samples' && 'Samples Awaiting Approval'}
                       {activeTab === 'products' && 'Products Awaiting Approval'}
                       {activeTab === 'approved' && 'Approved Items'}
@@ -993,7 +1088,7 @@ function ClientOrdersContent() {
           {filteredOrders.length === 0 ? (
             <div className="py-12 sm:py-16 text-center px-3 sm:px-4">
               <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
-                {activeTab === 'approved' ? (
+                {activeTab === 'approved' || activeTab === 'delivered' ? (
                   <CheckCircle className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
                 ) : (
                   <Package className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
@@ -1002,6 +1097,7 @@ function ClientOrdersContent() {
               <p className="text-gray-700 font-medium text-sm sm:text-base">
                 {activeTab === 'orders' && 'No orders yet'}
                 {activeTab === 'shipped' && 'No shipped orders yet'}
+                {activeTab === 'delivered' && 'No delivered orders yet'}
                 {activeTab === 'samples' && 'No samples awaiting approval'}
                 {activeTab === 'products' && 'No products awaiting approval'}
                 {activeTab === 'approved' && 'No approved items yet'}
@@ -1108,13 +1204,39 @@ function ClientOrdersContent() {
                               {(() => {
                                 const products = order.order_products || [];
                                 if (products.length === 0) return null;
-                                
-                                const shippedCount = products.filter(p => p.product_status === 'shipped' || p.shipped_date).length;
+
+                                const deliveredCount = products.filter(p => p.product_status === 'delivered' || p.product_status === 'completed').length;
+                                const shippedCount = products.filter(p => (p.product_status === 'shipped' || p.shipped_date) && p.product_status !== 'delivered' && p.product_status !== 'completed').length;
                                 const inProductionCount = products.filter(p => p.product_status === 'in_production').length;
-                                const otherCount = products.length - shippedCount - inProductionCount;
-                                
+                                const otherCount = products.length - deliveredCount - shippedCount - inProductionCount;
+
                                 const badges = [];
-                                
+                                const paymentInfo = getPaymentStatus(order);
+
+                                // If all products delivered, show Delivered + Payment status
+                                if (deliveredCount === products.length) {
+                                  badges.push(
+                                    <span key="delivered" className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3" />
+                                      Delivered
+                                    </span>
+                                  );
+                                  // Show payment status for completed orders
+                                  const paymentBadge = getPaymentBadge(paymentInfo.status);
+                                  if (paymentBadge) badges.push(<span key="payment">{paymentBadge}</span>);
+                                  return badges;
+                                }
+
+                                // Otherwise show partial delivered count
+                                if (deliveredCount > 0) {
+                                  badges.push(
+                                    <span key="delivered" className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                      <CheckCircle className="w-3 h-3" />
+                                      {deliveredCount} Delivered
+                                    </span>
+                                  );
+                                }
+
                                 if (shippedCount > 0) {
                                   badges.push(
                                     <span key="shipped" className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full text-xs font-medium flex items-center gap-1">
@@ -1123,7 +1245,7 @@ function ClientOrdersContent() {
                                     </span>
                                   );
                                 }
-                                
+
                                 if (inProductionCount > 0) {
                                   badges.push(
                                     <span key="production" className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium flex items-center gap-1">
@@ -1132,8 +1254,8 @@ function ClientOrdersContent() {
                                     </span>
                                   );
                                 }
-                                
-                                if (otherCount > 0 && (shippedCount > 0 || inProductionCount > 0)) {
+
+                                if (otherCount > 0 && (deliveredCount > 0 || shippedCount > 0 || inProductionCount > 0)) {
                                   badges.push(
                                     <span key="other" className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs font-medium flex items-center gap-1">
                                       <Package className="w-3 h-3" />
@@ -1141,12 +1263,12 @@ function ClientOrdersContent() {
                                     </span>
                                   );
                                 }
-                                
+
                                 // If nothing shipped or in production, show generic status
-                                if (shippedCount === 0 && inProductionCount === 0 && !order.sample_required) {
+                                if (deliveredCount === 0 && shippedCount === 0 && inProductionCount === 0 && !order.sample_required) {
                                   return getStatusBadge(order.status);
                                 }
-                                
+
                                 return badges;
                               })()}
                             </div>
@@ -1211,17 +1333,23 @@ function ClientOrdersContent() {
                                 return null;
                               })()}
                               
-                              {/* Product Tracking or ETAs */}
+                              {/* Product Tracking or ETAs - Hide for delivered items */}
                               {(() => {
                                 const products = order.order_products || [];
-                                const shippedProducts = products.filter(p => p.product_status === 'shipped' || p.shipped_date);
+                                // Exclude delivered/completed items from tracking and ETA display
+                                const activeProducts = products.filter(p => p.product_status !== 'delivered' && p.product_status !== 'completed');
+
+                                // If all products delivered, don't show tracking/ETA
+                                if (activeProducts.length === 0) return null;
+
+                                const shippedProducts = activeProducts.filter(p => p.product_status === 'shipped' || p.shipped_date);
                                 const productsWithTracking = shippedProducts.filter(p => p.tracking_number);
-                                const nonShippedProducts = products.filter(p => p.product_status !== 'shipped' && !p.shipped_date);
+                                const nonShippedProducts = activeProducts.filter(p => p.product_status !== 'shipped' && !p.shipped_date);
                                 const productsWithETA = nonShippedProducts.filter(p => {
                                   const { eta } = calculateProductETA(p);
                                   return eta !== null;
                                 });
-                                
+
                                 const badges = [];
                                 
                                 // Product Tracking
