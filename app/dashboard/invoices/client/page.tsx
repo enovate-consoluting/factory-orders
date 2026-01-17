@@ -106,7 +106,7 @@ export default function ClientInvoicePage() {
         .from('invoices')
         .select(`
           *,
-          order:orders(order_number, order_name)
+          order:orders!invoices_order_id_fkey(order_number, order_name)
         `)
         .eq('client_id', client.id)
         .in('status', ['sent', 'paid', 'overdue'])
