@@ -1,5 +1,5 @@
 ﻿# CLAUDE.md - Factory Orders Management System
-# Last Updated: January 15, 2025
+# Last Updated: January 18, 2025
 
 ## Quick Start
 
@@ -526,68 +526,89 @@ npm run build  # Check error output
 
 ---
 
-## Latest Session (January 15, 2025)
+## Latest Session (January 18, 2025)
 
-### Completed This Session - Inventory Page Fixes
+### Completed This Session
 
-#### 1. **Incoming Count Bug Fix** (Critical)
-The incoming tab was showing count of 43 but only displaying 7 items. Root cause was **silent query failure** due to incorrect column names:
+#### 1. **Client Dashboard Revamp**
+Complete overhaul of the client dashboard with new stats and layout:
+- **Total Estimated Value** - Blue gradient card showing sum of all product prices
+- **Orders Summary** - Active orders, completed orders count
+- **Items Status Grid** - In Production, Shipped, Delivered, Complete counts
+- **Invoices Section** - Paid/Unpaid counts with unpaid amount
+- **Active Orders List** - Quick view of current orders
 
-| Wrong Column | Correct Column | Table |
-|--------------|----------------|-------|
-| `size` | doesn't exist | order_items |
-| `color` | doesn't exist | order_items |
-| `variant_combo` | ✅ correct | order_items |
-| `name` | doesn't exist | products |
-| `title` | ✅ correct | products |
+**Files:** `app/dashboard/page.tsx`
 
-**Fix:** Updated the `fetchInventory` query at line ~345 to use correct column names.
+#### 2. **Admin Invoice Page Fixes** (Critical)
+Multiple issues fixed:
+- **Query Failing Silently** - FK ambiguity between `invoices` and `orders` tables
+  - Fixed by specifying: `order:orders!invoices_order_id_fkey(...)`
+- **Search Not Working** - Was working, query was failing
+- **Empty State Verbiage** - Changed from generic to tab-specific messages
+- **"No Pay Link" Indicator** - Amber badge on invoices without pay links
+- **Filter Button** - Toggle to show only invoices needing pay links
 
-#### 2. **Trash Can Visibility**
-- **Before:** Delete button only showed for manual entries (`!record.order_product_id`)
-- **After:** Delete button shows for ALL inventory items
-- Admins can now delete any inventory record
+**Files:** `app/dashboard/invoices/page.tsx`
 
-#### 3. **Column Alignment**
-Fixed column widths to prevent misalignment:
-| Column | Before | After |
-|--------|--------|-------|
-| Client | `w-28` | `w-32` |
-| Qty | `w-16` | `w-20` |
-| Rack | `w-16` | `w-20` |
+#### 3. **Client Invoice Page Fix** (Critical)
+Same FK ambiguity issue - invoices weren't showing for clients.
+- Fixed: `order:orders!invoices_order_id_fkey(order_number, order_name)`
 
-#### 4. **Incoming Tab Status Logic**
-Updated to include `shipped` status items that don't have inventory records:
-```javascript
-.in('product_status', ['in_production', 'sample_in_production', 'shipped'])
-```
+**Files:** `app/dashboard/invoices/client/page.tsx`
 
-Status badges now properly show:
-- **In Production** (amber) - `in_production`
-- **Sample Production** (purple) - `sample_in_production`
-- **Shipped** (green) - `shipped` or inventory records
+#### 4. **Create Payment Link API** (New Endpoint)
+Created missing `/api/square/create-payment-link` endpoint.
+- The invoice page's "Generate Pay Link" button was calling this endpoint but it didn't exist
+- Now properly creates Square checkout links and saves to database
 
-### Files Modified
-- `app/dashboard/inventory/page.tsx` - All fixes above
+**Files:** `app/api/square/create-payment-link/route.ts`
+
+#### 5. **Client Orders Page Updates**
+- Added Delivered/Paid/Unpaid badges on order cards
+- Added Delivered tab for filtering
+
+**Files:** `app/dashboard/orders/client/page.tsx`
+
+#### 6. **Database Fix**
+- Linked Sweet Felons user (`sf@gmail.com`) to Sweet Felons client record
+- User had `client_id: null` which prevented seeing invoices
 
 ### Git Commits
 ```
-eeb03a3 - fix: Inventory page - column alignment, trash can visibility, incoming count
-ddc1bb6 - fix: Incoming count - correct database column names
+b9695b6 - feat: Client dashboard revamp, invoice fixes, pay link generation
+9b45e5e - fix: Client invoice page FK ambiguity - invoices not showing
 ```
 
-### Database Schema Reference (order_items table)
-```
-id, order_product_id, variant_combo, quantity, notes, admin_status,
-manufacturer_status, standard_price, bulk_price, created_at,
-manufacturer_standard_price, manufacturer_bulk_price, cost_price,
-client_price, margin_percentage, inventory_notes, inventory_verified
+### Key Bug Pattern: Supabase FK Ambiguity
+When `invoices` table has multiple FK relationships to `orders`:
+1. `orders_sample_fee_invoice_id_fkey` (orders → invoices)
+2. `invoices_order_id_fkey` (invoices → orders)
+
+Supabase can't determine which to use. **Fix:** Always specify the FK:
+```javascript
+// WRONG - ambiguous
+order:orders(...)
+
+// CORRECT - explicit FK
+order:orders!invoices_order_id_fkey(...)
 ```
 
-### Database Schema Reference (products table)
-```
-id, title, description, created_at, image_url, is_clothing
-```
+### Testing Pay Links
+1. Admin: Go to Invoices → Awaiting Payment
+2. Find invoice with "No pay link" badge
+3. Click chain link icon to generate pay link
+4. Client: Log in → Invoices → See "Pay" button
+
+---
+
+## Previous Session (January 15, 2025)
+
+### Inventory Page Fixes
+- Incoming count bug fix (wrong column names)
+- Trash can visibility for all items
+- Column alignment fixes
+- Incoming tab status logic
 
 ---
 
