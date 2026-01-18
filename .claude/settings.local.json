@@ -41,7 +41,9 @@
       "Bash(pkill:*)",
       "Bash(git reset:*)",
       "Bash(del debug-incoming.js)",
-      "Bash(cmd /c \"del debug-incoming.js\")"
+      "Bash(cmd /c \"del debug-incoming.js\")",
+      "mcp__supabase__list_tables",
+      "Bash(git diff:*)"
     ]
   }
 }

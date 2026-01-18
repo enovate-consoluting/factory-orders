@@ -1,6 +1,7 @@
 /**
- * Eddie - AI Assistant - Floating Chat Component
+ * Aria - AI Assistant - Floating Chat Component
  * A floating chat bubble that expands into an AI-powered assistant
+ * British female voice, elegant personality, Factory Orders focused
  * Roles: Super Admin, Admin, or users with can_access_ai_assistant
  * Last Modified: January 2025
  */
@@ -23,8 +24,8 @@ import {
   VolumeX
 } from 'lucide-react';
 
-// Eddie's animated icon component
-function EddieIcon({ className = "w-6 h-6", animated = true }: { className?: string; animated?: boolean }) {
+// Aria's animated icon component - elegant, feminine design
+function AriaIcon({ className = "w-6 h-6", animated = true }: { className?: string; animated?: boolean }) {
   return (
     <svg
       className={className}
@@ -32,70 +33,78 @@ function EddieIcon({ className = "w-6 h-6", animated = true }: { className?: str
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* Outer glow ring */}
+      {/* Outer glow ring - softer */}
       <circle
         cx="12"
         cy="12"
         r="10"
         stroke="currentColor"
-        strokeWidth="1.5"
-        strokeOpacity="0.3"
+        strokeWidth="1"
+        strokeOpacity="0.2"
         className={animated ? "animate-ping" : ""}
-        style={{ animationDuration: '2s' }}
+        style={{ animationDuration: '2.5s' }}
       />
 
-      {/* Main circle */}
+      {/* Main circle - elegant thin stroke */}
       <circle
         cx="12"
         cy="12"
         r="8"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.5"
         className={animated ? "animate-pulse" : ""}
       />
 
-      {/* Inner orbs - animated */}
-      <circle
+      {/* Eyes - more feminine, slightly almond shaped */}
+      <ellipse
         cx="9"
         cy="10"
-        r="1.5"
+        rx="1.2"
+        ry="1.5"
         fill="currentColor"
-        className={animated ? "animate-bounce" : ""}
-        style={{ animationDelay: '0ms', animationDuration: '1s' }}
+        className={animated ? "animate-pulse" : ""}
+        style={{ animationDelay: '0ms', animationDuration: '2s' }}
       />
-      <circle
+      <ellipse
         cx="15"
         cy="10"
-        r="1.5"
+        rx="1.2"
+        ry="1.5"
         fill="currentColor"
-        className={animated ? "animate-bounce" : ""}
-        style={{ animationDelay: '150ms', animationDuration: '1s' }}
+        className={animated ? "animate-pulse" : ""}
+        style={{ animationDelay: '100ms', animationDuration: '2s' }}
       />
 
-      {/* Smile */}
+      {/* Gentle smile - softer curve */}
       <path
-        d="M8.5 14C8.5 14 9.5 16 12 16C14.5 16 15.5 14 15.5 14"
+        d="M9 14C9 14 10 15.5 12 15.5C14 15.5 15 14 15 14"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
 
-      {/* Sparkle accents */}
-      <circle
-        cx="18"
-        cy="6"
-        r="1"
+      {/* Sparkle accents - more delicate */}
+      <path
+        d="M17 5L17.5 6L18.5 6.5L17.5 7L17 8L16.5 7L15.5 6.5L16.5 6L17 5Z"
         fill="currentColor"
         className={animated ? "animate-pulse" : ""}
-        style={{ animationDelay: '300ms' }}
+        style={{ animationDelay: '200ms' }}
       />
       <circle
         cx="6"
-        cy="18"
-        r="0.75"
+        cy="17"
+        r="0.5"
         fill="currentColor"
         className={animated ? "animate-pulse" : ""}
-        style={{ animationDelay: '500ms' }}
+        style={{ animationDelay: '400ms' }}
+      />
+      <circle
+        cx="5"
+        cy="8"
+        r="0.4"
+        fill="currentColor"
+        className={animated ? "animate-pulse" : ""}
+        style={{ animationDelay: '600ms' }}
       />
     </svg>
   );
@@ -211,7 +220,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: `Hey ${firstName}! I'm Eddie, your AI assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking statistics and reports\n• Navigating the system\n• Answering questions about orders\n\nWhat can I help you with today?`,
+        content: `Hello ${firstName}, I'm Aria, your Factory Orders assistant. I can help you with:\n\n• Finding orders, clients, or products\n• Checking order status and summaries\n• Creating draft orders\n• Navigating the system\n\nWhat can I help you with today?`,
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
@@ -225,7 +234,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       const firstName = userName.split(' ')[0];
       // Small delay for better UX
       setTimeout(() => {
-        speak(`G'day ${firstName}! I'm Eddie, your AI assistant. How can I help you today mate?`);
+        speak(`Hello ${firstName}, I'm Aria. How can I help you with Factory Orders today?`);
       }, 300);
     }
   }, [isOpen, voicesLoaded, voiceEnabled, messages.length, userName]);
@@ -293,7 +302,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Speak Eddie's response if voice is enabled
+      // Speak Aria's response if voice is enabled
       if (voiceEnabled && data.message) {
         // Extract just the first sentence or two for speaking (keep it concise)
         const spokenText = data.message.split('\n')[0].substring(0, 200);
@@ -336,13 +345,13 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
   };
 
-  // Text-to-speech function - Eddie speaks with ElevenLabs natural voice!
+  // Text-to-speech function - Aria speaks with ElevenLabs natural voice!
   // Falls back to Web Speech API if ElevenLabs is not configured
   const speak = async (text: string) => {
-    console.log('Eddie speak called:', { voiceEnabled, text: text.substring(0, 50) });
+    console.log('Aria speak called:', { voiceEnabled, text: text.substring(0, 50) });
 
     if (!voiceEnabled || typeof window === 'undefined') {
-      console.log('Eddie speak blocked:', { voiceEnabled, hasWindow: typeof window !== 'undefined' });
+      console.log('Aria speak blocked:', { voiceEnabled, hasWindow: typeof window !== 'undefined' });
       return;
     }
 
@@ -372,7 +381,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
         audioRef.current = audio;
 
         audio.onended = () => {
-          console.log('Eddie finished speaking (ElevenLabs)');
+          console.log('Aria finished speaking (ElevenLabs)');
           setIsSpeaking(false);
           audioRef.current = null;
         };
@@ -448,14 +457,14 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
 
     utterance.onstart = () => {
-      console.log('Eddie started speaking (WebSpeech)');
+      console.log('Aria started speaking (WebSpeech)');
     };
     utterance.onend = () => {
-      console.log('Eddie finished speaking (WebSpeech)');
+      console.log('Aria finished speaking (WebSpeech)');
       setIsSpeaking(false);
     };
     utterance.onerror = (e) => {
-      console.error('Eddie speech error:', e);
+      console.error('Aria speech error:', e);
       setIsSpeaking(false);
     };
 
@@ -496,7 +505,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
 
   useEffect(() => {
     // Try to find the sidebar trigger element
-    const trigger = document.getElementById('eddie-sidebar-trigger');
+    const trigger = document.getElementById('aria-sidebar-trigger');
     if (trigger) {
       setSidebarTarget(trigger);
     }
@@ -507,14 +516,14 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     return null;
   }
 
-  // Eddie button for sidebar
-  const EddieButton = (
+  // Aria button for sidebar
+  const AriaButton = (
     <button
       onClick={handleOpen}
       className="w-9 h-9 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-md hover:shadow-lg hover:scale-110 transition-all duration-200 flex items-center justify-center group relative"
-      title="Ask Eddie"
+      title="Ask Aria"
     >
-      <EddieIcon className="w-5 h-5" animated={!isOpen} />
+      <AriaIcon className="w-5 h-5" animated={!isOpen} />
       {hasUnread && (
         <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
       )}
@@ -523,24 +532,24 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
 
   return (
     <>
-      {/* Eddie Button - rendered in sidebar via portal, or floating as fallback */}
+      {/* Aria Button - rendered in sidebar via portal, or floating as fallback */}
       {!isOpen && (
         sidebarTarget
-          ? createPortal(EddieButton, sidebarTarget)
+          ? createPortal(AriaButton, sidebarTarget)
           : (
             <button
               onClick={handleOpen}
               className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
-              title="Ask Eddie"
+              title="Ask Aria"
             >
               <div className="relative">
-                <EddieIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
+                <AriaIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
               </div>
               {hasUnread && (
                 <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
               )}
               <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
-                Ask Eddie
+                Ask Aria
               </span>
             </button>
           )
@@ -558,8 +567,8 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 sm:rounded-t-2xl">
             <div className="flex items-center gap-2">
-              <EddieIcon className="w-5 h-5 text-white" animated={false} />
-              <span className="font-semibold text-white">Eddie</span>
+              <AriaIcon className="w-5 h-5 text-white" animated={false} />
+              <span className="font-semibold text-white">Aria</span>
               {isLoading && (
                 <Loader2 className="w-4 h-4 text-white/80 animate-spin" />
               )}
@@ -709,7 +718,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder={isListening ? "Listening..." : "Ask Eddie anything..."}
+                    placeholder={isListening ? "Listening..." : "Ask Aria anything..."}
                     className={`flex-1 min-w-0 px-3 sm:px-4 py-2.5 border rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900 placeholder-gray-400 text-sm transition-colors ${
                       isListening ? 'border-red-300 bg-red-50' : 'border-gray-300'
                     }`}

@@ -78,7 +78,11 @@ export function CollapsedProductHeader({
   const isProductLocked = displayStatus === 'delivered' || displayStatus === 'completed';
 
   // Check if product is in production or beyond (for delete button)
-  const isInProductionOrBeyond = displayStatus === 'in_production' || displayStatus === 'delivered' || displayStatus === 'completed';
+  const isInProductionOrBeyond = displayStatus === 'in_production' ||
+    displayStatus === 'sample_in_production' ||
+    displayStatus === 'delivered' ||
+    displayStatus === 'completed' ||
+    displayStatus === 'shipped';
 
   // Determine shipping status for admins
   const hasShippingPrices =
@@ -236,10 +240,10 @@ export function CollapsedProductHeader({
                   disabled={deleting}
                   className={`flex-1 px-2 py-2 rounded-lg transition-colors text-sm font-medium flex items-center justify-center gap-1.5 ${
                     isInProductionOrBeyond || (isInvoiced && userRole === 'admin')
-                      ? "bg-gray-200 text-gray-400 cursor-not-allowed opacity-60"
-                      : "bg-red-600 text-white hover:bg-red-700"
+                      ? "bg-gray-50 text-gray-400 cursor-not-allowed border-2 border-red-300"
+                      : "bg-red-100 text-red-600 hover:bg-red-200"
                   } disabled:opacity-50`}
-                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product")}
+                  title={isInProductionOrBeyond ? "Disabled based on order status" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete")}
                 >
                   {deleting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -408,10 +412,10 @@ export function CollapsedProductHeader({
                   disabled={deleting}
                   className={`p-2 rounded-lg transition-colors ${
                     isInProductionOrBeyond || (isInvoiced && userRole === 'admin')
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-60"
-                      : "bg-red-50 text-red-600 hover:bg-red-100"
+                      ? "bg-gray-50 text-gray-400 cursor-not-allowed border-2 border-red-300"
+                      : "bg-red-100 text-red-600 hover:bg-red-200"
                   } disabled:opacity-50`}
-                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete product")}
+                  title={isInProductionOrBeyond ? "Disabled based on order status" : (isInvoiced && userRole === 'admin' ? "Cannot delete - product is invoiced" : "Delete")}
                 >
                   {deleting ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

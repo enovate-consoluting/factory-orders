@@ -69,7 +69,7 @@ function LoginContent() {
       } else if (role === 'manufacturer' || role === 'manufacturer_team_member' || role === 'sub_manufacturer') {
         destination = '/dashboard/orders';
       } else if (role === 'client') {
-        destination = '/dashboard/orders/client';
+        destination = '/dashboard';
       } else if (role === 'warehouse') {
         destination = '/dashboard/inventory';
       } else if (role === 'manufacturer_inventory_manager') {

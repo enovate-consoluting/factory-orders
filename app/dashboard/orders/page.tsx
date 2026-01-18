@@ -337,7 +337,8 @@ export default function OrdersPage() {
             estimated_ship_date,
             tracking_number,
             shipping_carrier,
-            deleted_at
+            deleted_at,
+            order_items(quantity)
           ),
           sample_routed_to,
           sample_required,
@@ -821,6 +822,19 @@ export default function OrdersPage() {
     // Admin can also delete client requests
     if (userRole === 'admin' && order.status === 'client_request') return true;
     return false;
+  };
+
+  // Check if order has any products in production or beyond (for showing disabled delete button)
+  const hasProductsInProductionOrBeyond = (order: Order): boolean => {
+    const productionStatuses = ['in_production', 'sample_in_production', 'shipped', 'delivered', 'completed'];
+    return order.order_products?.some(p =>
+      productionStatuses.includes(p.product_status?.toLowerCase().replace(/\s+/g, '_') || '')
+    ) || false;
+  };
+
+  // Should show delete button (for admins, even if disabled)
+  const shouldShowDeleteButton = (order: Order): boolean => {
+    return userRole === 'super_admin' || userRole === 'system_admin' || userRole === 'admin';
   };
 
   /**
@@ -1512,6 +1526,8 @@ export default function OrdersPage() {
                 {filteredOrders.map((order) => {
                   const isExpanded = expandedOrders.has(order.id);
                   const canDelete = canDeleteOrder(order);
+                  const showDelete = shouldShowDeleteButton(order);
+                  const isDeleteDisabled = hasProductsInProductionOrBeyond(order);
                   const orderTotal = calculateOrderTotal(order, userRole);
                   const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
                   const visibleProducts = order.order_products;
@@ -1637,18 +1653,18 @@ export default function OrdersPage() {
                                 <Edit className="w-5 h-5" />
                               </Link>
                             )}
-                            {canDelete && (
+                            {showDelete && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setShowDeleteConfirm(order.id);
+                                  if (canDelete && !isDeleteDisabled) setShowDeleteConfirm(order.id);
                                 }}
-                                className={`${
-                                  userRole === 'super_admin' 
-                                    ? 'text-red-600 hover:text-red-800' 
-                                    : 'text-gray-500 hover:text-red-600'
+                                className={`p-1.5 rounded transition-colors ${
+                                  isDeleteDisabled
+                                    ? 'text-gray-400 cursor-not-allowed border-2 border-red-300 bg-gray-50'
+                                    : 'bg-red-100 text-red-600 hover:bg-red-200'
                                 }`}
-                                title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
+                                title={isDeleteDisabled ? 'Disabled based on order status' : 'Delete'}
                               >
                                 <Trash2 className="w-5 h-5" />
                               </button>
@@ -1741,6 +1757,8 @@ export default function OrdersPage() {
               const orderTotal = calculateOrderTotal(order, userRole);
               const hasUnreadNotification = ordersWithUnreadNotifications.has(order.id);
               const canDelete = canDeleteOrder(order);
+              const showDelete = shouldShowDeleteButton(order);
+              const isDeleteDisabled = hasProductsInProductionOrBeyond(order);
               const visibleProducts = order.order_products;
               const isClientRequest = order.status === 'client_request';
 
@@ -1843,18 +1861,18 @@ export default function OrdersPage() {
                             <Edit className="w-5 h-5" />
                           </Link>
                         )}
-                        {canDelete && (
+                        {showDelete && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setShowDeleteConfirm(order.id);
+                              if (canDelete && !isDeleteDisabled) setShowDeleteConfirm(order.id);
                             }}
                             className={`p-2 sm:p-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${
-                              userRole === 'super_admin'
-                                ? 'text-red-600 hover:bg-red-50 active:bg-red-100'
-                                : 'text-gray-600 hover:bg-gray-100 active:bg-gray-200'
+                              isDeleteDisabled
+                                ? 'text-gray-400 cursor-not-allowed border-2 border-red-300 bg-gray-50'
+                                : 'bg-red-100 text-red-600 hover:bg-red-200 active:bg-red-300'
                             }`}
-                            title={userRole === 'super_admin' ? 'Delete (Super Admin)' : 'Delete (Draft Only)'}
+                            title={isDeleteDisabled ? 'Disabled based on order status' : 'Delete'}
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>

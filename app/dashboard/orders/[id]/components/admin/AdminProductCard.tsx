@@ -115,7 +115,11 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
     const isProductLocked = productStatus === 'delivered' || productStatus === 'completed';
 
     // Check if product is in production or beyond (for delete button)
-    const isInProductionOrBeyond = productStatus === 'in_production' || productStatus === 'delivered' || productStatus === 'completed';
+    const isInProductionOrBeyond = productStatus === 'in_production' ||
+      productStatus === 'sample_in_production' ||
+      productStatus === 'delivered' ||
+      productStatus === 'completed' ||
+      productStatus === 'shipped';
 
     // DEBUG - remove after testing
     console.log('Product Status Debug:', { rawStatus, productStatus, isProductLocked, isInProductionOrBeyond });
@@ -787,10 +791,10 @@ export const AdminProductCardV2 = forwardRef<any, AdminProductCardProps>(
                   }}
                   className={`p-1.5 rounded transition-colors ${
                     isInProductionOrBeyond
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
+                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-2 border-red-300'
                       : 'bg-red-100 text-red-600 hover:bg-red-200'
                   }`}
-                  title={isInProductionOrBeyond ? "Cannot delete - product is in production or completed" : "Delete"}
+                  title={isInProductionOrBeyond ? "Disabled based on order status" : "Delete"}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

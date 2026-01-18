@@ -181,7 +181,7 @@ export default function OrderDetailPageV2({ params }: { params: Promise<{ id: st
 
   // Role checks
   const isManufacturer = userRole === 'manufacturer';
-  const isSuperAdmin = userRole === 'super_admin';
+  const isSuperAdmin = userRole === 'super_admin' || userRole === 'system_admin';
   const isAdmin = userRole === 'admin';
   const isClient = userRole === 'client';
   const isClientRequest = order?.status === 'client_request';

@@ -216,7 +216,15 @@ export default function CreateInvoicePage() {
   const [sampleFeePaidByName, setSampleFeePaidByName] = useState<string | null>(null);
   const [showMarkAsPaidForm, setShowMarkAsPaidForm] = useState(false);
   const [markingAsPaid, setMarkingAsPaid] = useState(false);
-  
+  // Custom sample fee description (overrides order name display)
+  const [sampleFeeDescription, setSampleFeeDescription] = useState<string>('');
+  const [orderName, setOrderName] = useState<string>('');
+  const [editingSampleFeeDescription, setEditingSampleFeeDescription] = useState(false);
+  // Product descriptions (custom overrides) and paid status
+  const [productDescriptions, setProductDescriptions] = useState<Record<string, string>>({});
+  const [editingProductDescription, setEditingProductDescription] = useState<string | null>(null);
+  const [paidProducts, setPaidProducts] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (orderId) {
       fetchOrderData();
@@ -366,6 +374,8 @@ export default function CreateInvoicePage() {
       const clientSampleFee = parseFloat(orderData.client_sample_fee || orderData.sample_fee || 0);
       setOrderSampleFee(clientSampleFee);
       setOrderSampleNotes(orderData.sample_notes || '');
+      // Set order name for sample fee description
+      setOrderName(orderData.order_name || orderData.order_number || '');
 
       // Check if sample fee is already paid
       const isPaid = orderData.sample_fee_paid === true;
@@ -575,9 +585,10 @@ export default function CreateInvoicePage() {
 
               // ORDER-LEVEL SAMPLE FEE - Always at the very top
               if (includeOrderSampleFee && orderSampleFee > 0) {
+                const sampleFeeTitle = sampleFeeDescription || orderName || 'Sample Fee';
                 rows.push(`
                   <tr style="background-color: #fef3c7;">
-                    <td><strong>Sample Fee</strong>${orderSampleNotes ? `<br><span style="font-size: 11px; color: #666; font-weight: normal;">${orderSampleNotes.replace(/\n/g, '<br>')}</span>` : ''}</td>
+                    <td><strong>${sampleFeeTitle}</strong><br><span style="font-size: 11px; color: #666; font-weight: normal;">Tech Pack / Sample Fee</span></td>
                     <td class="text-right">1</td>
                     <td class="text-right">$${orderSampleFee.toFixed(2)}</td>
                     <td class="text-right">$${orderSampleFee.toFixed(2)}</td>
@@ -591,12 +602,14 @@ export default function CreateInvoicePage() {
                 .forEach(product => {
                   const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
                   const clientUnitPrice = product.client_product_price || 0;
+                  // Use custom description if set, otherwise fall back to original
+                  const productTitle = productDescriptions[product.id] || product.description || product.product?.title || 'Product';
 
                   // Add production costs
                   if (clientUnitPrice > 0 && totalQty > 0) {
                     rows.push(`
                       <tr>
-                        <td>${product.description || product.product?.title || 'Product'} - Production</td>
+                        <td>${productTitle} - Production</td>
                         <td class="text-right">${totalQty}</td>
                         <td class="text-right">$${clientUnitPrice.toFixed(2)}</td>
                         <td class="text-right">$${(clientUnitPrice * totalQty).toFixed(2)}</td>
@@ -608,7 +621,7 @@ export default function CreateInvoicePage() {
                   if (product.selected_shipping_method === 'air' && product.client_shipping_air_price > 0) {
                     rows.push(`
                       <tr>
-                        <td>${product.description || product.product?.title || 'Product'} - Air Shipping</td>
+                        <td>${productTitle} - Air Shipping</td>
                         <td class="text-right">1</td>
                         <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
                         <td class="text-right">$${product.client_shipping_air_price.toFixed(2)}</td>
@@ -617,7 +630,7 @@ export default function CreateInvoicePage() {
                   } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
                     rows.push(`
                       <tr>
-                        <td>${product.description || product.product?.title || 'Product'} - Boat Shipping</td>
+                        <td>${productTitle} - Boat Shipping</td>
                         <td class="text-right">1</td>
                         <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
                         <td class="text-right">$${product.client_shipping_boat_price.toFixed(2)}</td>
@@ -822,10 +835,11 @@ export default function CreateInvoicePage() {
 
       // ORDER-LEVEL SAMPLE FEE - Add first
       if (includeOrderSampleFee && orderSampleFee > 0) {
+        const sampleFeeTitle = sampleFeeDescription || orderName || 'Sample Fee';
         invoiceItems.push({
           invoice_id: invoiceId,
           order_product_id: null,
-          description: `Sample Fee${orderSampleNotes ? ` - ${orderSampleNotes.split('\n')[0]}` : ''}`,
+          description: `${sampleFeeTitle} - Tech Pack / Sample Fee`,
           amount: orderSampleFee
         });
       }
@@ -838,13 +852,15 @@ export default function CreateInvoicePage() {
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
         const sampleFee = parseFloat(product.sample_fee || 0);
+        // Use custom description if set
+        const productTitle = productDescriptions[product.id] || product.description || product.product?.title || 'Product';
 
         // Add sample fee if checkbox is checked and fee > 0
         if (includedSampleFees.includes(product.id) && sampleFee > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Sample Fee`,
+            description: `${productTitle} - Sample Fee`,
             amount: sampleFee
           });
         }
@@ -853,7 +869,7 @@ export default function CreateInvoicePage() {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Production (Qty: ${totalQty})`,
+            description: `${productTitle} - Production (Qty: ${totalQty})`,
             amount: clientPrice * totalQty
           });
         }
@@ -862,14 +878,14 @@ export default function CreateInvoicePage() {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
+            description: `${productTitle} - Air Shipping`,
             amount: product.client_shipping_air_price
           });
         } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Boat Shipping`,
+            description: `${productTitle} - Boat Shipping`,
             amount: product.client_shipping_boat_price
           });
         }
@@ -1067,10 +1083,11 @@ export default function CreateInvoicePage() {
 
       // ORDER-LEVEL SAMPLE FEE - Add first
       if (includeOrderSampleFee && orderSampleFee > 0) {
+        const sampleFeeTitle = sampleFeeDescription || orderName || 'Sample Fee';
         invoiceItems.push({
           invoice_id: invoiceId,
           order_product_id: null,
-          description: `Sample Fee${orderSampleNotes ? ` - ${orderSampleNotes.split('\n')[0]}` : ''}`,
+          description: `${sampleFeeTitle} - Tech Pack / Sample Fee`,
           amount: orderSampleFee
         });
       }
@@ -1081,12 +1098,14 @@ export default function CreateInvoicePage() {
 
         const totalQty = product.order_items.reduce((sum: number, item: any) => sum + item.quantity, 0);
         const clientPrice = product.client_product_price || 0;
+        // Use custom description if set
+        const productTitle = productDescriptions[product.id] || product.description || product.product?.title || 'Product';
 
         if (clientPrice > 0 && totalQty > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Production (Qty: ${totalQty})`,
+            description: `${productTitle} - Production (Qty: ${totalQty})`,
             amount: clientPrice * totalQty
           });
         }
@@ -1095,14 +1114,14 @@ export default function CreateInvoicePage() {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Air Shipping`,
+            description: `${productTitle} - Air Shipping`,
             amount: product.client_shipping_air_price
           });
         } else if (product.selected_shipping_method === 'boat' && product.client_shipping_boat_price > 0) {
           invoiceItems.push({
             invoice_id: invoiceId,
             order_product_id: product.id,
-            description: `${product.description || product.product?.title || 'Product'} - Boat Shipping`,
+            description: `${productTitle} - Boat Shipping`,
             amount: product.client_shipping_boat_price
           });
         }
@@ -1118,7 +1137,7 @@ export default function CreateInvoicePage() {
           });
         }
       }
-      
+
       if (invoiceItems.length > 0) {
         const { error: itemsError } = await supabase
           .from('invoice_items')
@@ -1532,7 +1551,7 @@ export default function CreateInvoicePage() {
                         <div>
                           <div className="flex items-center gap-2">
                             <p className={`font-bold ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>
-                              Sample Fee
+                              {sampleFeeDescription || orderName || 'Sample Fee'}
                             </p>
                             {sampleFeePaid && (
                               <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-medium">
@@ -1540,21 +1559,53 @@ export default function CreateInvoicePage() {
                               </span>
                             )}
                           </div>
+                          <p className="text-xs text-gray-600 mt-0.5">Tech Pack / Sample Fee</p>
                           {sampleFeePaid && sampleFeePaidAt && (
                             <p className="text-xs text-green-600 mt-1">
                               Paid {new Date(sampleFeePaidAt).toLocaleDateString()} by {sampleFeePaidByName || 'Unknown'}
                             </p>
                           )}
-                          {orderSampleNotes && (
-                            <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
+                          {!sampleFeePaid && !editingSampleFeeDescription && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <button
+                                onClick={() => setEditingSampleFeeDescription(true)}
+                                className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200"
+                              >
+                                Edit Description
+                              </button>
+                              <button
+                                onClick={() => setShowMarkAsPaidForm(true)}
+                                className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded border border-green-300 hover:bg-green-200"
+                              >
+                                Mark Paid
+                              </button>
+                            </div>
                           )}
-                          {!sampleFeePaid && (
-                            <button
-                              onClick={() => setShowMarkAsPaidForm(true)}
-                              className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                            >
-                              Mark as Paid Manually
-                            </button>
+                          {editingSampleFeeDescription && !sampleFeePaid && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={sampleFeeDescription}
+                                onChange={(e) => setSampleFeeDescription(e.target.value)}
+                                placeholder={orderName || 'Custom description'}
+                                className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                              <button
+                                onClick={() => setEditingSampleFeeDescription(false)}
+                                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                              >
+                                Done
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSampleFeeDescription('');
+                                  setEditingSampleFeeDescription(false);
+                                }}
+                                className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                              >
+                                Reset
+                              </button>
+                            </div>
                           )}
                           {showMarkAsPaidForm && !sampleFeePaid && (
                             <div className="mt-2 p-2 bg-white border border-gray-200 rounded-lg">
@@ -1617,7 +1668,7 @@ export default function CreateInvoicePage() {
                     const isSelected = selectedProducts.includes(product.id);
 
                     return (
-                      <tr key={product.id} className={`border-b ${!isSelected ? 'opacity-50' : ''}`}>
+                      <tr key={product.id} className={`border-b ${!isSelected ? 'opacity-50' : ''} ${paidProducts.has(product.id) ? 'bg-green-50' : ''}`}>
                         <td className="py-3 px-2">
                           <input
                             type="checkbox"
@@ -1630,17 +1681,95 @@ export default function CreateInvoicePage() {
                               }
                             }}
                             className="w-4 h-4 text-blue-600"
+                            disabled={paidProducts.has(product.id)}
                           />
                         </td>
                         <td className="py-3 px-2">
                           <div>
-                            <p className="font-medium text-gray-900">{product.description || product.product?.title || 'Product'}</p>
-                            <p className="text-sm text-gray-600">{product.product_order_number}</p>
-                            {product.selected_shipping_method && shippingAmount > 0 && (
-                              <p className="text-xs text-gray-900 mt-1 flex items-center gap-1">
-                                {product.selected_shipping_method === 'air' ? <Plane className="w-3 h-3" /> : <Ship className="w-3 h-3" />}
-                                {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} shipping included
-                              </p>
+                            {editingProductDescription === product.id ? (
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={productDescriptions[product.id] || product.description || product.product?.title || ''}
+                                  onChange={(e) => setProductDescriptions({
+                                    ...productDescriptions,
+                                    [product.id]: e.target.value
+                                  })}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                                  placeholder="Product description"
+                                  autoFocus
+                                />
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditingProductDescription(null)}
+                                    className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                                  >
+                                    Done
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const newDescs = { ...productDescriptions };
+                                      delete newDescs[product.id];
+                                      setProductDescriptions(newDescs);
+                                      setEditingProductDescription(null);
+                                    }}
+                                    className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
+                                  >
+                                    Reset
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <p className={`font-medium text-gray-900 ${paidProducts.has(product.id) ? 'line-through' : ''}`}>
+                                  {productDescriptions[product.id] || product.description || product.product?.title || 'Product'}
+                                </p>
+                                <p className="text-sm text-gray-600">{product.product_order_number}</p>
+                                {product.selected_shipping_method && shippingAmount > 0 && (
+                                  <p className="text-xs text-gray-900 mt-1 flex items-center gap-1">
+                                    {product.selected_shipping_method === 'air' ? <Plane className="w-3 h-3" /> : <Ship className="w-3 h-3" />}
+                                    {product.selected_shipping_method === 'air' ? 'Air' : 'Boat'} shipping included
+                                  </p>
+                                )}
+                                {/* Edit Description and Mark Paid buttons */}
+                                {!paidProducts.has(product.id) && (
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <button
+                                      onClick={() => setEditingProductDescription(product.id)}
+                                      className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200"
+                                    >
+                                      Edit Description
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setPaidProducts(new Set([...paidProducts, product.id]));
+                                        // Uncheck the product since it's already paid
+                                        setSelectedProducts(selectedProducts.filter(id => id !== product.id));
+                                      }}
+                                      className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded border border-green-300 hover:bg-green-200"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                  </div>
+                                )}
+                                {paidProducts.has(product.id) && (
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                      ✓ PAID
+                                    </span>
+                                    <button
+                                      onClick={() => {
+                                        const newPaid = new Set(paidProducts);
+                                        newPaid.delete(product.id);
+                                        setPaidProducts(newPaid);
+                                      }}
+                                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                    >
+                                      Undo
+                                    </button>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -1764,28 +1893,62 @@ export default function CreateInvoicePage() {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className={`font-bold text-sm ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>Sample Fee</p>
+                        <p className={`font-bold text-sm ${sampleFeePaid ? 'text-green-700' : 'text-amber-800'}`}>
+                          {sampleFeeDescription || orderName || 'Sample Fee'}
+                        </p>
                         {sampleFeePaid && (
                           <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full font-medium">
                             PAID
                           </span>
                         )}
                       </div>
+                      <p className="text-xs text-gray-600 mt-0.5">Tech Pack / Sample Fee</p>
                       {sampleFeePaid && sampleFeePaidAt && (
                         <p className="text-xs text-green-600 mt-1">
                           Paid {new Date(sampleFeePaidAt).toLocaleDateString()} by {sampleFeePaidByName || 'Unknown'}
                         </p>
                       )}
-                      {orderSampleNotes && (
-                        <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{orderSampleNotes}</p>
+                      {!sampleFeePaid && !editingSampleFeeDescription && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingSampleFeeDescription(true)}
+                            className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200"
+                          >
+                            Edit Description
+                          </button>
+                          <button
+                            onClick={() => setShowMarkAsPaidForm(true)}
+                            className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded border border-green-300 hover:bg-green-200"
+                          >
+                            Mark Paid
+                          </button>
+                        </div>
                       )}
-                      {!sampleFeePaid && (
-                        <button
-                          onClick={() => setShowMarkAsPaidForm(true)}
-                          className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                        >
-                          Mark as Paid Manually
-                        </button>
+                      {editingSampleFeeDescription && !sampleFeePaid && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={sampleFeeDescription}
+                            onChange={(e) => setSampleFeeDescription(e.target.value)}
+                            placeholder={orderName || 'Custom description'}
+                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => setEditingSampleFeeDescription(false)}
+                            className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                          >
+                            Done
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSampleFeeDescription('');
+                              setEditingSampleFeeDescription(false);
+                            }}
+                            className="px-2 py-1 bg-gray-200 text-gray-700 text-xs rounded hover:bg-gray-300"
+                          >
+                            Reset
+                          </button>
+                        </div>
                       )}
                       {showMarkAsPaidForm && !sampleFeePaid && (
                         <div className="mt-2 p-2 bg-white border border-gray-200 rounded-lg">
@@ -1845,7 +2008,7 @@ export default function CreateInvoicePage() {
                 const isSelected = selectedProducts.includes(product.id);
 
                 return (
-                  <div key={product.id} className={`border rounded-lg p-2.5 ${!isSelected ? 'opacity-50 bg-gray-50' : 'bg-white'}`}>
+                  <div key={product.id} className={`border rounded-lg p-2.5 ${!isSelected ? 'opacity-50 bg-gray-50' : 'bg-white'} ${paidProducts.has(product.id) ? 'bg-green-50 border-green-200' : ''}`}>
                     <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
@@ -1858,10 +2021,88 @@ export default function CreateInvoicePage() {
                           }
                         }}
                         className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0"
+                        disabled={paidProducts.has(product.id)}
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 text-sm leading-tight">{product.description || product.product?.title}</p>
-                        <p className="text-xs text-gray-600 mt-0.5">{product.product_order_number}</p>
+                        {editingProductDescription === product.id ? (
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={productDescriptions[product.id] || product.description || product.product?.title || ''}
+                              onChange={(e) => setProductDescriptions({
+                                ...productDescriptions,
+                                [product.id]: e.target.value
+                              })}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+                              placeholder="Product description"
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setEditingProductDescription(null)}
+                                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                              >
+                                Done
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const newDescs = { ...productDescriptions };
+                                  delete newDescs[product.id];
+                                  setProductDescriptions(newDescs);
+                                  setEditingProductDescription(null);
+                                }}
+                                className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p className={`font-medium text-gray-900 text-sm leading-tight ${paidProducts.has(product.id) ? 'line-through' : ''}`}>
+                              {productDescriptions[product.id] || product.description || product.product?.title}
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">{product.product_order_number}</p>
+
+                            {/* Edit Description and Mark Paid buttons - Mobile */}
+                            {!paidProducts.has(product.id) && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  onClick={() => setEditingProductDescription(product.id)}
+                                  className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded border border-gray-300 hover:bg-gray-200"
+                                >
+                                  Edit Description
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setPaidProducts(new Set([...paidProducts, product.id]));
+                                    setSelectedProducts(selectedProducts.filter(id => id !== product.id));
+                                  }}
+                                  className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded border border-green-300 hover:bg-green-200"
+                                >
+                                  Mark Paid
+                                </button>
+                              </div>
+                            )}
+                            {paidProducts.has(product.id) && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                                  ✓ PAID
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    const newPaid = new Set(paidProducts);
+                                    newPaid.delete(product.id);
+                                    setPaidProducts(newPaid);
+                                  }}
+                                  className="text-xs text-gray-500 hover:text-gray-700 underline"
+                                >
+                                  Undo
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
 
                         <div className="mt-2 space-y-1 text-xs">
                           <div className="flex justify-between">
@@ -1904,7 +2145,7 @@ export default function CreateInvoicePage() {
                           )}
                           <div className="flex justify-between border-t pt-1">
                             <span className="font-medium text-gray-900">Total:</span>
-                            <span className="font-bold text-gray-900">${productTotal.toFixed(2)}</span>
+                            <span className={`font-bold ${paidProducts.has(product.id) ? 'text-green-700 line-through' : 'text-gray-900'}`}>${productTotal.toFixed(2)}</span>
                           </div>
                         </div>
                       </div>

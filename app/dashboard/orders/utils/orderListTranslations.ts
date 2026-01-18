@@ -138,7 +138,7 @@ export const translations: Record<Language, Translations> = {
     clientMfr: 'Client / Manufacturer',
     products: 'Products',
     actionNeeded: 'Action Needed',
-    clientTotal: 'Client Total',
+    clientTotal: 'Client Total EST',
     created: 'Created',
     actions: 'Actions',
     
@@ -238,7 +238,7 @@ export const translations: Record<Language, Translations> = {
     clientMfr: '客户 / 制造商',
     products: '产品',
     actionNeeded: '待处理',
-    clientTotal: '客户总计',
+    clientTotal: '客户总计 EST',
     created: '创建日期',
     actions: '操作',
     

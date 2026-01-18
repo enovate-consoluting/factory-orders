@@ -862,6 +862,7 @@ export default function DashboardLayout({
       <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-40 lg:w-72 lg:bg-white lg:border-r lg:border-gray-100 lg:flex lg:flex-col">
         <SidebarContent
           user={user}
+          normalizedRole={normalizedRole}
           visibleMenuItems={visibleMenuItems}
           pathname={pathname}
           notificationCounts={notificationCounts}
@@ -882,6 +883,7 @@ export default function DashboardLayout({
         <aside className={`absolute left-0 top-0 h-full w-full bg-white shadow-lg transform transition-transform duration-300 ${showMobileMenu ? 'translate-x-0' : '-translate-x-full'}`}>
           <SidebarContent
             user={user}
+            normalizedRole={normalizedRole}
             visibleMenuItems={visibleMenuItems}
             pathname={pathname}
             notificationCounts={notificationCounts}
@@ -1137,6 +1139,7 @@ export default function DashboardLayout({
 // Sidebar Content Component
 function SidebarContent({
   user,
+  normalizedRole,
   visibleMenuItems,
   pathname,
   notificationCounts,
@@ -1149,6 +1152,7 @@ function SidebarContent({
   setExpandedSections
 }: {
   user: User | null;
+  normalizedRole: string | undefined;
   visibleMenuItems: any[];
   pathname: string;
   notificationCounts: NotificationCount;
@@ -1161,7 +1165,7 @@ function SidebarContent({
   setExpandedSections: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
   // Debug log
-  console.log('SidebarContent - User role:', user?.role, 'Notification counts:', notificationCounts);
+  console.log('SidebarContent - User role:', user?.role, 'Normalized role:', normalizedRole, 'Notification counts:', notificationCounts);
   
   const toggleSection = (label: string) => {
     setExpandedSections(prev => {
@@ -1236,9 +1240,9 @@ function SidebarContent({
             <p className="text-sm font-medium text-gray-900 truncate">{user?.name}</p>
             <p className="text-xs text-gray-500">{formatRole(user?.role || '')}</p>
           </div>
-          {/* Eddie AI Button - inline in sidebar */}
+          {/* Aria AI Button - inline in sidebar */}
           {(user?.role === 'super_admin' || user?.role === 'system_admin' || user?.can_access_ai_assistant) && (
-            <div id="eddie-sidebar-trigger" className="flex-shrink-0" />
+            <div id="aria-sidebar-trigger" className="flex-shrink-0" />
           )}
         </div>
       </div>
@@ -1302,8 +1306,8 @@ function SidebarContent({
           if (item.type === 'collapsible') {
             const Icon = item.icon!;
             const isExpanded = expandedSections.has(item.label);
-            const visibleChildren = item.children?.filter((child: any) => 
-              child.roles?.includes(user?.role || '')
+            const visibleChildren = item.children?.filter((child: any) =>
+              child.roles?.includes(normalizedRole || '')
             ) || [];
             
             if (visibleChildren.length === 0) return null;

@@ -1,15 +1,15 @@
 /**
  * Text-to-Speech API Route - ElevenLabs Integration
- * Converts text to natural-sounding speech for Eddie
+ * Converts text to natural-sounding speech for Aria
  * Last Modified: January 2025
  */
 
 import { NextResponse } from 'next/server';
 
-// ElevenLabs voice IDs - can be customized
-// Default: "Daniel" - a clear, natural male voice
-const DEFAULT_VOICE_ID = 'onwK4e9ZLuTAKqWW03F9'; // Daniel - British male
-const FALLBACK_VOICE_ID = 'pNInz6obpgDQGcFmaJgB'; // Adam - American male
+// ElevenLabs voice IDs - Aria uses Alice (British female)
+// Alice: Calm, composed young millennial with polite, clear British accent
+const DEFAULT_VOICE_ID = '9rh371MqHF5jaDZ7VPvk'; // Alice - British female (Aria's voice)
+const FALLBACK_VOICE_ID = 'eYxHOLcOa7pIqTGNCTzh'; // Alexandra - RP British female (backup)
 
 export async function POST(request: Request) {
   try {

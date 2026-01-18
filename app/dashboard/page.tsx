@@ -5,18 +5,24 @@
  * Role-based dashboard with stats, charts, and recent activity
  * Roles: Super Admin, Admin (full stats), Client (limited), Manufacturer (basic)
  * Mobile responsive
- * Last Modified: December 2024
+ * Last Modified: January 2025
+ *
+ * Client Features:
+ * - Total Estimated Value, Orders Summary, Items Status
+ * - Ready for Pickup section (inventory items in_stock for client)
+ * - Picked Up history (archived items with who picked them up)
  */
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { 
-  Package, FileText, Clock, CheckCircle, 
+import {
+  Package, FileText, Clock, CheckCircle,
   AlertCircle, Calendar, ExternalLink, Loader2,
   ShoppingCart, DollarSign, Users, TrendingUp,
-  Truck, Play, ArrowUpRight, Activity, Box
+  Truck, Play, ArrowUpRight, Activity, Box,
+  Warehouse, MapPin, User, PackageCheck, History
 } from 'lucide-react';
 
 // Format currency helper
@@ -57,6 +63,11 @@ export default function DashboardPage() {
   const [clientName, setClientName] = useState('');
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [activeOrders, setActiveOrders] = useState<any[]>([]);
+
+  // Client inventory/pickup states
+  const [readyForPickup, setReadyForPickup] = useState<any[]>([]);
+  const [pickedUpItems, setPickedUpItems] = useState<any[]>([]);
+  const [pickupTab, setPickupTab] = useState<'ready' | 'history'>('ready');
 
   // Admin dashboard states
   const [adminStats, setAdminStats] = useState({
@@ -175,6 +186,44 @@ export default function DashboardPage() {
         .select('id, status, amount')
         .eq('client_id', clientData.id)
         .in('status', ['sent', 'paid']);
+
+      // Fetch inventory items for this client (Ready for Pickup + Picked Up history)
+      const { data: inventoryItems } = await supabase
+        .from('inventory')
+        .select(`
+          id,
+          product_name,
+          product_order_number,
+          order_number,
+          status,
+          rack_location,
+          received_at,
+          archived_at,
+          picked_up_by,
+          notes,
+          inventory_items(expected_quantity)
+        `)
+        .eq('client_id', clientData.id)
+        .in('status', ['in_stock', 'archived'])
+        .order('received_at', { ascending: false });
+
+      // Split into ready for pickup and picked up history
+      const readyItems = (inventoryItems || [])
+        .filter(item => item.status === 'in_stock')
+        .map(item => ({
+          ...item,
+          total_quantity: item.inventory_items?.reduce((sum: number, i: any) => sum + (i.expected_quantity || 0), 0) || 0
+        }));
+
+      const pickedItems = (inventoryItems || [])
+        .filter(item => item.status === 'archived')
+        .map(item => ({
+          ...item,
+          total_quantity: item.inventory_items?.reduce((sum: number, i: any) => sum + (i.expected_quantity || 0), 0) || 0
+        }));
+
+      setReadyForPickup(readyItems);
+      setPickedUpItems(pickedItems);
 
       let pendingProducts = 0;
       let approvedProducts = 0;
@@ -500,214 +549,240 @@ export default function DashboardPage() {
 
   // ============ CLIENT DASHBOARD RENDER ============
   if (userRole === 'client') {
-    const totalItems = clientStats.deliveredItems + clientStats.completeItems + clientStats.inProductionItems + clientStats.shippedItems;
-
     return (
-      <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-        <div className="max-w-6xl mx-auto">
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-lg mx-auto">
           {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+          <div className="mb-4">
+            <h1 className="text-lg font-bold text-gray-900">
               Welcome back, {clientName}
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            <p className="text-xs text-gray-500">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </p>
           </div>
 
           {/* Main Estimate Card */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-6 mb-6 text-white">
-            <div className="flex items-start justify-between">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-5 mb-4 text-white">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm font-medium mb-1">Total Estimated Value</p>
-                <p className="text-4xl font-bold">${formatCurrency(clientStats.totalEstimate)}</p>
-                <p className="text-blue-200 text-xs mt-2">
-                  <span className="font-medium">Note:</span> Product and shipping fees may not yet be finalized
-                </p>
+                <p className="text-blue-100 text-xs font-medium mb-1">Total Estimated Value</p>
+                <p className="text-3xl font-bold">${formatCurrency(clientStats.totalEstimate)}</p>
               </div>
-              <div className="bg-white/20 rounded-xl p-3">
-                <DollarSign className="w-8 h-8 text-white" />
+              <div className="bg-white/20 rounded-xl p-2.5">
+                <DollarSign className="w-6 h-6 text-white" />
               </div>
             </div>
           </div>
 
-          {/* Orders Summary */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
-            <Link href="/dashboard/orders/client" className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-2">
-                <Package className="w-5 h-5 text-blue-500" />
-                <ArrowUpRight className="w-4 h-4 text-gray-400" />
-              </div>
-              <p className="text-xs text-gray-500">Total Orders</p>
-              <p className="text-2xl font-bold text-gray-900">{clientStats.totalOrders}</p>
-              <p className="text-xs text-green-600 mt-1">{clientStats.completedOrders} complete</p>
+          {/* Three Badges Row */}
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {/* Orders Badge */}
+            <Link
+              href="/dashboard/orders/client"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 hover:shadow-md transition-all active:scale-95 text-center"
+            >
+              <Package className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+              <p className="text-xl font-bold text-gray-900">{clientStats.totalOrders}</p>
+              <p className="text-[10px] text-gray-500 font-medium">Orders</p>
             </Link>
 
-            <Link href="/dashboard/invoices/client" className={`bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow ${clientStats.unpaidInvoices > 0 ? 'ring-2 ring-amber-400 border-amber-200' : 'border border-gray-200'}`}>
-              <div className="flex items-center justify-between mb-2">
-                <FileText className="w-5 h-5 text-amber-500" />
-                {clientStats.unpaidInvoices > 0 ? (
-                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
-                    DUE
+            {/* Ready for Pickup Badge */}
+            <button
+              onClick={() => {
+                const pickupSection = document.getElementById('warehouse-pickup');
+                pickupSection?.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className={`rounded-xl shadow-sm p-3 transition-all active:scale-95 text-center ${
+                readyForPickup.length > 0
+                  ? 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white'
+                  : 'bg-white border border-gray-200 hover:shadow-md'
+              }`}
+            >
+              <Warehouse className={`w-5 h-5 mx-auto mb-1 ${readyForPickup.length > 0 ? 'text-white' : 'text-emerald-500'}`} />
+              <p className={`text-xl font-bold ${readyForPickup.length > 0 ? 'text-white' : 'text-gray-900'}`}>
+                {readyForPickup.length}
+              </p>
+              <p className={`text-[10px] font-medium ${readyForPickup.length > 0 ? 'text-emerald-100' : 'text-gray-500'}`}>
+                Ready
+              </p>
+            </button>
+
+            {/* Unpaid Invoices Badge */}
+            <Link
+              href="/dashboard/invoices/client"
+              className={`rounded-xl shadow-sm p-3 transition-all active:scale-95 text-center ${
+                clientStats.unpaidInvoices > 0
+                  ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
+                  : 'bg-white border border-gray-200 hover:shadow-md'
+              }`}
+            >
+              <FileText className={`w-5 h-5 mx-auto mb-1 ${clientStats.unpaidInvoices > 0 ? 'text-white' : 'text-amber-500'}`} />
+              <p className={`text-xl font-bold ${clientStats.unpaidInvoices > 0 ? 'text-white' : 'text-gray-900'}`}>
+                {clientStats.unpaidInvoices}
+              </p>
+              <p className={`text-[10px] font-medium ${clientStats.unpaidInvoices > 0 ? 'text-amber-100' : 'text-gray-500'}`}>
+                Unpaid
+              </p>
+            </Link>
+          </div>
+
+          {/* ============ WAREHOUSE PICKUP SECTION ============ */}
+          <div id="warehouse-pickup" className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Header with Tabs */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Warehouse className="w-5 h-5 text-white" />
+                  <h2 className="text-base font-bold text-white">Warehouse Pickup</h2>
+                </div>
+                {readyForPickup.length > 0 && (
+                  <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                    {readyForPickup.length} ready
                   </span>
-                ) : (
-                  <ArrowUpRight className="w-4 h-4 text-gray-400" />
                 )}
               </div>
-              <p className="text-xs text-gray-500">Unpaid Invoices</p>
-              <p className={`text-2xl font-bold ${clientStats.unpaidInvoices > 0 ? 'text-amber-600' : 'text-gray-900'}`}>{clientStats.unpaidInvoices}</p>
-              {clientStats.unpaidAmount > 0 && (
-                <p className="text-xs text-amber-600 mt-1">${formatCurrency(clientStats.unpaidAmount)} owed</p>
-              )}
-            </Link>
-          </div>
 
-          {/* Items Status Grid */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
-            <h3 className="font-semibold text-gray-900 text-sm mb-4">Items Status</h3>
-            <div className="grid grid-cols-4 gap-3">
-              <div className="text-center p-3 bg-indigo-50 rounded-lg">
-                <Play className="w-5 h-5 text-indigo-500 mx-auto mb-1" />
-                <p className="text-xl font-bold text-indigo-700">{clientStats.inProductionItems}</p>
-                <p className="text-[10px] text-indigo-600 font-medium">In Production</p>
-              </div>
-              <div className="text-center p-3 bg-cyan-50 rounded-lg">
-                <Truck className="w-5 h-5 text-cyan-500 mx-auto mb-1" />
-                <p className="text-xl font-bold text-cyan-700">{clientStats.shippedItems}</p>
-                <p className="text-[10px] text-cyan-600 font-medium">Shipped</p>
-              </div>
-              <div className="text-center p-3 bg-emerald-50 rounded-lg">
-                <Package className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
-                <p className="text-xl font-bold text-emerald-700">{clientStats.deliveredItems}</p>
-                <p className="text-[10px] text-emerald-600 font-medium">Delivered</p>
-              </div>
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-500 mx-auto mb-1" />
-                <p className="text-xl font-bold text-green-700">{clientStats.completeItems}</p>
-                <p className="text-[10px] text-green-600 font-medium">Complete</p>
+              {/* Tabs */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPickupTab('ready')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+                    pickupTab === 'ready'
+                      ? 'bg-white text-emerald-700 shadow-md'
+                      : 'bg-white/20 text-white'
+                  }`}
+                >
+                  <PackageCheck className="w-4 h-4" />
+                  Ready
+                  {readyForPickup.length > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      pickupTab === 'ready' ? 'bg-emerald-100 text-emerald-700' : 'bg-white/30'
+                    }`}>
+                      {readyForPickup.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => setPickupTab('history')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+                    pickupTab === 'history'
+                      ? 'bg-white text-emerald-700 shadow-md'
+                      : 'bg-white/20 text-white'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  Picked Up
+                  {pickedUpItems.length > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                      pickupTab === 'history' ? 'bg-gray-100 text-gray-700' : 'bg-white/30'
+                    }`}>
+                      {pickedUpItems.length}
+                    </span>
+                  )}
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Action Needed */}
-            {clientStats.pendingProducts > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border-2 border-amber-300 overflow-hidden">
-                <div className="p-4 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-500" />
-                  <h2 className="font-semibold text-amber-900">Action Needed</h2>
-                  <span className="ml-auto px-2 py-0.5 bg-amber-200 text-amber-800 text-xs font-bold rounded-full">
-                    {clientStats.pendingProducts} items
-                  </span>
-                </div>
-                <div className="p-4">
-                  {recentOrders.length === 0 ? (
-                    <div className="text-center py-4">
-                      <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500">All caught up!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {recentOrders.map((order) => (
-                        <Link
-                          key={order.id}
-                          href={`/dashboard/orders/client`}
-                          className="block p-3 bg-amber-50 rounded-lg hover:bg-amber-100 transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="min-w-0 flex-1">
-                              <p className="font-medium text-sm text-gray-900 truncate">
-                                {order.order_name || 'Order'} - {order.order_number}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-gray-500">
-                                  {new Date(order.created_at).toLocaleDateString()}
-                                </span>
-                                <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded text-xs font-medium">
-                                  {order.pending_count} pending approval
-                                </span>
-                              </div>
-                            </div>
-                            <ExternalLink className="w-4 h-4 text-amber-600 flex-shrink-0 ml-2" />
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Active Orders */}
-            <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden ${clientStats.pendingProducts === 0 ? 'lg:col-span-2' : ''}`}>
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-500" />
-                  <h2 className="font-semibold text-gray-900">Active Orders</h2>
-                </div>
-                <Link href="/dashboard/orders/client" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                  View All
-                </Link>
-              </div>
-              <div className="p-4">
-                {activeOrders.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Package className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500">No active orders</p>
+            {/* Content */}
+            <div className="p-3">
+              {pickupTab === 'ready' ? (
+                readyForPickup.length === 0 ? (
+                  <div className="text-center py-6">
+                    <PackageCheck className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-500 text-sm font-medium">No items ready</p>
+                    <p className="text-gray-400 text-xs mt-1">Items appear when they arrive</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {activeOrders.map((order) => (
-                      <Link
-                        key={order.id}
-                        href={`/dashboard/orders/client`}
-                        className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  <div className="space-y-2">
+                    {readyForPickup.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 border border-emerald-200"
                       >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium text-sm text-gray-900 truncate">
-                            {order.order_name || 'Order'} - {order.order_number}
-                          </p>
-                          <ExternalLink className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" />
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="px-1.5 py-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded uppercase">
+                                Ready
+                              </span>
+                              {item.product_order_number && (
+                                <span className="text-[10px] text-gray-500">
+                                  {item.product_order_number}
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="font-semibold text-gray-900 text-sm truncate">{item.product_name}</h4>
+                            <p className="text-[10px] text-gray-500">Order: {item.order_number}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-bold text-emerald-700">
+                              {item.total_quantity?.toLocaleString() || 0}
+                            </p>
+                            <p className="text-[9px] text-gray-500 uppercase">units</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px]">
-                          {order.in_production > 0 && (
-                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">
-                              {order.in_production} producing
+                        {item.rack_location && (
+                          <div className="mt-2 pt-2 border-t border-emerald-200/50 flex items-center gap-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-xs text-emerald-700 font-medium">
+                              {item.rack_location}
                             </span>
-                          )}
-                          {order.shipped > 0 && (
-                            <span className="px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded font-medium">
-                              {order.shipped} shipped
-                            </span>
-                          )}
-                          {order.delivered > 0 && (
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded font-medium">
-                              {order.delivered} delivered
-                            </span>
-                          )}
-                          {order.pending_approval > 0 && (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-medium">
-                              {order.pending_approval} pending
-                            </span>
-                          )}
-                        </div>
-                      </Link>
+                          </div>
+                        )}
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
+                )
+              ) : (
+                pickedUpItems.length === 0 ? (
+                  <div className="text-center py-6">
+                    <History className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                    <p className="text-gray-500 text-sm font-medium">No pickup history</p>
+                    <p className="text-gray-400 text-xs mt-1">History appears after pickup</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pickedUpItems.slice(0, 10).map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-gray-50 rounded-lg p-2.5 border border-gray-200"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                              <h4 className="font-medium text-gray-900 text-xs truncate">{item.product_name}</h4>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                              <span>{item.total_quantity?.toLocaleString() || 0} units</span>
+                              {item.picked_up_by && (
+                                <>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-0.5">
+                                    <User className="w-2.5 h-2.5" />
+                                    {item.picked_up_by}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-gray-400">
+                            {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                    {pickedUpItems.length > 10 && (
+                      <p className="text-center text-[10px] text-gray-400 pt-1">
+                        + {pickedUpItems.length - 10} more
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
             </div>
           </div>
-
-          {/* No Action Needed Message */}
-          {clientStats.pendingProducts === 0 && recentOrders.length === 0 && (
-            <div className="mt-6 bg-green-50 rounded-xl border border-green-200 p-6 text-center">
-              <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-              <h3 className="font-semibold text-green-900 mb-1">You're all caught up!</h3>
-              <p className="text-sm text-green-700">No items need your attention right now.</p>
-            </div>
-          )}
         </div>
       </div>
     );

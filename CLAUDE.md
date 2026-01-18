@@ -1,6 +1,18 @@
 ﻿# CLAUDE.md - Factory Orders Management System
 # Last Updated: January 18, 2025
 
+---
+## CRITICAL RULES - READ FIRST
+
+**DO NOT KILL ALL NODE PROCESSES.** The developer runs multiple projects simultaneously.
+
+- ❌ NEVER run: `taskkill /F /IM node.exe`, `pkill node`, `killall node`
+- ✅ If you need to restart a dev server, kill ONLY port 3000: `npx kill-port 3000`
+- ✅ With TurboPack, hot reload handles most changes - you rarely need to restart
+- ✅ Always ASK before killing any process
+
+---
+
 ## Quick Start
 
 ```bash
@@ -196,7 +208,7 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Sample request routing (independent)
 - Tabbed order listing
 - Client Portal sync (auto-sync clients on creation)
-- Eddie AI Assistant (with ElevenLabs voice)
+- Aria AI Assistant (with ElevenLabs voice)
 - Special Access permissions (Factory/Admin toggle, AI Assistant)
 - Tracking numbers with carrier links (DHL, UPS, FedEx, USPS)
 - Arrival Alert Bar (inventory check-in notifications)
@@ -215,10 +227,11 @@ Routes to Admin → Admin Reviews → Production → Ships → Complete
 - Phase 4: Simplify Order Detail page
 - Real authentication (Supabase Auth)
 - Export to Excel/PDF
-- **Eddie AI Enhancements:**
+- **Aria AI Enhancements:**
   - Order creation via conversation
-  - More natural dialogue flow
-  - Additional voice options/accents
+  - Route products through workflow via voice
+  - Update client prices via voice
+  - Create invoices via voice
   - Query history/favorites
 
 ---
@@ -233,8 +246,8 @@ RESEND_API_KEY=         # Email (optional)
 TEXTBELT_API_KEY=       # SMS (optional)
 CLIENT_PORTAL_API_URL=  # Client Portal sync (production only)
 FACTORY_SYNC_API_KEY=   # API key for Portal sync
-ANTHROPIC_API_KEY=      # Claude AI for Eddie assistant
-Birdhaus_Voice=         # ElevenLabs API for Eddie's voice
+ANTHROPIC_API_KEY=      # Claude AI for Aria assistant
+Birdhaus_Voice=         # ElevenLabs API for Aria's voice
 SQUARE_ACCESS_TOKEN=    # Square API for payments
 SQUARE_ENVIRONMENT=     # 'sandbox' or 'production'
 SQUARE_WEBHOOK_SIGNATURE_KEY=  # Square webhook signature verification
@@ -244,9 +257,9 @@ SQUARE_WEBHOOK_SIGNATURE_KEY=  # Square webhook signature verification
 
 ---
 
-## Eddie - AI Assistant
+## Aria - AI Assistant
 
-A floating AI chat assistant that helps users with orders, statistics, and navigation.
+A sophisticated British female AI assistant that helps users with Factory Orders management.
 
 ### Access Control
 - **Visible to:** Super Admin, Admin, or users with `can_access_ai_assistant = true`
@@ -256,14 +269,24 @@ A floating AI chat assistant that helps users with orders, statistics, and navig
 ### Features
 - Floating chat bubble (bottom-right corner)
 - Voice input (microphone button) - uses Web Speech API
-- Voice output (speaker) - uses ElevenLabs TTS
-- Natural language queries about orders, clients, products
+- Voice output (speaker) - uses ElevenLabs TTS with British female voice
+- Natural language queries about orders, clients, products, invoices
 - Quick action buttons for navigation
+- Security lockdown - only answers Factory Orders questions
+- Two-tier off-topic handling (playful for innocent, firm for technical)
+
+### Personality
+- British, elegant, professional
+- Helpful and efficient
+- Slightly witty but never unprofessional
+- Uses "darling" occasionally
+- Redirects off-topic questions with charm
 
 ### Files
 - `app/dashboard/components/AiAssistant.tsx` - Main component
 - `app/api/assistant/route.ts` - Claude AI backend
 - `app/api/tts/route.ts` - ElevenLabs text-to-speech
+- `reference/docs/AI_ASSISTANT_SPEC.md` - Full specification
 
 ### Environment Variables
 ```
@@ -273,18 +296,19 @@ Birdhaus_Voice=          # ElevenLabs API key for TTS
 
 ### ElevenLabs TTS Configuration
 - **Model:** `eleven_turbo_v2_5` (free tier compatible)
-- **Default Voice:** Daniel (voice ID: `onwK4e9ZLuTAKqWW03F9`)
-- **Fallback Voice:** Adam (voice ID: `pNInz6obpgDQGcFmaJgB`)
+- **Default Voice:** Alice - British female (voice ID: `9rh371MqHF5jaDZ7VPvk`)
+- **Fallback Voice:** Alexandra - RP British (voice ID: `eYxHOLcOa7pIqTGNCTzh`)
 - **Fallback:** Web Speech API if ElevenLabs unavailable
 
-### Changing Eddie's Voice
+### Changing Aria's Voice
 1. Browse voices at [ElevenLabs Voice Library](https://elevenlabs.io/voice-library)
-2. Copy the voice ID
-3. Update `DEFAULT_VOICE_ID` in `app/api/tts/route.ts`
+2. Filter by British accent + Female
+3. Copy the voice ID
+4. Update `DEFAULT_VOICE_ID` in `app/api/tts/route.ts`
 
 ### Database Fields (users table)
 ```sql
-can_access_ai_assistant BOOLEAN DEFAULT false  -- Controls Eddie visibility
+can_access_ai_assistant BOOLEAN DEFAULT false  -- Controls Aria visibility
 can_access_factory_admin_toggle BOOLEAN DEFAULT false  -- Controls Factory/Admin toggle
 ```
 
