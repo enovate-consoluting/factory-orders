@@ -147,6 +147,8 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const recognitionRef = useRef<any>(null);
   const hasGreetedRef = useRef(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speechTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSpeechRef = useRef<number>(0);
 
   // Load speech synthesis voices
   useEffect(() => {
@@ -171,32 +173,65 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   }, []);
 
   // Check for speech recognition support
+  // Uses continuous mode with 3-second silence timeout for natural pauses
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         setSpeechSupported(true);
         recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
+        recognitionRef.current.continuous = true; // Keep listening through pauses
         recognitionRef.current.interimResults = true;
         recognitionRef.current.lang = 'en-US';
 
         recognitionRef.current.onresult = (event: any) => {
+          // Clear any pending timeout since we got speech
+          if (speechTimeoutRef.current) {
+            clearTimeout(speechTimeoutRef.current);
+          }
+          lastSpeechRef.current = Date.now();
+
           const transcript = Array.from(event.results)
             .map((result: any) => result[0].transcript)
             .join('');
           setInput(transcript);
+
+          // Set a 3-second timeout after speech stops
+          // This gives the user time to pause and think
+          speechTimeoutRef.current = setTimeout(() => {
+            if (recognitionRef.current && Date.now() - lastSpeechRef.current >= 2500) {
+              recognitionRef.current.stop();
+              setIsListening(false);
+            }
+          }, 3000);
         };
 
         recognitionRef.current.onend = () => {
+          // Clear timeout on end
+          if (speechTimeoutRef.current) {
+            clearTimeout(speechTimeoutRef.current);
+            speechTimeoutRef.current = null;
+          }
           setIsListening(false);
         };
 
-        recognitionRef.current.onerror = () => {
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('[Aria] Speech recognition error:', event.error);
+          if (speechTimeoutRef.current) {
+            clearTimeout(speechTimeoutRef.current);
+            speechTimeoutRef.current = null;
+          }
           setIsListening(false);
         };
       }
     }
+
+    // Cleanup timeout on unmount
+    return () => {
+      if (speechTimeoutRef.current) {
+        clearTimeout(speechTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Scroll to bottom when new messages arrive
@@ -309,6 +344,11 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
         speak(spokenText);
       }
     } catch (error: any) {
+      console.error('[Aria] API Error:', {
+        message: error.message,
+        userRole,
+        timestamp: new Date().toISOString()
+      });
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',

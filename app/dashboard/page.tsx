@@ -550,94 +550,112 @@ export default function DashboardPage() {
   // ============ CLIENT DASHBOARD RENDER ============
   if (userRole === 'client') {
     return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-lg mx-auto">
+      <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+        <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="mb-4">
-            <h1 className="text-lg font-bold text-gray-900">
+          <div className="mb-4 sm:mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
               Welcome back, {clientName}
             </h1>
-            <p className="text-xs text-gray-500">
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            <p className="text-sm text-gray-500">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
 
           {/* Main Estimate Card */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl shadow-lg p-5 mb-4 text-white">
-            <div className="flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6 mb-4 sm:mb-6">
+            <div className="flex items-start justify-between">
               <div>
-                <p className="text-blue-100 text-xs font-medium mb-1">Total Estimated Value</p>
-                <p className="text-3xl font-bold">${formatCurrency(clientStats.totalEstimate)}</p>
+                <p className="text-gray-500 text-sm font-medium mb-1">Total Estimated Value</p>
+                <p className="text-3xl sm:text-4xl font-bold text-gray-900">${formatCurrency(clientStats.totalEstimate)}</p>
+                <p className="text-gray-400 text-xs mt-2">
+                  <span className="font-medium">Note:</span> Product and shipping fees may not yet be finalized
+                </p>
               </div>
-              <div className="bg-white/20 rounded-xl p-2.5">
-                <DollarSign className="w-6 h-6 text-white" />
+              <div className="bg-blue-50 rounded-xl p-3">
+                <DollarSign className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500" />
               </div>
             </div>
           </div>
 
-          {/* Three Badges Row */}
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {/* Orders Badge */}
+          {/* Three Stats Cards */}
+          <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            {/* Orders Card */}
             <Link
               href="/dashboard/orders/client"
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 hover:shadow-md transition-all active:scale-95 text-center"
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 hover:shadow-md hover:border-gray-300 transition-all group"
             >
-              <Package className="w-5 h-5 text-blue-500 mx-auto mb-1" />
-              <p className="text-xl font-bold text-gray-900">{clientStats.totalOrders}</p>
-              <p className="text-[10px] text-gray-500 font-medium">Orders</p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900">{clientStats.totalOrders}</p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">Orders</p>
+                  <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">{clientStats.completedOrders} complete</p>
+                </div>
+                <Package className="w-8 h-8 sm:w-10 sm:h-10 text-gray-300 group-hover:text-gray-400 transition-colors" />
+              </div>
             </Link>
 
-            {/* Ready for Pickup Badge */}
+            {/* Ready for Pickup Card */}
             <button
               onClick={() => {
                 const pickupSection = document.getElementById('warehouse-pickup');
                 pickupSection?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className={`rounded-xl shadow-sm p-3 transition-all active:scale-95 text-center ${
+              className={`rounded-xl shadow-sm p-4 sm:p-5 transition-all text-left group bg-white ${
                 readyForPickup.length > 0
-                  ? 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white'
-                  : 'bg-white border border-gray-200 hover:shadow-md'
-              }`}
+                  ? 'border-2 border-emerald-400 hover:border-emerald-500'
+                  : 'border border-gray-200 hover:border-gray-300'
+              } hover:shadow-md`}
             >
-              <Warehouse className={`w-5 h-5 mx-auto mb-1 ${readyForPickup.length > 0 ? 'text-white' : 'text-emerald-500'}`} />
-              <p className={`text-xl font-bold ${readyForPickup.length > 0 ? 'text-white' : 'text-gray-900'}`}>
-                {readyForPickup.length}
-              </p>
-              <p className={`text-[10px] font-medium ${readyForPickup.length > 0 ? 'text-emerald-100' : 'text-gray-500'}`}>
-                Ready
-              </p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={`text-2xl sm:text-3xl font-bold ${readyForPickup.length > 0 ? 'text-emerald-600' : 'text-gray-900'}`}>
+                    {readyForPickup.length}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">Ready</p>
+                  {readyForPickup.length > 0 && (
+                    <p className="text-[10px] sm:text-xs text-emerald-600 mt-0.5">for pickup</p>
+                  )}
+                </div>
+                <Warehouse className={`w-8 h-8 sm:w-10 sm:h-10 ${readyForPickup.length > 0 ? 'text-emerald-300' : 'text-gray-300'} group-hover:text-emerald-400 transition-colors`} />
+              </div>
             </button>
 
-            {/* Unpaid Invoices Badge */}
+            {/* Unpaid Invoices Card */}
             <Link
               href="/dashboard/invoices/client"
-              className={`rounded-xl shadow-sm p-3 transition-all active:scale-95 text-center ${
+              className={`rounded-xl shadow-sm p-4 sm:p-5 transition-all group bg-white ${
                 clientStats.unpaidInvoices > 0
-                  ? 'bg-gradient-to-br from-amber-500 to-orange-500 text-white'
-                  : 'bg-white border border-gray-200 hover:shadow-md'
-              }`}
+                  ? 'border-2 border-amber-400 hover:border-amber-500'
+                  : 'border border-gray-200 hover:border-gray-300'
+              } hover:shadow-md`}
             >
-              <FileText className={`w-5 h-5 mx-auto mb-1 ${clientStats.unpaidInvoices > 0 ? 'text-white' : 'text-amber-500'}`} />
-              <p className={`text-xl font-bold ${clientStats.unpaidInvoices > 0 ? 'text-white' : 'text-gray-900'}`}>
-                {clientStats.unpaidInvoices}
-              </p>
-              <p className={`text-[10px] font-medium ${clientStats.unpaidInvoices > 0 ? 'text-amber-100' : 'text-gray-500'}`}>
-                Unpaid
-              </p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={`text-2xl sm:text-3xl font-bold ${clientStats.unpaidInvoices > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                    {clientStats.unpaidInvoices}
+                  </p>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">Unpaid</p>
+                  {clientStats.unpaidAmount > 0 && (
+                    <p className="text-[10px] sm:text-xs text-amber-600 mt-0.5">${formatCurrency(clientStats.unpaidAmount)}</p>
+                  )}
+                </div>
+                <FileText className={`w-8 h-8 sm:w-10 sm:h-10 ${clientStats.unpaidInvoices > 0 ? 'text-amber-300' : 'text-gray-300'} group-hover:text-amber-400 transition-colors`} />
+              </div>
             </Link>
           </div>
 
           {/* ============ WAREHOUSE PICKUP SECTION ============ */}
           <div id="warehouse-pickup" className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Header with Tabs */}
-            <div className="bg-gradient-to-r from-emerald-500 to-teal-500 p-3">
+            <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-100 p-3 sm:p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <Warehouse className="w-5 h-5 text-white" />
-                  <h2 className="text-base font-bold text-white">Warehouse Pickup</h2>
+                  <Warehouse className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900">Warehouse Pickup</h2>
                 </div>
                 {readyForPickup.length > 0 && (
-                  <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  <span className="bg-emerald-100 text-emerald-700 text-xs sm:text-sm font-medium px-2 sm:px-3 py-0.5 sm:py-1 rounded-full">
                     {readyForPickup.length} ready
                   </span>
                 )}
@@ -647,17 +665,17 @@ export default function DashboardPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => setPickupTab('ready')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm transition-all ${
                     pickupTab === 'ready'
-                      ? 'bg-white text-emerald-700 shadow-md'
-                      : 'bg-white/20 text-white'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   <PackageCheck className="w-4 h-4" />
                   Ready
                   {readyForPickup.length > 0 && (
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      pickupTab === 'ready' ? 'bg-emerald-100 text-emerald-700' : 'bg-white/30'
+                      pickupTab === 'ready' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
                     }`}>
                       {readyForPickup.length}
                     </span>
@@ -665,17 +683,17 @@ export default function DashboardPage() {
                 </button>
                 <button
                   onClick={() => setPickupTab('history')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 sm:py-2.5 rounded-lg font-medium text-xs sm:text-sm transition-all ${
                     pickupTab === 'history'
-                      ? 'bg-white text-emerald-700 shadow-md'
-                      : 'bg-white/20 text-white'
+                      ? 'bg-gray-700 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
                   <History className="w-4 h-4" />
                   Picked Up
                   {pickedUpItems.length > 0 && (
                     <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      pickupTab === 'history' ? 'bg-gray-100 text-gray-700' : 'bg-white/30'
+                      pickupTab === 'history' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'
                     }`}>
                       {pickedUpItems.length}
                     </span>
@@ -685,47 +703,35 @@ export default function DashboardPage() {
             </div>
 
             {/* Content */}
-            <div className="p-3">
+            <div className="p-3 sm:p-4">
               {pickupTab === 'ready' ? (
                 readyForPickup.length === 0 ? (
-                  <div className="text-center py-6">
-                    <PackageCheck className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm font-medium">No items ready</p>
-                    <p className="text-gray-400 text-xs mt-1">Items appear when they arrive</p>
+                  <div className="text-center py-8 sm:py-12">
+                    <PackageCheck className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm sm:text-base font-medium">No items ready for pickup</p>
+                    <p className="text-gray-400 text-xs sm:text-sm mt-1">Items will appear here when they arrive at our warehouse</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                     {readyForPickup.map((item) => (
                       <div
                         key={item.id}
-                        className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-3 border border-emerald-200"
+                        className="bg-white rounded-xl p-3 sm:p-4 border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="px-1.5 py-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded uppercase">
-                                Ready
-                              </span>
-                              {item.product_order_number && (
-                                <span className="text-[10px] text-gray-500">
-                                  {item.product_order_number}
-                                </span>
-                              )}
-                            </div>
-                            <h4 className="font-semibold text-gray-900 text-sm truncate">{item.product_name}</h4>
-                            <p className="text-[10px] text-gray-500">Order: {item.order_number}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-bold text-emerald-700">
-                              {item.total_quantity?.toLocaleString() || 0}
-                            </p>
-                            <p className="text-[9px] text-gray-500 uppercase">units</p>
-                          </div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] sm:text-[9px] font-bold rounded uppercase">
+                            Ready
+                          </span>
+                          <p className="text-lg sm:text-xl font-bold text-gray-900">
+                            {item.total_quantity?.toLocaleString() || 0}
+                          </p>
                         </div>
+                        <h4 className="font-semibold text-gray-900 text-xs sm:text-sm line-clamp-2 mb-1">{item.product_name}</h4>
+                        <p className="text-[10px] sm:text-xs text-gray-400 truncate">{item.order_number}</p>
                         {item.rack_location && (
-                          <div className="mt-2 pt-2 border-t border-emerald-200/50 flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-xs text-emerald-700 font-medium">
+                          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs text-gray-500 truncate">
                               {item.rack_location}
                             </span>
                           </div>
@@ -736,50 +742,43 @@ export default function DashboardPage() {
                 )
               ) : (
                 pickedUpItems.length === 0 ? (
-                  <div className="text-center py-6">
-                    <History className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                    <p className="text-gray-500 text-sm font-medium">No pickup history</p>
-                    <p className="text-gray-400 text-xs mt-1">History appears after pickup</p>
+                  <div className="text-center py-8 sm:py-12">
+                    <History className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500 text-sm sm:text-base font-medium">No pickup history</p>
+                    <p className="text-gray-400 text-xs sm:text-sm mt-1">Your pickup history will appear here</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {pickedUpItems.slice(0, 10).map((item) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+                    {pickedUpItems.slice(0, 12).map((item) => (
                       <div
                         key={item.id}
-                        className="bg-gray-50 rounded-lg p-2.5 border border-gray-200"
+                        className="bg-gray-50 rounded-xl p-3 sm:p-4 border border-gray-200"
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <CheckCircle className="w-3.5 h-3.5 text-green-500" />
-                              <h4 className="font-medium text-gray-900 text-xs truncate">{item.product_name}</h4>
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                              <span>{item.total_quantity?.toLocaleString() || 0} units</span>
-                              {item.picked_up_by && (
-                                <>
-                                  <span>•</span>
-                                  <span className="flex items-center gap-0.5">
-                                    <User className="w-2.5 h-2.5" />
-                                    {item.picked_up_by}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <p className="text-[10px] text-gray-400">
-                            {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ''}
+                        <div className="flex items-center justify-between mb-2">
+                          <CheckCircle className="w-4 h-4 text-green-500" />
+                          <p className="text-sm sm:text-base font-bold text-gray-700">
+                            {item.total_quantity?.toLocaleString() || 0}
                           </p>
                         </div>
+                        <h4 className="font-medium text-gray-900 text-xs sm:text-sm line-clamp-2 mb-1">{item.product_name}</h4>
+                        {item.picked_up_by && (
+                          <div className="flex items-center gap-1 text-[10px] sm:text-xs text-gray-500">
+                            <User className="w-3 h-3" />
+                            <span className="truncate">{item.picked_up_by}</span>
+                          </div>
+                        )}
+                        <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
+                          {item.archived_at ? new Date(item.archived_at).toLocaleDateString() : ''}
+                        </p>
                       </div>
                     ))}
-                    {pickedUpItems.length > 10 && (
-                      <p className="text-center text-[10px] text-gray-400 pt-1">
-                        + {pickedUpItems.length - 10} more
-                      </p>
-                    )}
                   </div>
                 )
+              )}
+              {pickupTab === 'history' && pickedUpItems.length > 12 && (
+                <p className="text-center text-xs sm:text-sm text-gray-400 mt-3">
+                  + {pickedUpItems.length - 12} more items in history
+                </p>
               )}
             </div>
           </div>

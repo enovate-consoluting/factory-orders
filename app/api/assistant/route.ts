@@ -116,8 +116,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Only allow admin and super_admin
-    if (userRole !== 'admin' && userRole !== 'super_admin') {
+    // Only allow admin, super_admin, and system_admin
+    const allowedRoles = ['admin', 'super_admin', 'system_admin'];
+    if (!allowedRoles.includes(userRole)) {
+      console.error(`[Aria] Unauthorized access attempt. Role: ${userRole}`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
