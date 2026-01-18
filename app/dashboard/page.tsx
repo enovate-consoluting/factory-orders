@@ -562,17 +562,19 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          {/* Main Estimate Card */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6 mb-4 sm:mb-6">
-            <div className="flex items-start justify-between">
+          {/* Main Estimate Card - Vignette effect */}
+          <div className="relative rounded-2xl shadow-sm overflow-hidden p-5 sm:p-6 mb-4 sm:mb-6 bg-white">
+            {/* Vignette overlay - blue edges fading to white center */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_30%,_rgba(59,130,246,0.15)_100%)]" />
+            <div className="relative flex items-start justify-between">
               <div>
-                <p className="text-gray-500 text-sm font-medium mb-1">Total Estimated Value</p>
+                <p className="text-blue-600/70 text-sm font-medium mb-1">Total Estimated Value</p>
                 <p className="text-3xl sm:text-4xl font-bold text-gray-900">${formatCurrency(clientStats.totalEstimate)}</p>
                 <p className="text-gray-400 text-xs mt-2">
                   <span className="font-medium">Note:</span> Product and shipping fees may not yet be finalized
                 </p>
               </div>
-              <div className="bg-blue-50 rounded-xl p-3">
+              <div className="bg-blue-100/50 rounded-xl p-3">
                 <DollarSign className="w-7 h-7 sm:w-8 sm:h-8 text-blue-500" />
               </div>
             </div>
@@ -648,7 +650,7 @@ export default function DashboardPage() {
           {/* ============ WAREHOUSE PICKUP SECTION ============ */}
           <div id="warehouse-pickup" className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
             {/* Header with Tabs */}
-            <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-100 p-3 sm:p-4">
+            <div className="bg-white border-b border-gray-100 p-3 sm:p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Warehouse className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
@@ -716,7 +718,7 @@ export default function DashboardPage() {
                     {readyForPickup.map((item) => (
                       <div
                         key={item.id}
-                        className="bg-white rounded-xl p-3 sm:p-4 border border-gray-200 hover:border-emerald-300 hover:shadow-sm transition-all"
+                        className="bg-white rounded-xl p-3 sm:p-4 border-2 border-emerald-200 hover:border-emerald-400 hover:shadow-sm transition-all"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[8px] sm:text-[9px] font-bold rounded uppercase">
@@ -729,9 +731,9 @@ export default function DashboardPage() {
                         <h4 className="font-semibold text-gray-900 text-xs sm:text-sm line-clamp-2 mb-1">{item.product_name}</h4>
                         <p className="text-[10px] sm:text-xs text-gray-400 truncate">{item.order_number}</p>
                         {item.rack_location && (
-                          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                            <span className="text-[10px] sm:text-xs text-gray-500 truncate">
+                          <div className="mt-2 pt-2 border-t border-emerald-100 flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+                            <span className="text-[10px] sm:text-xs text-emerald-600 truncate">
                               {item.rack_location}
                             </span>
                           </div>

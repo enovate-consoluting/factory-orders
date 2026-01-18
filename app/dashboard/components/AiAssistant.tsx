@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   MessageCircle,
@@ -21,8 +21,10 @@ import {
   Mic,
   MicOff,
   Volume2,
-  VolumeX
+  VolumeX,
+  Maximize2
 } from 'lucide-react';
+import AriaVoiceOverlay, { AriaButtonIcon, AriaOrb } from './AriaVoiceOverlay';
 
 // Aria's animated icon component - elegant, feminine design
 function AriaIcon({ className = "w-6 h-6", animated = true }: { className?: string; animated?: boolean }) {
@@ -142,6 +144,8 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voicesLoaded, setVoicesLoaded] = useState(false);
+  const [isVoiceOverlay, setIsVoiceOverlay] = useState(false); // Fullscreen voice mode
+  const [lastResponse, setLastResponse] = useState(''); // For voice overlay display
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -336,6 +340,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      setLastResponse(data.message); // Store for voice overlay display
 
       // Speak Aria's response if voice is enabled
       if (voiceEnabled && data.message) {
@@ -384,6 +389,89 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       setIsListening(true);
     }
   };
+
+  // Toggle voice output (speaker)
+  const toggleVoiceOutput = useCallback(() => {
+    setVoiceEnabled(prev => !prev);
+  }, []);
+
+  // Handle send from voice overlay
+  const handleVoiceOverlaySend = useCallback(async (message: string) => {
+    if (!message.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message.trim(),
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage.content,
+          userRole,
+          conversationHistory: messages.slice(-10).map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get response');
+      }
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date(),
+        actions: data.actions
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      setLastResponse(data.message);
+
+      // Speak Aria's response if voice is enabled
+      if (voiceEnabled && data.message) {
+        const spokenText = data.message.split('\n')[0].substring(0, 200);
+        speak(spokenText);
+      }
+    } catch (error: any) {
+      console.error('[Aria] Voice Overlay API Error:', {
+        message: error.message,
+        userRole,
+        timestamp: new Date().toISOString()
+      });
+      setLastResponse(`Sorry, I encountered an error: ${error.message}. Please try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isLoading, messages, userRole, voiceEnabled]);
+
+  // Open voice overlay mode
+  const openVoiceOverlay = useCallback(() => {
+    setIsVoiceOverlay(true);
+    setIsOpen(true);
+    setIsMinimized(false);
+  }, []);
+
+  // Close voice overlay
+  const closeVoiceOverlay = useCallback(() => {
+    setIsVoiceOverlay(false);
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  }, [isListening]);
 
   // Text-to-speech function - Aria speaks with ElevenLabs natural voice!
   // Falls back to Web Speech API if ElevenLabs is not configured
@@ -525,13 +613,6 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     }
   };
 
-  const toggleVoiceOutput = () => {
-    if (voiceEnabled) {
-      stopSpeaking();
-    }
-    setVoiceEnabled(!voiceEnabled);
-  };
-
   // Quick prompts for empty state
   const quickPrompts = [
     "Show me today's orders",
@@ -556,39 +637,53 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
     return null;
   }
 
-  // Aria button for sidebar
-  const AriaButton = (
+  // Aria button for sidebar - modern orb style
+  const AriaSidebarButton = (
     <button
-      onClick={handleOpen}
-      className="w-9 h-9 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-md hover:shadow-lg hover:scale-110 transition-all duration-200 flex items-center justify-center group relative"
+      onClick={openVoiceOverlay}
+      className="w-9 h-9 rounded-full shadow-md hover:shadow-lg hover:scale-110 transition-all duration-200 flex items-center justify-center group relative overflow-hidden"
       title="Ask Aria"
     >
-      <AriaIcon className="w-5 h-5" animated={!isOpen} />
+      <AriaButtonIcon className="w-9 h-9" animated={!isOpen} />
       {hasUnread && (
-        <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+        <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse z-10" />
       )}
     </button>
   );
 
   return (
     <>
+      {/* Voice Overlay - fullscreen immersive mode */}
+      <AriaVoiceOverlay
+        isOpen={isVoiceOverlay}
+        onClose={closeVoiceOverlay}
+        isListening={isListening}
+        isSpeaking={isSpeaking}
+        isLoading={isLoading}
+        voiceEnabled={voiceEnabled}
+        onToggleVoice={toggleVoiceOutput}
+        onToggleListen={toggleVoice}
+        onSend={handleVoiceOverlaySend}
+        transcript={input}
+        lastResponse={lastResponse}
+        userName={userName}
+      />
+
       {/* Aria Button - rendered in sidebar via portal, or floating as fallback */}
-      {!isOpen && (
+      {!isOpen && !isVoiceOverlay && (
         sidebarTarget
-          ? createPortal(AriaButton, sidebarTarget)
+          ? createPortal(AriaSidebarButton, sidebarTarget)
           : (
             <button
-              onClick={handleOpen}
-              className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 text-white rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group"
+              onClick={openVoiceOverlay}
+              className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 w-14 h-14 sm:w-16 sm:h-16 rounded-full shadow-lg hover:shadow-2xl hover:scale-110 transition-all duration-300 flex items-center justify-center z-50 group overflow-hidden"
               title="Ask Aria"
             >
-              <div className="relative">
-                <AriaIcon className="w-7 h-7 sm:w-8 sm:h-8 group-hover:scale-110 transition-transform" animated={true} />
-              </div>
+              <AriaButtonIcon className="w-14 h-14 sm:w-16 sm:h-16" animated={true} />
               {hasUnread && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse z-10" />
               )}
-              <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
+              <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap hidden sm:block">
                 Ask Aria
               </span>
             </button>
@@ -596,7 +691,7 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
       )}
 
       {/* Chat Panel - Full screen on mobile, floating on desktop */}
-      {isOpen && (
+      {isOpen && !isVoiceOverlay && (
         <div
           className={`fixed z-50 transition-all duration-300 flex flex-col bg-white shadow-2xl border border-gray-200 ${
             isMinimized
@@ -607,15 +702,19 @@ export default function AiAssistant({ userRole, userName }: AiAssistantProps) {
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 sm:rounded-t-2xl">
             <div className="flex items-center gap-2">
-              <AriaIcon className="w-5 h-5 text-white" animated={false} />
+              <AriaOrb isLoading={isLoading} isSpeaking={isSpeaking} size="small" />
               <span className="font-semibold text-white">Aria</span>
-              {isLoading && (
-                <Loader2 className="w-4 h-4 text-white/80 animate-spin" />
-              )}
             </div>
             <div className="flex items-center gap-1">
               {!isMinimized && (
                 <>
+                  <button
+                    onClick={openVoiceOverlay}
+                    className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    title="Fullscreen voice mode"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={toggleVoiceOutput}
                     className={`p-1.5 hover:bg-white/10 rounded-lg transition-colors ${
